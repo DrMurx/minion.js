@@ -1,6 +1,6 @@
 import type {ListJobsOptions, ListLocksOptions, ListWorkersOptions, MinionStates} from '../types.js';
 import type {MojoApp, MojoContext, MojoRoute} from '@mojojs/core';
-import {version} from '../minion.js';
+import {version} from '../version.js';
 import Path from '@mojojs/path';
 import yaml from 'js-yaml';
 

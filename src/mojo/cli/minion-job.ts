@@ -1,4 +1,4 @@
-import type Minion from '../../minion.js';
+import type {Minion} from '../../minion.js';
 import type {EnqueueOptions, ListJobsOptions, ListLocksOptions} from '../../types.js';
 import type {MojoApp} from '@mojojs/core';
 import {tablify} from '@mojojs/util';

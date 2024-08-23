@@ -7,7 +7,10 @@
     "pg",
     "job-queue"
   ],
-  "author": "Sebastian Riedel <kraih@mojolicious.org>",
+  "contributors": [
+    "Sebastian Riedel <kraih@mojolicious.org>",
+    "Jan Kunzmann <jan-github@phobia.de>"
+  ],
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -37,8 +40,8 @@
     "publish:patch": "npm version patch && npm publish",
     "test": "tap --disable-coverage --allow-empty-coverage test/*.js"
   },
-  "exports": "./lib/minion.js",
-  "types": "./lib/minion.d.ts",
+  "exports": "./lib/index.js",
+  "types": "./lib/index.d.ts",
   "type": "module",
   "files": [
     "lib/",
@@ -77,5 +80,6 @@
     "@mojojs/util": "^1.6.0",
     "js-yaml": "^4.1.0",
     "nopt": "^7.0.0"
-  }
+  },
+  "packageManager": "pnpm@9.0.2+sha512.8bedf31de42705b97ff89330bbe177954ad5703a92fa894be0fb4d45b5dfab59a21f65a8419ad1cae82dd16fac2d41a8c343775e80efe7dab6d80b0408db2fd6"
 }

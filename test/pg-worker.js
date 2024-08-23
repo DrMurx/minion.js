@@ -1,4 +1,4 @@
-import Minion from '../lib/minion.js';
+import {Minion} from '../lib/index.js';
 import Pg from '@mojojs/pg';
 import t from 'tap';
 

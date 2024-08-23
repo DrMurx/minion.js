@@ -1,6 +1,6 @@
-import type {MinionOptions} from '../minion.js';
+import type {MinionOptions} from '../types.js';
 import type {MojoApp} from '@mojojs/core';
-import Minion from '../minion.js';
+import {Minion} from '../minion.js';
 import Path from '@mojojs/path';
 
 interface PluginOptions extends MinionOptions {

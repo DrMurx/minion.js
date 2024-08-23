@@ -1,4 +1,4 @@
-import type Minion from './minion.js';
+import type {Minion} from './minion.js';
 import type {
   DailyHistory,
   DequeueOptions,

@@ -1,5 +1,14 @@
+import { MojoApp } from '@mojojs/core';
 import type {Job} from './job.js';
 import type {Worker} from './worker.js';
+
+export interface MinionOptions {
+  app?: MojoApp;
+  backendClass?: any;
+  missingAfter?: number;
+  removeAfter?: number;
+  stuckAfter?: number;
+}
 
 export interface MinionBackend {
   broadcast: (command: string, args?: any[], ids?: MinionJobId[]) => Promise<boolean>;
@@ -180,6 +189,11 @@ export interface LockInfo {
 export interface LockList {
   locks: LockInfo[];
   total: number;
+}
+
+export interface ResultOptions {
+  interval?: number;
+  signal?: AbortSignal;
 }
 
 export interface WorkerInfo {

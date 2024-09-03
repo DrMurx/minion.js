@@ -128,7 +128,7 @@ export class Worker {
   async start(): Promise<this> {
     if (this.isRunning === true) return this;
 
-    this._mainLoop().catch(error => this.minion.app.log.error(error));
+    this._mainLoop().catch(error => console.error(error));
     this._running = true;
 
     return this;

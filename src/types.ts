@@ -1,9 +1,7 @@
-import { MojoApp } from '@mojojs/core';
 import type {Job} from './job.js';
 import type {Worker} from './worker.js';
 
 export interface MinionOptions {
-  app?: MojoApp;
   backendClass?: any;
   missingAfter?: number;
   removeAfter?: number;

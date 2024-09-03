@@ -23,10 +23,8 @@ import type {
   WorkerInfo,
   WorkerList
 } from './types.js';
-import type {PgConfig} from '@mojojs/pg';
 import os from 'node:os';
-import Path from '@mojojs/path';
-import Pg from '@mojojs/pg';
+import Pg, { PgConfig } from './pg/index.js';
 
 interface DequeueResult {
   id: MinionJobId;
@@ -89,7 +87,7 @@ export class PgBackend {
    */
   minion: Minion;
   /**
-   * `@mojojs/pg` object used to store all data.
+   * `pg` object used to store all data.
    */
   pg: Pg;
 
@@ -466,7 +464,7 @@ export class PgBackend {
     if (version < 90500) throw new Error('PostgreSQL 9.5 or later is required');
 
     const migrations = pg.migrations;
-    await migrations.fromFile(Path.currentFile().dirname().sibling('migrations', 'minion.sql'), {name: 'minion'});
+    await migrations.fromFile('migrations/minion.sql', {name: 'minion'});
     await migrations.migrate();
   }
 

@@ -1,4 +1,4 @@
-import {Minion} from './minion.js';
+import {Minion, AbortError} from './minion.js';
 import type {
   MinionBackend,
   MinionJob,
@@ -9,7 +9,4 @@ import {version} from './version.js';
 
 export default Minion;
 export type {MinionBackend, MinionJob, MinionOptions, MinionWorker};
-export {Minion, version};
-
-export {minionPlugin} from './mojo/plugin.js';
-export {minionAdminPlugin} from './mojo/admin-plugin.js';
+export {Minion, AbortError, version};

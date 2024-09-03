@@ -1,6 +1,5 @@
 import type {Minion} from './minion.js';
 import type {JobInfo, MinionArgs, MinionJob, MinionJobId, RetryOptions} from './types.js';
-import type {MojoApp} from '@mojojs/core';
 
 /**
  * Minion job class.
@@ -35,20 +34,11 @@ export class Job {
   }
 
   /**
-   * `@mojojs/core` app this job queue belongs to.
-   */
-  get app(): MojoApp {
-    return this.minion.app;
-  }
-
-  /**
    * Execute the appropriate task for job in this process. Note that this method should only be used to implement
    * custom workers.
    */
   async execute(): Promise<void> {
     try {
-      const minion = this.minion;
-      await minion.hooks.runHook('job:before', minion, this);
       const task = this.minion.tasks[this.task];
       await task(this, ...this.args);
     } finally {

@@ -1,5 +1,7 @@
-import Path from '@mojojs/path';
+import { readFileSync } from "fs";
+import { dirname, join } from "path";
+import { fileURLToPath } from "url";
 
 export const version = JSON.parse(
-  Path.currentFile().dirname().sibling('package.json').readFileSync().toString()
+  readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', 'package.json'), {encoding: 'utf-8'})
 ).version;

@@ -38,7 +38,7 @@
     "prepublishOnly": "npm run build",
     "publish:minor": "npm version minor && npm publish",
     "publish:patch": "npm version patch && npm publish",
-    "test": "tap --disable-coverage --allow-empty-coverage test/*.js"
+    "test": "tap --disable-coverage --allow-empty-coverage test/*.js test/*/*.js"
   },
   "exports": "./lib/index.js",
   "types": "./lib/index.d.ts",
@@ -52,7 +52,6 @@
     "@types/busboy": "^1.5.0",
     "@types/js-yaml": "^4.0.5",
     "@types/node": "^20.0.0",
-    "@types/nopt": "^3.0.29",
     "@types/pg": "^8.6.1",
     "@types/react": "^18.2.39",
     "@types/stack-utils": "^2.0.1",
@@ -74,12 +73,8 @@
     "node": ">= 18"
   },
   "dependencies": {
-    "@mojojs/core": "^1.25.0",
-    "@mojojs/path": "^1.5.3",
-    "@mojojs/pg": "^1.1.4",
-    "@mojojs/util": "^1.6.0",
     "js-yaml": "^4.1.0",
-    "nopt": "^7.0.0"
+    "pg": "^8.7.0"
   },
   "packageManager": "pnpm@9.0.2+sha512.8bedf31de42705b97ff89330bbe177954ad5703a92fa894be0fb4d45b5dfab59a21f65a8419ad1cae82dd16fac2d41a8c343775e80efe7dab6d80b0408db2fd6"
 }

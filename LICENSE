@@ -1,5 +1,7 @@
-Copyright (c) 2022-2023 Sebastian Riedel
-Copyright (c) 2024 Jan Kunzmann
+Copyright (c) 2022-2023 Sebastian Riedel (mojolicious/minion.js)
+Copyright (c) 2022-2023 Sebastian Riedel (mojolicious/pg.js)
+Copyright (c) 2022-2023 Sebastian Riedel (mojolicious/sql.js)
+Copyright (c) 2024 Jan Kunzmann (merge and improve)
 
 Permission is hereby granted, free of charge, to any person obtaining
 a copy of this software and associated documentation files (the

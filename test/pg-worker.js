@@ -1,5 +1,5 @@
 import {Minion} from '../lib/index.js';
-import Pg from '@mojojs/pg';
+import Pg from '../lib/pg/index.js';
 import t from 'tap';
 
 const skip = process.env.TEST_ONLINE === undefined ? {skip: 'set TEST_ONLINE to enable this test'} : {};

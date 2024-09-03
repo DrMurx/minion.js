@@ -19,32 +19,26 @@ import type {
   WorkerOptions,
   ResultOptions
 } from './types.js';
-import type {MojoApp} from '@mojojs/core';
 import {Job} from './job.js';
 import {PgBackend} from './pg-backend.js';
 import {Worker} from './worker.js';
-import mojo from '@mojojs/core';
-import {AbortError, AsyncHooks} from '@mojojs/util';
 import {BackendIterator} from './iterator.js';
 
-type JobHook = (minion: Minion, job: Job, ...args: any[]) => any;
+export class AbortError extends Error {
+  constructor(message?: string, options?: ErrorOptions) {
+    super(message, options);
+    this.name = 'AbortError';
+  }
+}
 
 /**
  * Minion job queue class.
  */
 export class Minion {
   /**
-   * `@mojojs/core` app this job queue belongs to.
-   */
-  app: MojoApp;
-  /**
    * Backend, usually a PostgreSQL backend.
    */
   backend: MinionBackend;
-  /**
-   * Job queue hooks.
-   */
-  hooks = new AsyncHooks();
   /**
    * Amount of time in milliseconds after which workers without a heartbeat will be considered missing and removed from
    * the registry by `minion.repair()`, defaults to `1800000` (30 minutes).
@@ -67,22 +61,12 @@ export class Minion {
   tasks: Record<string, MinionTask> = {};
 
   constructor(config: any, options: MinionOptions = {}) {
-    this.app = options.app ?? mojo();
-
     const backendClass = options.backendClass ?? PgBackend;
     this.backend = new backendClass(this, config);
 
     if (options.missingAfter !== undefined) this.missingAfter = options.missingAfter;
     if (options.removeAfter !== undefined) this.removeAfter = options.removeAfter;
     if (options.stuckAfter !== undefined) this.stuckAfter = options.stuckAfter;
-  }
-
-  /**
-   * Add a hook to extend the job queue.
-   */
-  addJobHook(name: string, fn: JobHook): this {
-    this.hooks.addHook(name, fn);
-    return this;
   }
 
   /**

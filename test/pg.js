@@ -1,7 +1,6 @@
 import os from 'node:os';
 import {Minion} from '../lib/index.js';
-import mojo, {util} from '@mojojs/core';
-import Pg from '@mojojs/pg';
+import Pg from '../lib/pg/index.js';
 import t from 'tap';
 
 const skip = process.env.TEST_ONLINE === undefined ? {skip: 'set TEST_ONLINE to enable this test'} : {};
@@ -18,7 +17,6 @@ t.test('PostgreSQL backend', skip, async t => {
   await t.test('Nothing to repair', async t => {
     await minion.repair();
     t.ok(minion.backend !== undefined);
-    t.ok(minion.app instanceof mojo().constructor);
   });
 
   await t.test('Migrate up and down', async t => {
@@ -38,7 +36,7 @@ t.test('PostgreSQL backend', skip, async t => {
     t.same(notified instanceof Date, true);
     const id = worker.id;
     await worker.register();
-    await util.sleep(500);
+    await new Promise((resolve) => setTimeout(resolve, 500));
     await worker.register();
     t.same((await worker.info()).notified > notified, true);
     await worker.unregister();

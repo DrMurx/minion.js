@@ -66,7 +66,6 @@ await worker.start();
 - Parallel processing
 - Remote control
 - Multiple backends (such as [PostgreSQL](https://www.postgresql.org))
-- [mojo.js admin ui](#mojojs)
 
 ### Job Queue
 
@@ -117,12 +116,6 @@ While individual workers can fail in the middle of processing a job, the system 
 is left in an uncertain state, depending on the value of the `minion.missingAfter` property. Jobs that do not get
 processed after a certain amount of time, will be considered stuck and fail automatically, depending on the value of
 the `minion.stuckAfter` property. So an admin can take a look and resolve the issue.
-
-## Examples
-
-This distribution also contains a great example application you can use for inspiration. The
-[link checker](https://github.com/mojolicious/minion.js/tree/main/examples/linkcheck) will show you how to integrate
-background jobs into well-structured [mojo.js](https://mojojs.org) applications.
 
 ## API
 
@@ -395,64 +388,6 @@ await minion.reset({
   // Reset only locks
   locks: true
 });
-```
-
-### mojo.js
-
-You can use Minion as a standalone job queue, or integrate it into [mojo.js](https://mojojs.org) applications with
-`minionPlugin`.
-
-```js
-import {minionPlugin} from '@minionjs/core';
-import mojo from '@mojojs/core';
-
-export const app = mojo();
-
-app.plugin(minionPlugin, {config: 'postgres://user:password@localhost:5432/database'});
-
-// Slow task
-app.models.minion.addTask('poke_mojo', async job => {
-  await job.app.ua.get('mojolicious.org');
-  job.app.log.debug('We have poked mojolicious.org for a visitor');
-});
-
-// Perform job in a background worker process
-app.get('/', async ctx => {
-  await ctx.models.minion.enqueue('poke_mojo');
-  await ctx.render({text: 'We will poke mojolicious.org for you soon.'});
-});
-
-app.start();
-```
-
-Background worker processes are usually started with the `minion-worker` command, which becomes automatically available
-when an application loads `minionPlugin`.
-
-```
-$ node index.js minion-worker
-```
-
-Jobs can be managed right from the command line with the `minion-job` command.
-
-```
-$ node index.js minion-job
-```
-
-You can also add an admin ui to your application by loading `minionAdminPlugin`. Just make sure to secure access before
-making your application publicly accessible.
-
-```js
-import {minionPlugin, minionAdminPlugin} from '@minionjs/core';
-import mojo from '@mojojs/core';
-
-export const app = mojo();
-
-const minionPrefix = app.any('/minion');
-
-app.plugin(minionPlugin, {config: 'postgres://user:password@localhost:5432/database'});
-app.plugin(minionAdminPlugin, {route: minionPrefix});
-
-app.start();
 ```
 
 ## Deployment

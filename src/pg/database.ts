@@ -4,6 +4,7 @@ import {Base} from './base.js';
 import {Results} from './results.js';
 import {Transaction} from './transaction.js';
 import {throwWithContext} from './util.js';
+import {Statement} from './sql.js';
 
 interface DatabaseEvents {
   end: (this: Database) => void;
@@ -132,7 +133,7 @@ class Database extends Base implements DatabaseEventEmitter {
    * const results = await db.query<User>`SELECT * FROM users`;
    */
   async query<T extends Record<string, any>>(parts: TemplateStringsArray, ...values: any[]): Promise<Results<T>> {
-    return this.rawQuery(this.sql(parts, ...values).toQuery());
+    return this.rawQuery(Statement.sql(parts, ...values).toQuery());
   }
 
   /**

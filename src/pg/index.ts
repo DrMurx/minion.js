@@ -2,6 +2,7 @@ import {Base} from './base.js';
 import {Database} from './database.js';
 import {Migrations} from './migrations.js';
 import {Results} from './results.js';
+import {Statement} from './sql.js';
 import urlSplit from './url.js';
 import {throwWithContext} from './util.js';
 import pg from 'pg';
@@ -135,7 +136,7 @@ export default class Pg extends Base {
    * const results = await pg.query<User>`SELECT * FROM users`;
    */
   async query<T extends Record<string, any>>(parts: TemplateStringsArray, ...values: any[]): Promise<Results<T>> {
-    return this.rawQuery(this.sql(parts, ...values).toQuery());
+    return this.rawQuery(Statement.sql(parts, ...values).toQuery());
   }
 
   /**

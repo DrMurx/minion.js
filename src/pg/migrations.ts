@@ -2,6 +2,8 @@ import {readdir, readFile} from 'fs/promises';
 import type {Database} from './database.js';
 import type Pg from './index.js';
 import { join } from 'path';
+import PG from 'pg';
+import {Statement} from './sql.js';
 
 interface MigrationOptions {
   name?: string;
@@ -140,8 +142,8 @@ export class Migrations {
 
         const sql = this.sqlFor(active, target);
         if (DEBUG) process.stderr.write(`-- Migrate (${active} -> ${target})\n${sql}\n`);
-        const name = db.escapeLiteral(this.name);
-        const migration = db.sqlUnsafe`
+        const name = PG.escapeLiteral(this.name);
+        const migration = Statement.sqlUnsafe`
           ${sql}
           INSERT INTO mojo_migrations (name, version) VALUES (${name}, ${target})
           ON CONFLICT (name) DO UPDATE SET version = ${target};

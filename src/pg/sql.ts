@@ -1,7 +1,10 @@
-import type {Query} from './types.js';
-
 interface QueryOptions {
   placeholder?: string;
+}
+
+export interface Query {
+  text: string;
+  values: any[];
 }
 
 /**

@@ -1,5 +1,6 @@
 import Pg from './index.js';
 import t from 'tap';
+import { Statement } from './sql.js';
 
 const skip = process.env.TEST_ONLINE === undefined ? {skip: 'set TEST_ONLINE to enable this test'} : {};
 
@@ -131,7 +132,7 @@ t.test('Database', skip, async t => {
 
   await t.test('Placeholders', async t => {
     const pg = new Pg(process.env.TEST_ONLINE);
-    const one = pg.sql`AS one`;
+    const one = Statement.sql`AS one`;
     const results = await pg.query`SELECT ${'One'} ${one}, ${2} AS two`;
     t.same(results, [{one: 'One', two: 2}]);
     await pg.end();

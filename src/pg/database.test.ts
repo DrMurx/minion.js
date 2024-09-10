@@ -1,4 +1,4 @@
-import Pg from '../../lib/pg/index.js';
+import Pg from './index.js';
 import t from 'tap';
 
 const skip = process.env.TEST_ONLINE === undefined ? {skip: 'set TEST_ONLINE to enable this test'} : {};
@@ -170,7 +170,7 @@ t.test('Database', skip, async t => {
     await db2.listen('dbtest');
 
     process.nextTick(() => db.notify('dbtest', 'it works!'));
-    const messages = await Promise.all([
+    const messages: any[] = await Promise.all([
       new Promise(resolve => db.once('notification', message => resolve(message))),
       new Promise(resolve => db2.once('notification', message => resolve(message)))
     ]);
@@ -183,7 +183,7 @@ t.test('Database', skip, async t => {
     );
 
     process.nextTick(() => db.notify('dbtest', 'it still works!'));
-    const messages2 = await Promise.all([
+    const messages2: any[] = await Promise.all([
       new Promise(resolve => db.once('notification', message => resolve(message))),
       new Promise(resolve => db2.once('notification', message => resolve(message)))
     ]);
@@ -196,7 +196,7 @@ t.test('Database', skip, async t => {
     );
 
     process.nextTick(() => db2.notify('dbtest'));
-    const message2 = await new Promise(resolve => db2.once('notification', message => resolve(message)));
+    const message2: any = await new Promise(resolve => db2.once('notification', message => resolve(message)));
     t.same([message2.channel, message2.payload], ['dbtest', '']);
 
     await db2.unlisten('dbtest');
@@ -207,7 +207,7 @@ t.test('Database', skip, async t => {
         await db.notify('dbtest', 'from a transaction');
         await tx.commit();
       });
-      const message3 = await new Promise(resolve => db.once('notification', message => resolve(message)));
+      const message3: any = await new Promise(resolve => db.once('notification', message => resolve(message)));
       result = [message3.channel, message3.payload];
     } catch (error) {
       result = error;
@@ -256,7 +256,7 @@ t.test('Database', skip, async t => {
     await t.test('Exception with context (ad-hoc)', async t => {
       const pg = new Pg(process.env.TEST_ONLINE);
 
-      let result;
+      let result: any;
       try {
         await pg.query`
           SELECT 1 AS one,
@@ -284,7 +284,7 @@ t.test('Database', skip, async t => {
       const db = await pg.db();
       t.same(db.verboseErrors, true);
 
-      let result;
+      let result: any;
       try {
         await db.query`
           SELECT 1 AS one,
@@ -313,7 +313,7 @@ t.test('Database', skip, async t => {
       const db = await pg.db();
       t.same(db.verboseErrors, false);
 
-      let result;
+      let result: any;
       try {
         await pg.query`SELECT 1 A one`;
       } catch (error) {

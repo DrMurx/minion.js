@@ -1,4 +1,4 @@
-import {sql, sqlUnsafe, Statement} from '../../lib/sql/index.js';
+import {sql, sqlUnsafe, Statement} from './index.js';
 import t from 'tap';
 
 t.test('SQL', t => {

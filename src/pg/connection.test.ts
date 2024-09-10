@@ -1,4 +1,4 @@
-import Pg from '../../lib/pg/index.js';
+import Pg from './index.js';
 import t from 'tap';
 
 t.test('Connections', t => {
@@ -62,7 +62,7 @@ t.test('Connections', t => {
   });
 
   t.test('Invalid connection string', t => {
-    let result;
+    let result: any;
     try {
       Pg.parseConfig('http://127.0.0.1');
     } catch (error) {

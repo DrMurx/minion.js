@@ -1,4 +1,4 @@
-import Pg from '../../lib/pg/index.js';
+import Pg from './index.js';
 import t from 'tap';
 
 const skip = process.env.TEST_ONLINE === undefined ? {skip: 'set TEST_ONLINE to enable this test'} : {};
@@ -81,7 +81,7 @@ t.test('Results', skip, async t => {
       {id: 4, name: 'tx1'}
     ]);
 
-    let result;
+    let result: any;
     const tx3 = await db.begin();
     try {
       await db.query`INSERT INTO results_test (name) VALUES ('tx1')`;

@@ -1,5 +1,5 @@
-import {Minion} from '../lib/index.js';
-import Pg from '../lib/pg/index.js';
+import {Minion} from './index.js';
+import Pg from './pg/index.js';
 import t from 'tap';
 
 const skip = process.env.TEST_ONLINE === undefined ? {skip: 'set TEST_ONLINE to enable this test'} : {};
@@ -23,8 +23,8 @@ t.test('Worker', skip, async t => {
   await t.test('Wait for jobs', async t => {
     const id = await minion.enqueue('test');
     const result = await minion.result(id, {interval: 500});
-    t.equal(result.state, 'finished');
-    t.same(result.notes, {test: 'pass'});
+    t.equal(result!.state, 'finished');
+    t.same(result!.notes, {test: 'pass'});
   });
 
   t.equal(worker.isRunning, true);

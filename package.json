@@ -38,7 +38,7 @@
     "prepublishOnly": "npm run build",
     "publish:minor": "npm version minor && npm publish",
     "publish:patch": "npm version patch && npm publish",
-    "test": "tap --disable-coverage --allow-empty-coverage test/*.js test/*/*.js"
+    "test": "tap --disable-coverage --allow-empty-coverage"
   },
   "exports": "./lib/index.js",
   "types": "./lib/index.d.ts",

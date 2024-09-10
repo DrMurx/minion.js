@@ -1,4 +1,4 @@
-import Pg from '../../lib/pg/index.js';
+import Pg from './index.js';
 import {dirname, join} from 'path';
 import t from 'tap';
 import { fileURLToPath } from 'url';
@@ -80,7 +80,7 @@ t.test('Migrations', skip, async t => {
     t.equal(pg2.migrations.latest, 4);
     t.equal(await pg2.migrations.active(), 0);
 
-    let result;
+    let result: any;
     try {
       await pg2.migrations.migrate();
     } catch (error) {
@@ -111,7 +111,7 @@ t.test('Migrations', skip, async t => {
   });
 
   await t.test('Unknown version', async t => {
-    let result;
+    let result: any;
     try {
       await pg.migrations.migrate(23);
     } catch (error) {
@@ -126,7 +126,7 @@ t.test('Migrations', skip, async t => {
     t.equal(await pg.migrations.active(), 2);
 
     pg.migrations.fromString(olderVersion);
-    let result;
+    let result: any;
     try {
       await pg.migrations.migrate();
     } catch (error) {
@@ -134,7 +134,7 @@ t.test('Migrations', skip, async t => {
     }
     t.match(result.message, /Active version 2 is greater than the latest version 1/);
 
-    let result2;
+    let result2: any;
     try {
       await pg.migrations.migrate(0);
     } catch (error) {
@@ -153,7 +153,7 @@ t.test('Migrations', skip, async t => {
     t.equal(await pg2.migrations.active(), 2);
     t.same(await pg2.query`SELECT * FROM migration_test_three`, [{baz: 'just'}, {baz: 'works ♥'}]);
 
-    let result;
+    let result: any;
     try {
       await pg.migrations.migrate(36);
     } catch (error) {
@@ -161,7 +161,7 @@ t.test('Migrations', skip, async t => {
     }
     t.match(result.message, /Version 36 has no migration/);
 
-    let result2;
+    let result2: any;
     try {
       await pg.migrations.migrate(54);
     } catch (error) {
@@ -169,7 +169,7 @@ t.test('Migrations', skip, async t => {
     }
     t.match(result2.message, /Version 54 has no migration/);
 
-    let result3;
+    let result3: any;
     try {
       await pg.migrations.migrate(55);
     } catch (error) {

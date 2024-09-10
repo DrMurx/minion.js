@@ -4,7 +4,6 @@ import {Base} from './base.js';
 import {Results} from './results.js';
 import {Transaction} from './transaction.js';
 import {throwWithContext} from './util.js';
-import {Statement} from './sql.js';
 
 interface DatabaseEvents {
   end: (this: Database) => void;
@@ -120,35 +119,22 @@ class Database extends Base implements DatabaseEventEmitter {
    * Get backend process id.
    */
   async pid(): Promise<number> {
-    return (await this.query<PidResult>`SELECT pg_backend_pid()`)[0].pg_backend_pid;
-  }
-
-  /**
-   * Perform SQL query.
-   * @example
-   * // Query with placeholder
-   * const results = await db.query`SELECT * FROM users WHERE name = ${'Sara'}`;
-   *
-   * // Query with result type
-   * const results = await db.query<User>`SELECT * FROM users`;
-   */
-  async query<T extends Record<string, any>>(parts: TemplateStringsArray, ...values: any[]): Promise<Results<T>> {
-    return this.rawQuery(Statement.sql(parts, ...values).toQuery());
+    return (await this.query<PidResult>('SELECT pg_backend_pid()'))[0].pg_backend_pid;
   }
 
   /**
    * Perform raw SQL query.
    * @example
    * // Simple query with placeholder
-   * const results = await db.rawQuery('SELECT * FROM users WHERE name = $1', 'Sara'});
+   * const results = await db.query('SELECT * FROM users WHERE name = $1', 'Sara'});
    *
    * // Query with result type
-   * const results = await db.rawQuery<User>('SELECT * FROM users');
+   * const results = await db.query<User>('SELECT * FROM users');
    *
    * // Query with results as arrays
-   * const results = await db.rawQuery({text: 'SELECT * FROM users', rowMode: 'array'});
+   * const results = await db.query({text: 'SELECT * FROM users', rowMode: 'array'});
    */
-  async rawQuery<T = any>(query: string | QueryConfig, ...values: any[]): Promise<Results<T>> {
+  async query<T = any>(query: string | QueryConfig, ...values: any[]): Promise<Results<T>> {
     if (typeof query === 'string') query = {text: query, values};
     if (DEBUG === true) process.stderr.write(`\n${query.text}\n`);
 
@@ -176,9 +162,9 @@ class Database extends Base implements DatabaseEventEmitter {
    * Get all non-system tables.
    */
   async tables(): Promise<string[]> {
-    const results = await this.query<TablesResult>`
+    const results = await this.query<TablesResult>(`
       SELECT schemaname, tablename FROM pg_catalog.pg_tables
-      WHERE schemaname != 'pg_catalog' AND schemaname != 'information_schema'`;
+      WHERE schemaname != 'pg_catalog' AND schemaname != 'information_schema'`);
     return results.map(row => `${row.schemaname}.${row.tablename}`);
   }
 

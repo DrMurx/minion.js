@@ -2,7 +2,6 @@ import {Base} from './base.js';
 import {Database} from './database.js';
 import {Migrations} from './migrations.js';
 import {Results} from './results.js';
-import {Statement} from './sql.js';
 import urlSplit from './url.js';
 import {throwWithContext} from './util.js';
 import pg from 'pg';
@@ -127,31 +126,18 @@ export default class Pg extends Base {
   }
 
   /**
-   * Perform SQL query.
-   * @example
-   * // Query with placeholder
-   * const results = await pg.query`SELECT * FROM users WHERE name = ${'Sara'}`;
-   *
-   * // Query with result type
-   * const results = await pg.query<User>`SELECT * FROM users`;
-   */
-  async query<T extends Record<string, any>>(parts: TemplateStringsArray, ...values: any[]): Promise<Results<T>> {
-    return this.rawQuery(Statement.sql(parts, ...values).toQuery());
-  }
-
-  /**
    * Perform raw SQL query.
    * @example
    * // Simple query with placeholder
-   * const results = await pg.rawQuery('SELECT * FROM users WHERE name = $1', 'Sara'});
+   * const results = await pg.query('SELECT * FROM users WHERE name = $1', 'Sara'});
    *
    * // Query with result type
-   * const results = await db.rawQuery<User>('SELECT * FROM users');
+   * const results = await db.query<User>('SELECT * FROM users');
    *
    * // Query with results as arrays
-   * const results = await pg.rawQuery({text: 'SELECT * FROM users', rowMode: 'array'});
+   * const results = await pg.query({text: 'SELECT * FROM users', rowMode: 'array'});
    */
-  async rawQuery<T = any>(query: string | pg.QueryConfig, ...values: any[]): Promise<Results<T>> {
+  async query<T = any>(query: string | pg.QueryConfig, ...values: any[]): Promise<Results<T>> {
     if (typeof query === 'string') query = {text: query, values};
     if (DEBUG === true) process.stderr.write(`\n${query.text}\n`);
 

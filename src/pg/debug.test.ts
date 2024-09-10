@@ -13,7 +13,7 @@ t.test('Debug', skip, async t => {
   await t.test('Select (ad-hoc query)', async t => {
     const output = await captureOutput(
       async () => {
-        await pg.query`SELECT 1 AS one`;
+        await pg.query('SELECT 1 AS one');
       },
       {stderr: true, stdout: false}
     );
@@ -21,7 +21,7 @@ t.test('Debug', skip, async t => {
 
     const output2 = await captureOutput(
       async () => {
-        await pg.rawQuery({text: 'SELECT 2 AS two'});
+        await pg.query({text: 'SELECT 2 AS two'});
       },
       {stderr: true, stdout: false}
     );
@@ -32,7 +32,7 @@ t.test('Debug', skip, async t => {
     const output = await captureOutput(
       async () => {
         const db = await pg.db();
-        await db.query`SELECT 2 AS two`;
+        await db.query('SELECT 2 AS two');
         await db.release();
       },
       {stderr: true, stdout: false}
@@ -42,7 +42,7 @@ t.test('Debug', skip, async t => {
     const output2 = await captureOutput(
       async () => {
         const db = await pg.db();
-        await db.rawQuery({text: 'SELECT 1 AS one'});
+        await db.query({text: 'SELECT 1 AS one'});
         await db.release();
       },
       {stderr: true, stdout: false}

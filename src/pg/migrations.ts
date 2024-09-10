@@ -3,7 +3,6 @@ import type {Database} from './database.js';
 import type Pg from './index.js';
 import { join } from 'path';
 import PG from 'pg';
-import {Statement} from './sql.js';
 
 interface MigrationOptions {
   name?: string;
@@ -123,17 +122,17 @@ export class Migrations {
     try {
       // Already the right version
       if ((await this._active(db)) === target) return;
-      await db.query`
+      await db.query(`
         CREATE TABLE IF NOT EXISTS mojo_migrations (
           name    TEXT PRIMARY KEY,
           version BIGINT NOT NULL CHECK (version >= 0)
         )
-      `;
+      `);
 
       const tx = await db.begin();
       try {
         // Lock migrations table and check version again
-        await db.query`LOCK TABLE mojo_migrations IN EXCLUSIVE MODE`;
+        await db.query('LOCK TABLE mojo_migrations IN EXCLUSIVE MODE');
         const active = await this._active(db);
         if (active === target) return;
 
@@ -143,12 +142,12 @@ export class Migrations {
         const sql = this.sqlFor(active, target);
         if (DEBUG) process.stderr.write(`-- Migrate (${active} -> ${target})\n${sql}\n`);
         const name = PG.escapeLiteral(this.name);
-        const migration = Statement.sqlUnsafe`
+        const migration = `
           ${sql}
           INSERT INTO mojo_migrations (name, version) VALUES (${name}, ${target})
           ON CONFLICT (name) DO UPDATE SET version = ${target};
         `;
-        await db.query`${migration}`;
+        await db.query(migration);
         await tx.commit();
       } finally {
         await tx.rollback();
@@ -183,7 +182,7 @@ export class Migrations {
 
   async _active(db: Database): Promise<number> {
     try {
-      const results = await db.query<VersionResult>`SELECT version FROM mojo_migrations WHERE name = ${this.name}`;
+      const results = await db.query<VersionResult>('SELECT version FROM mojo_migrations WHERE name = $1', this.name);
       const first = results.first;
       return first === undefined ? 0 : first.version;
     } catch (error: any) {

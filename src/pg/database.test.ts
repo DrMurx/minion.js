@@ -1,6 +1,5 @@
 import Pg from './index.js';
 import t from 'tap';
-import { Statement } from './sql.js';
 
 const skip = process.env.TEST_ONLINE === undefined ? {skip: 'set TEST_ONLINE to enable this test'} : {};
 
@@ -48,11 +47,11 @@ t.test('Database', skip, async t => {
   await t.test('Select (ad-hoc)', async t => {
     const pg = new Pg(process.env.TEST_ONLINE);
 
-    const results = await pg.query`SELECT 1 AS one, 2 AS two, 3 AS three`;
+    const results = await pg.query('SELECT 1 AS one, 2 AS two, 3 AS three');
     t.equal(results.count, 1);
     t.same(results, [{one: 1, two: 2, three: 3}]);
 
-    const results2 = await pg.query`SELECT 1, 2, 3`;
+    const results2 = await pg.query('SELECT 1, 2, 3');
     t.equal(results2.count, 1);
     t.same(results2, [{'?column?': 3}]);
 
@@ -62,10 +61,10 @@ t.test('Database', skip, async t => {
   await t.test('Select (with database object)', async t => {
     const pg = new Pg(process.env.TEST_ONLINE);
     const db = await pg.db();
-    const results = await db.query`SELECT 1 AS one, 2 AS two, 3 AS three`;
+    const results = await db.query('SELECT 1 AS one, 2 AS two, 3 AS three');
     t.equal(results.count, 1);
     t.same(results, [{one: 1, two: 2, three: 3}]);
-    const results2 = await db.query`SELECT 1 AS one`;
+    const results2 = await db.query('SELECT 1 AS one');
     t.same(results2, [{one: 1}]);
     await db.release();
     await pg.end();
@@ -74,7 +73,7 @@ t.test('Database', skip, async t => {
   await t.test('Custom search path', async t => {
     const pg = new Pg(process.env.TEST_ONLINE);
     pg.searchPath = ['$user', 'foo', 'bar'];
-    const results = await pg.query`SHOW search_path`;
+    const results = await pg.query('SHOW search_path');
     t.same(results, [{search_path: '"$user", foo, bar'}]);
     await pg.end();
   });
@@ -92,7 +91,7 @@ t.test('Database', skip, async t => {
   await t.test('Concurrent selects (ad-hoc)', async t => {
     const pg = new Pg(process.env.TEST_ONLINE);
 
-    const all = await Promise.all([pg.query`SELECT 1 AS one`, pg.query`SELECT 2 AS two`, pg.query`SELECT 3 AS three`]);
+    const all = await Promise.all([pg.query('SELECT 1 AS one'), pg.query('SELECT 2 AS two'), pg.query('SELECT 3 AS three')]);
     t.same(
       all.map(results => results),
       [[{one: 1}], [{two: 2}], [{three: 3}]]
@@ -108,9 +107,9 @@ t.test('Database', skip, async t => {
     const db3 = await pg.db();
 
     const all = await Promise.all([
-      db1.query`SELECT 1 AS one`,
-      db2.query`SELECT 2 AS two`,
-      db3.query`SELECT 3 AS three`
+      db1.query('SELECT 1 AS one'),
+      db2.query('SELECT 2 AS two'),
+      db3.query('SELECT 3 AS three')
     ]);
     t.same(
       all.map(results => results),
@@ -123,40 +122,39 @@ t.test('Database', skip, async t => {
     await pg.end();
   });
 
+  await t.test('Placeholders', async t => {
+    const pg = new Pg(process.env.TEST_ONLINE);
+    const results = await pg.query('SELECT $1 AS one', 'One');
+    t.same(results, [{one: 'One'}]);
+    const results2 = await pg.query('SELECT $1 AS one, $2 AS two', 'One', 2);
+    t.same(results2, [{one: 'One', two: 2}]);
+    await pg.end();
+  });
+
   await t.test('JSON', async t => {
     const pg = new Pg(process.env.TEST_ONLINE);
-    const results = await pg.query`SELECT ${{test: ['works']}}::JSON AS foo`;
+    const results = await pg.query('SELECT $1::JSON AS foo', {test: ['works']});
     t.same(results, [{foo: {test: ['works']}}]);
     await pg.end();
   });
 
-  await t.test('Placeholders', async t => {
+  await t.test('With query config objects', async t => {
     const pg = new Pg(process.env.TEST_ONLINE);
-    const one = Statement.sql`AS one`;
-    const results = await pg.query`SELECT ${'One'} ${one}, ${2} AS two`;
-    t.same(results, [{one: 'One', two: 2}]);
-    await pg.end();
-  });
-
-  await t.test('Raw query (ad-hoc)', async t => {
-    const pg = new Pg(process.env.TEST_ONLINE);
-    const results = await pg.rawQuery({text: 'SELECT $1 AS one', values: ['One']});
+    const results = await pg.query({text: 'SELECT $1 AS one', values: ['One']});
     t.same(results, [{one: 'One'}]);
-    const results2 = await pg.rawQuery({text: 'SELECT $1 AS one', values: ['One'], rowMode: 'array'});
+    const results2 = await pg.query({text: 'SELECT $1 AS one', values: ['One'], rowMode: 'array'});
     t.same(results2, [['One']]);
-    const results3 = await pg.rawQuery('SELECT $1 AS one', 'One');
-    t.same(results3, [{one: 'One'}]);
     await pg.end();
   });
 
-  await t.test('Raw query (with database object)', async t => {
+  await t.test('With query config objects (with database object)', async t => {
     const pg = new Pg(process.env.TEST_ONLINE);
     const db = await pg.db();
-    const results = await db.rawQuery({text: 'SELECT $1 AS one', values: ['One']});
+    const results = await db.query({text: 'SELECT $1 AS one', values: ['One']});
     t.same(results, [{one: 'One'}]);
-    const results2 = await db.rawQuery({text: 'SELECT $1 AS one', values: ['One'], rowMode: 'array'});
+    const results2 = await db.query({text: 'SELECT $1 AS one', values: ['One'], rowMode: 'array'});
     t.same(results2, [['One']]);
-    const results3 = await db.rawQuery('SELECT $1 AS one', 'One');
+    const results3 = await db.query('SELECT $1 AS one', 'One');
     t.same(results3, [{one: 'One'}]);
     await db.release();
     await pg.end();
@@ -259,11 +257,11 @@ t.test('Database', skip, async t => {
 
       let result: any;
       try {
-        await pg.query`
+        await pg.query(`
           SELECT 1 AS one,
                  2 A two,
                  3 AS three
-        `;
+        `);
       } catch (error) {
         result = error;
       }
@@ -271,7 +269,7 @@ t.test('Database', skip, async t => {
 
       result = undefined;
       try {
-        await pg.query`SELECT 1 A one`;
+        await pg.query('SELECT 1 A one');
       } catch (error) {
         result = error;
       }
@@ -287,11 +285,11 @@ t.test('Database', skip, async t => {
 
       let result: any;
       try {
-        await db.query`
+        await db.query(`
           SELECT 1 AS one,
                  2 A two,
                  3 AS three
-        `;
+        `);
       } catch (error) {
         result = error;
       }
@@ -299,7 +297,7 @@ t.test('Database', skip, async t => {
 
       result = undefined;
       try {
-        await db.query`SELECT 1 A one`;
+        await db.query('SELECT 1 A one');
       } catch (error) {
         result = error;
       }
@@ -316,7 +314,7 @@ t.test('Database', skip, async t => {
 
       let result: any;
       try {
-        await pg.query`SELECT 1 A one`;
+        await pg.query('SELECT 1 A one');
       } catch (error) {
         result = error;
       }
@@ -325,7 +323,7 @@ t.test('Database', skip, async t => {
 
       result = undefined;
       try {
-        await db.query`SELECT 2 A two`;
+        await db.query('SELECT 2 A two');
       } catch (error) {
         result = error;
       }

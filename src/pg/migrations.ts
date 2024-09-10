@@ -1,8 +1,8 @@
 import {readdir, readFile} from 'fs/promises';
 import type {Database} from './database.js';
-import type Pg from './index.js';
+import type {Pg} from './pg.js';
 import { join } from 'path';
-import PG from 'pg';
+import pg from 'pg';
 
 interface MigrationOptions {
   name?: string;
@@ -141,7 +141,7 @@ export class Migrations {
 
         const sql = this.sqlFor(active, target);
         if (DEBUG) process.stderr.write(`-- Migrate (${active} -> ${target})\n${sql}\n`);
-        const name = PG.escapeLiteral(this.name);
+        const name = pg.escapeLiteral(this.name);
         const migration = `
           ${sql}
           INSERT INTO mojo_migrations (name, version) VALUES (${name}, ${target})

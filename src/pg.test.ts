@@ -1,6 +1,6 @@
 import os from 'node:os';
 import {Minion} from './index.js';
-import Pg from './pg/index.js';
+import {Pg} from './pg/pg.js';
 import t from 'tap';
 import type {PgBackend} from './pg-backend.js';
 

@@ -1,26 +1,24 @@
-import {Base} from './base.js';
+import EventEmitter from 'events';
 import {Database} from './database.js';
 import {Migrations} from './migrations.js';
 import {Results} from './results.js';
-import urlSplit from './url.js';
+import {parseConfig} from './config.js';
 import {throwWithContext} from './util.js';
 import pg from 'pg';
 
-export type PgConfig = string | pg.PoolConfig | Pg;
+const DEBUG = process.env.MOJO_PG_DEBUG === '1';
 
 export interface PgOptions extends pg.PoolConfig {
   verboseErrors?: boolean;
   searchPath?: string[];
 }
 
-export type {Database, Migrations, Results};
-
-const DEBUG = process.env.MOJO_PG_DEBUG === '1';
+export type PgConfig = string | pg.PoolConfig | Pg;
 
 /**
  * PostgreSQL pool class.
  */
-export default class Pg extends Base {
+export class Pg extends EventEmitter {
   /**
    * PostgreSQL connection pool.
    */
@@ -44,7 +42,7 @@ export default class Pg extends Base {
       this.pool = config.pool;
       this._doNotEnd = true;
     } else {
-      this.pool = new pg.Pool({allowExitOnIdle: true, ...options, ...Pg.parseConfig(config)});
+      this.pool = new pg.Pool({allowExitOnIdle: true, ...options, ...parseConfig(config)});
     }
 
     if (options.searchPath !== undefined) this.searchPath = options.searchPath;
@@ -88,42 +86,6 @@ export default class Pg extends Base {
     return this._migrations;
   }
 
-  /**
-   * Parse PostgreSQL connection URI.
-   */
-  static parseConfig(config: string | pg.PoolConfig | undefined): pg.PoolConfig | undefined {
-    if (typeof config !== 'string') return config;
-    const poolConfig: pg.PoolConfig = {};
-
-    const url = urlSplit(config);
-    if (url === null || (url.scheme !== 'postgres' && url.scheme !== 'postgresql')) {
-      throw new Error(`Invalid connection string: ${config}`);
-    }
-
-    const authority = url.authority;
-    if (authority !== undefined) {
-      const hostParts = authority.split('@');
-
-      const host = hostParts[hostParts.length - 1].split(':');
-      if (host[0].length > 0) poolConfig.host = decodeURIComponent(host[0]);
-      if (host[1] !== undefined) poolConfig.port = parseInt(host[1]);
-
-      if (hostParts.length > 1) {
-        const auth = hostParts[0].split(':');
-        poolConfig.user = decodeURIComponent(auth[0]);
-        if (auth[1] !== undefined) poolConfig.password = decodeURIComponent(auth[1]);
-      }
-    }
-
-    const path = url.path;
-    if (path !== undefined) poolConfig.database = decodeURIComponent(path.slice(1));
-
-    const params = new URLSearchParams(url.query);
-    const host = params.get('host');
-    if (host !== null) poolConfig.host = host;
-
-    return poolConfig;
-  }
 
   /**
    * Perform raw SQL query.

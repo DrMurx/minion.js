@@ -1,4 +1,4 @@
-import Pg from './index.js';
+import {Pg} from './pg.js';
 import {dirname, join} from 'path';
 import t from 'tap';
 import { fileURLToPath } from 'url';

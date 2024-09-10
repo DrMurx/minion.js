@@ -24,7 +24,7 @@ import type {
   WorkerList
 } from './types.js';
 import os from 'node:os';
-import Pg, { PgConfig } from './pg/index.js';
+import { Pg, PgConfig } from './pg/pg.js';
 
 interface DequeueResult {
   id: MinionJobId;

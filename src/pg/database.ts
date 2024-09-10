@@ -1,6 +1,5 @@
 import type {Notification, PoolClient, QueryConfig} from 'pg';
-import {on} from 'events';
-import {Base} from './base.js';
+import EventEmitter, {on} from 'events';
 import {Results} from './results.js';
 import {Transaction} from './transaction.js';
 import {throwWithContext} from './util.js';
@@ -34,7 +33,7 @@ const DEBUG = process.env.MOJO_PG_DEBUG === '1';
 /**
  * PostgreSQL database connection class.
  */
-class Database extends Base implements DatabaseEventEmitter {
+class Database extends EventEmitter implements DatabaseEventEmitter {
   /**
    * PostgreSQL client.
    */

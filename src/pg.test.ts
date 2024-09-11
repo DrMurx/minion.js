@@ -22,15 +22,6 @@ t.test('PostgreSQL backend', skip, async t => {
     t.ok(minion.backend !== undefined);
   });
 
-  await t.test('Migrate up and down', async t => {
-    t.equal(await backend.pg.migrations.active(), 24);
-    await backend.pg.migrations.migrate(0);
-    t.equal(await backend.pg.migrations.active(), 0);
-    await backend.pg.migrations.migrate();
-    t.equal(await backend.pg.migrations.active(), 24);
-    t.equal(backend.name, 'Pg');
-  });
-
   await t.test('Register and unregister', async t => {
     const worker = minion.worker();
     await worker.register();

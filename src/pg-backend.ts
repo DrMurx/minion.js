@@ -25,6 +25,7 @@ import type {
 } from './types.js';
 import os from 'node:os';
 import { Pg, PgConfig } from './pg/pg.js';
+import { Migrations } from './pg/migrations.js';
 
 interface DequeueResult {
   id: MinionJobId;
@@ -463,7 +464,7 @@ export class PgBackend {
     const version = (await pg.query<ServerVersionResult>('SHOW server_version_num')).first.server_version_num;
     if (version < 90500) throw new Error('PostgreSQL 9.5 or later is required');
 
-    const migrations = pg.migrations;
+    const migrations = new Migrations(pg);
     await migrations.fromFile('migrations/minion.sql', {name: 'minion'});
     await migrations.migrate();
   }

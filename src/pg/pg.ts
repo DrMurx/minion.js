@@ -1,6 +1,5 @@
 import EventEmitter from 'events';
 import {Database} from './database.js';
-import {Migrations} from './migrations.js';
 import {Results} from './results.js';
 import {parseConfig} from './config.js';
 import {throwWithContext} from './util.js';
@@ -34,7 +33,6 @@ export class Pg extends EventEmitter {
    */
   private verboseErrors = true;
 
-  private _migrations: Migrations | undefined;
   private doNotEnd = false;
 
   constructor(config: PgConfig | undefined, options: PgOptions = {}) {
@@ -78,14 +76,6 @@ export class Pg extends EventEmitter {
    */
   async end(): Promise<void> {
     if (this.doNotEnd === false) await this.pool.end();
-  }
-
-  /**
-   * Migrations.
-   */
-  get migrations(): Migrations {
-    if (this._migrations === undefined) this._migrations = new Migrations(this);
-    return this._migrations;
   }
 
 

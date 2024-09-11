@@ -81,20 +81,20 @@ export class PgBackend {
   /**
    * Backend name.
    */
-  name = 'Pg';
-  /**
-   * Minion instance this backend belongs to.
-   */
-  minion: Minion;
+  public readonly name = 'Pg';
+
   /**
    * `pg` object used to store all data.
    */
-  pg: Pg;
+  public pg: Pg;
 
-  _hostname = os.hostname();
+  private hostname = os.hostname();
 
-  constructor(minion: Minion, config: PgConfig) {
-    this.minion = minion;
+  /**
+   * @param minion Minion instance this backend belongs to.
+   * @param config
+   */
+  constructor(private minion: Minion, config: PgConfig) {
     this.pg = new Pg(config);
   }
 
@@ -321,7 +321,7 @@ export class PgBackend {
         VALUES (COALESCE($1, NEXTVAL('minion_workers_id_seq')), $2, $3, $4)
         ON CONFLICT(id) DO UPDATE SET notified = now(), status = $4
         RETURNING id
-    `, id, this._hostname, process.pid, status);
+    `, id, this.hostname, process.pid, status);
     return results.first.id;
   }
 

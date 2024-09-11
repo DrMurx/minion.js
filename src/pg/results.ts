@@ -4,7 +4,7 @@ const kCount = Symbol('kCount');
  * PostgreSQL query result class.
  */
 export class Results<T> extends Array<T> {
-  [kCount]: number | null = null;
+  private [kCount]: number | null = null;
 
   constructor(count: number | null, ...values: any[]) {
     super(...values);

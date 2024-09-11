@@ -29,20 +29,17 @@ export class Migrations {
   /**
    * Name for this set of migrations.
    */
-  name = 'migrations';
+  public name = 'migrations';
 
-  _pg: Pg;
-  _steps: Steps = [];
+  private steps: Steps = [];
 
-  constructor(pg: Pg) {
-    this._pg = pg;
-  }
+  constructor(private pg: Pg) {}
 
   /**
    * Currently active version.
    */
   async active(): Promise<number> {
-    const db = await this._pg.db();
+    const db = await this.pg.db();
     return await this._active(db).finally(() => db.release());
   }
 
@@ -67,7 +64,7 @@ export class Migrations {
       });
     }
 
-    this._steps = steps;
+    this.steps = steps;
   }
 
   /**
@@ -98,14 +95,14 @@ export class Migrations {
       }
     }
 
-    this._steps = steps;
+    this.steps = steps;
   }
 
   /**
    * Latest version.
    */
   get latest(): number {
-    return this._steps.filter(step => step.direction === 'up').sort((a, b) => b.version - a.version)[0]?.version ?? 0;
+    return this.steps.filter(step => step.direction === 'up').sort((a, b) => b.version - a.version)[0]?.version ?? 0;
   }
 
   /**
@@ -115,10 +112,10 @@ export class Migrations {
   async migrate(target?: number): Promise<void> {
     const latest = this.latest;
     if (target === undefined) target = latest;
-    const hasStep = this._steps.find(step => step.direction === 'up' && step.version === target) !== undefined;
+    const hasStep = this.steps.find(step => step.direction === 'up' && step.version === target) !== undefined;
     if (target !== 0 && hasStep === false) throw new Error(`Version ${target} has no migration`);
 
-    const db = await this._pg.db();
+    const db = await this.pg.db();
     try {
       // Already the right version
       if ((await this._active(db)) === target) return;
@@ -163,7 +160,7 @@ export class Migrations {
   sqlFor(from: number, to: number): string {
     // Up
     if (from < to) {
-      return this._steps
+      return this.steps
         .filter(step => step.direction === 'up' && step.version > from && step.version <= to)
         .sort((a, b) => a.version - b.version)
         .map(step => step.sql)
@@ -172,7 +169,7 @@ export class Migrations {
 
     // Down
     else {
-      return this._steps
+      return this.steps
         .filter(step => step.direction === 'down' && step.version <= from && step.version > to)
         .sort((a, b) => b.version - a.version)
         .map(step => step.sql)

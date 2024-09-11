@@ -22,25 +22,27 @@ export class Pg extends EventEmitter {
   /**
    * PostgreSQL connection pool.
    */
-  pool: pg.Pool;
+  public pool: pg.Pool;
+
   /**
    * Search path.
    */
-  searchPath: string[] = [];
+  private searchPath: string[] = [];
+
   /**
    * Show SQL context for errors.
    */
-  verboseErrors = true;
+  private verboseErrors = true;
 
-  _migrations: Migrations | undefined;
-  _doNotEnd = false;
+  private _migrations: Migrations | undefined;
+  private doNotEnd = false;
 
   constructor(config: PgConfig | undefined, options: PgOptions = {}) {
     super();
 
     if (config instanceof Pg) {
       this.pool = config.pool;
-      this._doNotEnd = true;
+      this.doNotEnd = true;
     } else {
       this.pool = new pg.Pool({allowExitOnIdle: true, ...options, ...parseConfig(config)});
     }
@@ -75,7 +77,7 @@ export class Pg extends EventEmitter {
    * Close all database connections in the pool.
    */
   async end(): Promise<void> {
-    if (this._doNotEnd === false) await this.pool.end();
+    if (this.doNotEnd === false) await this.pool.end();
   }
 
   /**

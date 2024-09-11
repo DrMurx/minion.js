@@ -8,24 +8,19 @@ export class BackendIterator<T> {
   /**
    * Number of results to fetch at once.
    */
-  fetch = 10;
+  public fetch = 10;
+
+  private cache: T[] = [];
+  private count = 0;
+  private _total = 0;
+
   /**
-   * List options.
+   *
+   * @param minion
+   * @param name
+   * @param options List options.
    */
-  options: ListWorkersOptions & ListJobsOptions;
-
-  _cache: T[] = [];
-  _count = 0;
-  _minion: Minion;
-  _name: string;
-  _total = 0;
-
-  constructor(minion: Minion, name: string, options: ListWorkersOptions & ListJobsOptions) {
-    this.options = options;
-
-    this._minion = minion;
-    this._name = name;
-  }
+  constructor(private minion: Minion, private name: string, public options: ListWorkersOptions & ListJobsOptions) {}
 
   [Symbol.asyncIterator](): AsyncIterator<T> {
     // eslint-disable-next-line @typescript-eslint/no-this-alias
@@ -42,7 +37,7 @@ export class BackendIterator<T> {
    * Get next result.
    */
   async next(): Promise<T | undefined> {
-    const cache = this._cache;
+    const cache = this.cache;
     if (cache.length < 1) await this._fetch();
     return cache.shift();
   }
@@ -55,17 +50,17 @@ export class BackendIterator<T> {
     return this._total;
   }
 
-  async _fetch(): Promise<void> {
-    const name = this._name;
+  private async _fetch(): Promise<void> {
+    const name = this.name;
     const methodName = name === 'workers' ? 'listWorkers' : 'listJobs';
-    const results = (await this._minion.backend[methodName](0, this.fetch, this.options)) as any;
+    const results = (await this.minion.backend[methodName](0, this.fetch, this.options)) as any;
     const batch = results[name];
 
     const len = batch.length;
     if (len > 0) {
-      this._total = results.total + this._count;
-      this._count += len;
-      this._cache.push(...batch);
+      this._total = results.total + this.count;
+      this.count += len;
+      this.cache.push(...batch);
       this.options.before = batch[batch.length - 1].id;
     }
   }

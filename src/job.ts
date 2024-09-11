@@ -8,22 +8,25 @@ export class Job {
   /**
    * Arguments passed to task.
    */
-  args: MinionArgs;
+  public args: MinionArgs;
+
   /**
    * Job id.
    */
-  id: MinionJobId;
+  public id: MinionJobId;
+
   /**
    * Number of times job has been retried.
    */
-  retries: number;
+  public retries: number;
+
   /**
    * Task name.
    */
-  task: string;
+  public task: string;
 
-  _isFinished = false;
-  _minion: Minion;
+  private _isFinished = false;
+  private _minion: Minion;
 
   constructor(minion: Minion, id: MinionJobId, args: MinionArgs, retries: number, task: string) {
     this._minion = minion;

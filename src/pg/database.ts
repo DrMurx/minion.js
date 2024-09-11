@@ -35,19 +35,18 @@ const DEBUG = process.env.MOJO_PG_DEBUG === '1';
  */
 class Database extends EventEmitter implements DatabaseEventEmitter {
   /**
-   * PostgreSQL client.
-   */
-  client: PoolClient;
-  /**
    * Show SQL context for errors.
    */
-  verboseErrors = true;
+  private verboseErrors = true;
 
-  _channels: string[] = [];
+  private channels: string[] = [];
 
-  constructor(client: PoolClient, options: DatabaseOptions) {
+  /**
+   * @param client PostgreSQL client.
+   * @param options
+   */
+  constructor(public client: PoolClient, options: DatabaseOptions) {
     super();
-    this.client = client;
     this.verboseErrors = options.verboseErrors;
     client.on('end', () => this.emit('end'));
     client.on('notification', message => this.emit('notification', message));
@@ -92,7 +91,7 @@ class Database extends EventEmitter implements DatabaseEventEmitter {
     const client = this.client;
     const escapedChannel = client.escapeIdentifier(channel);
     await this.client.query(`LISTEN ${escapedChannel}`);
-    this._channels.push(channel);
+    this.channels.push(channel);
   }
 
   /**
@@ -153,7 +152,7 @@ class Database extends EventEmitter implements DatabaseEventEmitter {
   async release(): Promise<void> {
     const client = this.client;
     ['end', 'notification'].forEach(event => client.removeAllListeners(event));
-    if (this._channels.length > 0) await this.unlisten();
+    if (this.channels.length > 0) await this.unlisten();
     client.release();
   }
 
@@ -176,14 +175,14 @@ class Database extends EventEmitter implements DatabaseEventEmitter {
     // All channels
     if (channel === undefined) {
       await this.client.query('UNLISTEN *');
-      this._channels = [];
+      this.channels = [];
     }
 
     // One channel
     else {
       const escapedChannel = client.escapeIdentifier(channel);
       await this.client.query(`UNLISTEN ${escapedChannel}`);
-      this._channels = this._channels.filter(c => c !== channel);
+      this.channels = this.channels.filter(c => c !== channel);
     }
   }
 }

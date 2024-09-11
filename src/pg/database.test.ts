@@ -71,8 +71,7 @@ t.test('Database', skip, async t => {
   });
 
   await t.test('Custom search path', async t => {
-    const pg = new Pg(process.env.TEST_ONLINE);
-    pg.searchPath = ['$user', 'foo', 'bar'];
+    const pg = new Pg(process.env.TEST_ONLINE, {searchPath: ['$user', 'foo', 'bar']});
     const results = await pg.query('SHOW search_path');
     t.same(results, [{search_path: '"$user", foo, bar'}]);
     await pg.end();
@@ -281,7 +280,6 @@ t.test('Database', skip, async t => {
     await t.test('Exception with context (with database object)', async t => {
       const pg = new Pg(process.env.TEST_ONLINE);
       const db = await pg.db();
-      t.same(db.verboseErrors, true);
 
       let result: any;
       try {
@@ -310,7 +308,6 @@ t.test('Database', skip, async t => {
     await t.test('Exception without context', async t => {
       const pg = new Pg(process.env.TEST_ONLINE, {verboseErrors: false});
       const db = await pg.db();
-      t.same(db.verboseErrors, false);
 
       let result: any;
       try {

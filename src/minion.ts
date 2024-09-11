@@ -38,27 +38,31 @@ export class Minion {
   /**
    * Backend, usually a PostgreSQL backend.
    */
-  backend: MinionBackend;
+  public backend: MinionBackend;
+
   /**
    * Amount of time in milliseconds after which workers without a heartbeat will be considered missing and removed from
    * the registry by `minion.repair()`, defaults to `1800000` (30 minutes).
    */
-  missingAfter = 1800000;
+  public missingAfter = 1800000;
+
   /**
    * Amount of time in milliseconds after which jobs that have reached the state `finished` and have no unresolved
    * dependencies will be removed automatically by `minion.repair()`, defaults to `172800000` (2 days). It is not
    * recommended to set this value below 2 days.
    */
-  removeAfter = 172800000;
+  public removeAfter = 172800000;
+
   /**
    * Amount of time in milliseconds after which jobs that have not been processed will be considered stuck by
    * `minion.repair()` and transition to the `failed` state, defaults to `172800000` (2 days).
    */
-  stuckAfter = 172800000;
+  public stuckAfter = 172800000;
+
   /**
    * Registered tasks.
    */
-  tasks: Record<string, MinionTask> = {};
+  public tasks: Record<string, MinionTask> = {};
 
   constructor(config: any, options: MinionOptions = {}) {
     const backendClass = options.backendClass ?? PgBackend;

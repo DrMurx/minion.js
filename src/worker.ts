@@ -12,22 +12,24 @@ interface JobStatus {
  */
 export class Worker {
   /**
-   * Registered commands.
-   */
-  commands: Record<string, MinionCommand>;
-  /**
    * Worker status.
    */
-  status: MinionStatus;
+  public status: MinionStatus;
 
-  _active: JobStatus[] = [];
-  _id: number | undefined = undefined;
-  _lastCommand = 0;
-  _lastHeartbeat = 0;
-  _lastRepair = 0;
-  _minion: Minion;
-  _running = false;
-  _stop: Array<() => void> = [];
+  /**
+   * Registered commands.
+   */
+  private commands: Record<string, MinionCommand>;
+
+  private activeJobs: JobStatus[] = [];
+  private lastCommandAt = 0;
+  private lastHeartbeatAt = 0;
+  private lastRepairAt = 0;
+  private running = false;
+  private stopPromises: Array<() => void> = [];
+
+  private _id: number | undefined = undefined;
+  private _minion: Minion;
 
   constructor(minion: Minion, options: WorkerOptions = {}) {
     this.commands = {jobs: jobsCommand, ...options.commands};
@@ -89,7 +91,7 @@ export class Worker {
    * Check if worker is currently running.
    */
   get isRunning(): boolean {
-    return this._running;
+    return this.running;
   }
 
   /**
@@ -129,7 +131,7 @@ export class Worker {
     if (this.isRunning === true) return this;
 
     this._mainLoop().catch(error => console.error(error));
-    this._running = true;
+    this.running = true;
 
     return this;
   }
@@ -139,7 +141,7 @@ export class Worker {
    */
   async stop(): Promise<void> {
     if (this.isRunning === false) return;
-    return new Promise(resolve => this._stop.push(resolve));
+    return new Promise(resolve => this.stopPromises.push(resolve));
   }
 
   /**
@@ -154,22 +156,22 @@ export class Worker {
 
   async _mainLoop(): Promise<void> {
     const status = this.status;
-    const stop = this._stop;
+    const stop = this.stopPromises;
 
-    while (stop.length === 0 || this._active.length > 0) {
+    while (stop.length === 0 || this.activeJobs.length > 0) {
       const options: DequeueOptions = {queues: status.queues};
 
       await this._maintenance(status);
 
       // Check if jobs are finished
-      const before = this._active.length;
-      const active = (this._active = this._active.filter(jobStatus => jobStatus.job.isFinished === false));
-      status.performed += before - active.length;
+      const before = this.activeJobs.length;
+      const activeJobs = (this.activeJobs = this.activeJobs.filter(jobStatus => jobStatus.job.isFinished === false));
+      status.performed += before - activeJobs.length;
 
       // Job limit has been reached
       const {jobs, spare} = status;
-      if (active.length >= jobs + spare) await Promise.race(active.map(jobStatus => jobStatus.promise));
-      if (active.length >= jobs) options.minPriority = status.spareMinPriority;
+      if (activeJobs.length >= jobs + spare) await Promise.race(activeJobs.map(jobStatus => jobStatus.promise));
+      if (activeJobs.length >= jobs) options.minPriority = status.spareMinPriority;
 
       // Worker is stopped
       if (stop.length > 0) continue;
@@ -177,32 +179,32 @@ export class Worker {
       // Try to get more jobs
       const job = await this.dequeue(status.dequeueTimeout, options);
       if (job === null) continue;
-      active.push({job, promise: job.perform()});
+      activeJobs.push({job, promise: job.perform()});
     }
 
     await this.unregister();
-    this._stop = [];
+    this.stopPromises = [];
     stop.forEach(resolve => resolve());
-    this._running = false;
+    this.running = false;
   }
 
   async _maintenance(status: MinionStatus): Promise<void> {
     // Send heartbeats in regular intervals
-    if (this._lastHeartbeat + status.heartbeatInterval < Date.now()) {
+    if (this.lastHeartbeatAt + status.heartbeatInterval < Date.now()) {
       await this.register();
-      this._lastHeartbeat = Date.now();
+      this.lastHeartbeatAt = Date.now();
     }
 
     // Process worker remote control commands in regular intervals
-    if (this._lastCommand + status.commandInterval < Date.now()) {
+    if (this.lastCommandAt + status.commandInterval < Date.now()) {
       await this.processCommands();
-      this._lastCommand = Date.now();
+      this.lastCommandAt = Date.now();
     }
 
     // Repair in regular intervals (randomize to avoid congestion)
-    if (this._lastRepair + status.repairInterval < Date.now()) {
+    if (this.lastRepairAt + status.repairInterval < Date.now()) {
       await this.minion.repair();
-      this._lastRepair = Date.now();
+      this.lastRepairAt = Date.now();
     }
   }
 }

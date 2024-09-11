@@ -4,12 +4,9 @@ import type {Database} from './database.js';
  * PostgreSQL transaction class.
  */
 export class Transaction {
-  _db: Database;
-  _finished = false;
+  private finished = false;
 
-  constructor(db: Database) {
-    this._db = db;
-  }
+  constructor(private db: Database) {}
 
   async [Symbol.asyncDispose]() {
     await this.rollback();
@@ -19,17 +16,17 @@ export class Transaction {
    * Commit transaction. Does nothing if `tx.rollback()` has been called first.
    */
   async commit(): Promise<void> {
-    if (this._finished === true) return;
-    await this._db.client.query('COMMIT');
-    this._finished = true;
+    if (this.finished === true) return;
+    await this.db.client.query('COMMIT');
+    this.finished = true;
   }
 
   /**
    * Rollback transaction. Does nothing if `tx.commit()` has been called first.
    */
   async rollback(): Promise<void> {
-    if (this._finished === true) return;
-    await this._db.client.query('ROLLBACK');
-    this._finished = true;
+    if (this.finished === true) return;
+    await this.db.client.query('ROLLBACK');
+    this.finished = true;
   }
 }

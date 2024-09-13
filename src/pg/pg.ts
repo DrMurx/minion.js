@@ -77,15 +77,10 @@ export class Pg extends EventEmitter {
    *
    * // Query with result type
    * const results = await pg.query<User>('SELECT * FROM users');
-   *
-   * // Query with results as arrays
-   * const results = await pg.query({text: 'SELECT * FROM users', rowMode: 'array'});
    */
-  async query<T = any>(query: string | pg.QueryConfig, ...values: any[]): Promise<Results<T>> {
-    if (typeof query === 'string') query = {text: query, values};
-
+  async query<T = any>(query: string, ...values: any[]): Promise<Results<T>> {
     try {
-      const result = await this.pool.query(query);
+      const result = await this.pool.query(query, values);
       const rows = result.rows;
       return rows === undefined ? new Results(result.rowCount) : new Results(result.rowCount, ...rows);
     } catch (error) {

@@ -1,4 +1,4 @@
-import type {Notification, PoolClient, QueryConfig} from 'pg';
+import type {Notification, PoolClient} from 'pg';
 import EventEmitter, {on} from 'events';
 import {Results} from './results.js';
 import {Transaction} from './transaction.js';
@@ -82,15 +82,10 @@ export class Connection extends EventEmitter implements ConnectionEventEmitter {
    *
    * // Query with result type
    * const results = await conn.query<User>('SELECT * FROM users');
-   *
-   * // Query with results as arrays
-   * const results = await conn.query({text: 'SELECT * FROM users', rowMode: 'array'});
    */
-  async query<T = any>(query: string | QueryConfig, ...values: any[]): Promise<Results<T>> {
-    if (typeof query === 'string') query = {text: query, values};
-
+  async query<T = any>(query: string, ...values: any[]): Promise<Results<T>> {
     try {
-      const result = await this.client.query(query);
+      const result = await this.client.query(query, values);
       const rows = result.rows;
       return rows === undefined ? new Results(result.rowCount) : new Results(result.rowCount, ...rows);
     } catch (error) {

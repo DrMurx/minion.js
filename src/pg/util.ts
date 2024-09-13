@@ -1,6 +1,4 @@
-import type {QueryConfig} from 'pg';
-
-export function throwWithContext(error: any, query: QueryConfig): never {
+export function throwWithContext(error: any, query: string): never {
   if (error.position !== undefined) {
     const pos = parseInt(error.position);
     let offset = 0;
@@ -8,7 +6,7 @@ export function throwWithContext(error: any, query: QueryConfig): never {
     let lineOffset = 0;
     let fragment = '';
 
-    const sql = query.text;
+    const sql = query;
     for (let i = 0; i < sql.length; i++) {
       const c = sql[i];
       if (i < pos) {

@@ -137,28 +137,6 @@ t.test('Database', skip, async t => {
     await pg.end();
   });
 
-  await t.test('With query config objects', async t => {
-    const pg = new Pg(process.env.TEST_ONLINE);
-    const results = await pg.query({text: 'SELECT $1 AS one', values: ['One']});
-    t.same(results, [{one: 'One'}]);
-    const results2 = await pg.query({text: 'SELECT $1 AS one', values: ['One'], rowMode: 'array'});
-    t.same(results2, [['One']]);
-    await pg.end();
-  });
-
-  await t.test('With query config objects (with database object)', async t => {
-    const pg = new Pg(process.env.TEST_ONLINE);
-    const conn = await pg.getConnection();
-    const results = await conn.query({text: 'SELECT $1 AS one', values: ['One']});
-    t.same(results, [{one: 'One'}]);
-    const results2 = await conn.query({text: 'SELECT $1 AS one', values: ['One'], rowMode: 'array'});
-    t.same(results2, [['One']]);
-    const results3 = await conn.query('SELECT $1 AS one', 'One');
-    t.same(results3, [{one: 'One'}]);
-    await conn.release();
-    await pg.end();
-  });
-
   await t.test('Notifications (two database objects)', async t => {
     const pg = new Pg(process.env.TEST_ONLINE);
 

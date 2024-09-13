@@ -2,7 +2,7 @@ import type {Job} from './job.js';
 import type {Worker} from './worker.js';
 
 export interface MinionOptions {
-  backendClass?: any;
+  backendClass: any;
   missingAfter?: number;
   removeAfter?: number;
   stuckAfter?: number;

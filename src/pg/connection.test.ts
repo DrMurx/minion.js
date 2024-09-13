@@ -2,10 +2,11 @@ import {Pg} from './pg.js';
 import t from 'tap';
 
 const skip = process.env.TEST_ONLINE === undefined ? {skip: 'set TEST_ONLINE to enable this test'} : {};
+const pgConfig = process.env.TEST_ONLINE!;
 
-t.test('Database', skip, async t => {
+t.test('Connection', skip, async t => {
   await t.test('Options', async t => {
-    const pg = new Pg(process.env.TEST_ONLINE, {
+    const pg = new Pg(pgConfig, {
       allowExitOnIdle: true,
       connectionTimeoutMillis: 10000,
       idleTimeoutMillis: 20000,
@@ -19,7 +20,7 @@ t.test('Database', skip, async t => {
   });
 
   await t.test('Close connection', async t => {
-    const pg = new Pg(process.env.TEST_ONLINE);
+    const pg = new Pg(pgConfig);
 
     const conn = await pg.getConnection();
     let count = 0;
@@ -37,7 +38,7 @@ t.test('Database', skip, async t => {
   });
 
   await t.test('Backend process id', async t => {
-    const pg = new Pg(process.env.TEST_ONLINE);
+    const pg = new Pg(pgConfig);
     const conn = await pg.getConnection();
     t.ok(typeof (await conn.getBackendPid()) === 'number');
     await conn.release();
@@ -45,7 +46,7 @@ t.test('Database', skip, async t => {
   });
 
   await t.test('Select (ad-hoc)', async t => {
-    const pg = new Pg(process.env.TEST_ONLINE);
+    const pg = new Pg(pgConfig);
 
     const results = await pg.query('SELECT 1 AS one, 2 AS two, 3 AS three');
     t.equal(results.count, 1);
@@ -59,7 +60,7 @@ t.test('Database', skip, async t => {
   });
 
   await t.test('Select (with database object)', async t => {
-    const pg = new Pg(process.env.TEST_ONLINE);
+    const pg = new Pg(pgConfig);
     const conn = await pg.getConnection();
     const results = await conn.query('SELECT 1 AS one, 2 AS two, 3 AS three');
     t.equal(results.count, 1);
@@ -71,14 +72,14 @@ t.test('Database', skip, async t => {
   });
 
   await t.test('Custom search path', async t => {
-    const pg = new Pg(process.env.TEST_ONLINE, {searchPath: ['$user', 'foo', 'bar']});
+    const pg = new Pg(pgConfig, {searchPath: ['$user', 'foo', 'bar']});
     const results = await pg.query('SHOW search_path');
     t.same(results, [{search_path: '"$user", foo, bar'}]);
     await pg.end();
   });
 
   await t.test('Connection reuse', async t => {
-    const pg = new Pg(process.env.TEST_ONLINE);
+    const pg = new Pg(pgConfig);
     const conn = await pg.getConnection();
     await conn.release();
     const conn2 = await pg.getConnection();
@@ -88,7 +89,7 @@ t.test('Database', skip, async t => {
   });
 
   await t.test('Concurrent selects (ad-hoc)', async t => {
-    const pg = new Pg(process.env.TEST_ONLINE);
+    const pg = new Pg(pgConfig);
 
     const all = await Promise.all([pg.query('SELECT 1 AS one'), pg.query('SELECT 2 AS two'), pg.query('SELECT 3 AS three')]);
     t.same(
@@ -100,7 +101,7 @@ t.test('Database', skip, async t => {
   });
 
   await t.test('Concurrent selects (with database objects)', async t => {
-    const pg = new Pg(process.env.TEST_ONLINE);
+    const pg = new Pg(pgConfig);
     const conn1 = await pg.getConnection();
     const conn2 = await pg.getConnection();
     const conn3 = await pg.getConnection();
@@ -122,7 +123,7 @@ t.test('Database', skip, async t => {
   });
 
   await t.test('Placeholders', async t => {
-    const pg = new Pg(process.env.TEST_ONLINE);
+    const pg = new Pg(pgConfig);
     const results = await pg.query('SELECT $1 AS one', 'One');
     t.same(results, [{one: 'One'}]);
     const results2 = await pg.query('SELECT $1 AS one, $2 AS two', 'One', 2);
@@ -131,14 +132,14 @@ t.test('Database', skip, async t => {
   });
 
   await t.test('JSON', async t => {
-    const pg = new Pg(process.env.TEST_ONLINE);
+    const pg = new Pg(pgConfig);
     const results = await pg.query('SELECT $1::JSON AS foo', {test: ['works']});
     t.same(results, [{foo: {test: ['works']}}]);
     await pg.end();
   });
 
   await t.test('Notifications (two database objects)', async t => {
-    const pg = new Pg(process.env.TEST_ONLINE);
+    const pg = new Pg(pgConfig);
 
     const conn = await pg.getConnection();
     const conn2 = await pg.getConnection();
@@ -198,7 +199,7 @@ t.test('Database', skip, async t => {
   });
 
   await t.test('Notifications (iterator)', async t => {
-    const pg = new Pg(process.env.TEST_ONLINE);
+    const pg = new Pg(pgConfig);
 
     const conn = await pg.getConnection();
     await conn.listen('dbtest2');
@@ -230,7 +231,7 @@ t.test('Database', skip, async t => {
     );
 
     await t.test('Exception with context (ad-hoc)', async t => {
-      const pg = new Pg(process.env.TEST_ONLINE);
+      const pg = new Pg(pgConfig);
 
       let result: any;
       try {
@@ -256,7 +257,7 @@ t.test('Database', skip, async t => {
     });
 
     await t.test('Exception (with connection object)', async t => {
-      const pg = new Pg(process.env.TEST_ONLINE);
+      const pg = new Pg(pgConfig);
       const conn = await pg.getConnection();
 
       let result: any;

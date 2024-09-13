@@ -5,10 +5,11 @@ import { fileURLToPath } from 'url';
 import { Migrations } from './migrations.js';
 
 const skip = process.env.TEST_ONLINE === undefined ? {skip: 'set TEST_ONLINE to enable this test'} : {};
+const pgConfig = process.env.TEST_ONLINE!;
 
 t.test('Migrations', skip, async t => {
   // Isolate tests
-  const pg = new Pg(process.env.TEST_ONLINE, {searchPath: ['mojo_migrations_test']});
+  const pg = new Pg(pgConfig, {searchPath: ['mojo_migrations_test']});
   await pg.query('DROP SCHEMA IF EXISTS mojo_migrations_test CASCADE');
   await pg.query('CREATE SCHEMA mojo_migrations_test');
   const migrations = new Migrations(pg);
@@ -76,7 +77,7 @@ t.test('Migrations', skip, async t => {
   });
 
   await t.test('Bad and concurrent migrations', async t => {
-    const pg2 = new Pg(process.env.TEST_ONLINE, {searchPath: ['mojo_migrations_test']});
+    const pg2 = new Pg(pgConfig, {searchPath: ['mojo_migrations_test']});
     const migrations2 = new Migrations(pg2);
     const file = join(dirname(fileURLToPath(import.meta.url)), 'support', 'migrations', 'test.sql');
     await migrations2.loadFromFile(file, {name: 'migrations_test2'});
@@ -147,7 +148,7 @@ t.test('Migrations', skip, async t => {
   });
 
   await t.test('Migration directory', async t => {
-    const pg2 = new Pg(process.env.TEST_ONLINE, {searchPath: ['mojo_migrations_test']});
+    const pg2 = new Pg(pgConfig, {searchPath: ['mojo_migrations_test']});
     const migrations2 = new Migrations(pg2);
     const dir = join(dirname(fileURLToPath(import.meta.url)), 'support', 'migrations', 'tree');
     await migrations2.loadFromDirectory(dir, {name: 'directory tree'});

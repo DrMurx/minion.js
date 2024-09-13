@@ -64,9 +64,8 @@ export class Minion {
    */
   public tasks: Record<string, MinionTask> = {};
 
-  constructor(config: any, options: MinionOptions = {}) {
-    const backendClass = options.backendClass ?? PgBackend;
-    this.backend = new backendClass(this, config);
+  constructor(config: any, options: MinionOptions) {
+    this.backend = new options.backendClass(this, config);
 
     if (options.missingAfter !== undefined) this.missingAfter = options.missingAfter;
     if (options.removeAfter !== undefined) this.removeAfter = options.removeAfter;

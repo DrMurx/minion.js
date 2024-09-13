@@ -9,8 +9,6 @@ export interface PgOptions extends pg.PoolConfig {
   searchPath?: string[];
 }
 
-export type PgConfig = string | pg.PoolConfig | Pg;
-
 /**
  * PostgreSQL pool class.
  */
@@ -25,17 +23,10 @@ export class Pg extends EventEmitter {
    */
   private searchPath: string[] = [];
 
-  private doNotEnd = false;
-
-  constructor(config: PgConfig | undefined, options: PgOptions = {}) {
+  constructor(config: string, options: PgOptions = {}) {
     super();
 
-    if (config instanceof Pg) {
-      this.pool = config.pool;
-      this.doNotEnd = true;
-    } else {
-      this.pool = new pg.Pool({allowExitOnIdle: true, ...options, ...parseConfig(config)});
-    }
+    this.pool = new pg.Pool({allowExitOnIdle: true, ...options, ...parseConfig(config)});
 
     if (options.searchPath !== undefined) this.searchPath = options.searchPath;
 
@@ -58,7 +49,7 @@ export class Pg extends EventEmitter {
    * Close all database connections in the pool.
    */
   async end(): Promise<void> {
-    if (this.doNotEnd === false) await this.pool.end();
+    await this.pool.end();
   }
 
   /**

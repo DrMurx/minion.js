@@ -2,10 +2,11 @@ import {Pg} from './pg.js';
 import t from 'tap';
 
 const skip = process.env.TEST_ONLINE === undefined ? {skip: 'set TEST_ONLINE to enable this test'} : {};
+const pgConfig = process.env.TEST_ONLINE!;
 
 t.test('Results', skip, async t => {
   // Isolate tests
-  const pg = new Pg(process.env.TEST_ONLINE, {searchPath: ['mojo_results_test']});
+  const pg = new Pg(pgConfig, {searchPath: ['mojo_results_test']});
   const db = await pg.getConnection();
   await db.query('DROP SCHEMA IF EXISTS mojo_results_test CASCADE');
   await db.query('CREATE SCHEMA mojo_results_test');
@@ -38,17 +39,6 @@ t.test('Results', skip, async t => {
     t.same(await db.query('SELECT * FROM results_test WHERE name = $1', 'bar'), [{id: 2, name: 'bar'}]);
     t.same((await db.query('SELECT * FROM results_test')).count, 2);
     t.same((await db.query('SHOW SERVER_VERSION')).count, null);
-  });
-
-  await t.test('Shared connection cache', async () => {
-    const pg2 = new Pg(pg);
-
-    const db = await pg2.getConnection();
-    t.same((await db.query('SELECT * FROM results_test')).first, {id: 1, name: 'foo'});
-    t.same((await db.query('SELECT * FROM results_test')).last, {id: 2, name: 'bar'});
-    await db.release();
-
-    await pg2.end();
   });
 
   await t.test('JSON', async t => {

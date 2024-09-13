@@ -25,7 +25,7 @@ import type {
   MinionBackend
 } from './types.js';
 import os from 'node:os';
-import { Pg, PgConfig } from './pg/pg.js';
+import { Pg } from './pg/pg.js';
 import { Migrations } from './pg/migrations.js';
 
 interface DequeueResult {
@@ -89,15 +89,17 @@ export class PgBackend implements MinionBackend {
    * `pg` object used to store all data.
    */
   private pg: Pg;
+  private isExternalPg: boolean = false;
 
   private hostname = os.hostname();
 
   /**
    * @param minion Minion instance this backend belongs to.
-   * @param config
+   * @param database
    */
-  constructor(private minion: Minion, config: PgConfig) {
-    this.pg = new Pg(config);
+  constructor(private minion: Minion, database: string | Pg) {
+    const isExternalPg = this.isExternalPg = database instanceof Pg;
+    this.pg = isExternalPg ? database : new Pg(database);
   }
 
   /**
@@ -465,7 +467,7 @@ export class PgBackend implements MinionBackend {
    * Stop using the queue.
    */
   async end(): Promise<void> {
-    await this.pg.end();
+    if (!this.isExternalPg) await this.pg.end();
   }
 
 

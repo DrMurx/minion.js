@@ -1,16 +1,18 @@
 import {Minion} from './index.js';
+import { PgBackend } from './pg-backend.js';
 import {Pg} from './pg/pg.js';
 import t from 'tap';
 
 const skip = process.env.TEST_ONLINE === undefined ? {skip: 'set TEST_ONLINE to enable this test'} : {};
+const pgConfig = process.env.TEST_ONLINE!;
 
 t.test('Worker', skip, async t => {
   // Isolate tests
-  const pg = new Pg(process.env.TEST_ONLINE, {searchPath: ['minion_worker_test']});
+  const pg = new Pg(pgConfig, {searchPath: ['minion_worker_test']});
   await pg.query('DROP SCHEMA IF EXISTS minion_worker_test CASCADE');
   await pg.query('CREATE SCHEMA minion_worker_test');
 
-  const minion = new Minion(pg);
+  const minion = new Minion(pg, {backendClass: PgBackend});
   await minion.updateSchema();
 
   minion.addTask('test', async job => {

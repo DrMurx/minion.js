@@ -163,18 +163,18 @@ t.test('Connection', skip, async t => {
     t.same([message2.channel, message2.payload], ['dbtest', '']);
 
     await conn2.unlisten('dbtest');
-    const tx = await conn.startTransaction();
+    await conn.query('BEGIN');
     let result;
     try {
       process.nextTick(async () => {
         await conn.notify('dbtest', 'from a transaction');
-        await tx.commit();
+        await conn.query('COMMIT');
       });
       const message3: any = await new Promise(resolve => conn.once('notification', message => resolve(message)));
       result = [message3.channel, message3.payload];
     } catch (error) {
       result = error;
-      await tx.rollback();
+      await conn.query('ROLLBACK');
     }
     t.same(result, ['dbtest', 'from a transaction']);
 

@@ -34,38 +34,6 @@ t.test('Results', skip, async t => {
     t.same((await db.query<TestRecord>('SELECT * FROM results_test')).count, 2);
   });
 
-  await t.test('Transactions', async t => {
-    let result: any;
-    try {
-      await using tx = await db.startTransaction();
-      await db.query("INSERT INTO results_test (name) VALUES ('tx1')");
-      await db.query("INSERT INTO results_test (name) VALUES ('tx1')");
-      await tx.commit();
-    } catch (error) {
-      result = error;
-    }
-    t.same(result, undefined);
-    t.same(await db.query<TestRecord>('SELECT * FROM results_test WHERE name = $1', 'tx1'), [
-      {id: 3, name: 'tx1'},
-      {id: 4, name: 'tx1'}
-    ]);
-
-    try {
-      await using tx2 = await db.startTransaction();
-      await db.query("INSERT INTO results_test (name) VALUES ('tx1')");
-      await db.query("INSERT INTO results_test (name) VALUES ('tx1')");
-      await db.query('does_not_exist');
-      await tx2.commit();
-    } catch (error) {
-      result = error;
-    }
-    t.match(result.message, /does_not_exist/);
-    t.same(await db.query<TestRecord>('SELECT * FROM results_test WHERE name = $1', 'tx1'), [
-      {id: 3, name: 'tx1'},
-      {id: 4, name: 'tx1'}
-    ]);
-  });
-
   // Clean up once we are done
   await db.query('DROP SCHEMA mojo_ts_results_test CASCADE');
 });

@@ -124,7 +124,7 @@ export class Migrations {
         )
       `);
 
-      const tx = await conn.startTransaction();
+      await conn.query('BEGIN');
       try {
         // Lock migrations table and check version again
         await conn.query('LOCK TABLE mojo_migrations IN EXCLUSIVE MODE');
@@ -142,9 +142,9 @@ export class Migrations {
           ON CONFLICT (name) DO UPDATE SET version = ${target};
         `;
         await conn.query(migration);
-        await tx.commit();
+        await conn.query('COMMIT');
       } finally {
-        await tx.rollback();
+        await conn.query('ROLLBACK');
       }
     } finally {
       await conn.release();

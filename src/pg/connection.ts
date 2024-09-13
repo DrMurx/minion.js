@@ -1,7 +1,6 @@
 import type {Notification, PoolClient} from 'pg';
 import EventEmitter, {on} from 'events';
 import {Results} from './results.js';
-import {Transaction} from './transaction.js';
 import {throwWithContext} from './util.js';
 
 interface ConnectionEvents {
@@ -91,14 +90,6 @@ export class Connection extends EventEmitter implements ConnectionEventEmitter {
     } catch (error) {
       throwWithContext(error, query);
     }
-  }
-
-  /**
-   * Start transaction.
-   */
-  async startTransaction(): Promise<Transaction> {
-    await this.client.query('BEGIN');
-    return new Transaction(this);
   }
 
   /**

@@ -27,6 +27,16 @@ t.test('parseConfig', t => {
     t.end();
   });
 
+  t.test('Connection string with search_path', t => {
+    t.same(parseConfig('postgresql://localhost:5432/main?currentSchema=testschema'), {
+      host: 'localhost',
+      port: 5432,
+      database: 'main',
+      options: '-c search_path=testschema'
+    });
+    t.end();
+  });
+
   t.test('Common variations', t => {
     t.same(parseConfig('postgresql://postgres:postgres@postgres:5432/postgres'), {
       user: 'postgres',

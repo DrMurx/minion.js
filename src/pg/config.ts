@@ -26,5 +26,10 @@ export function parseConfig(config: string): pg.PoolConfig {
   if (url.pathname.startsWith('/')) {
     poolConfig.database = decodeURIComponent(url.pathname.slice(1));
   }
+  const currentSchema = url.searchParams.get('currentSchema');
+  if (currentSchema !== null) {
+    poolConfig.options = `-c search_path=${currentSchema}`;
+  }
+
   return poolConfig;
 }

@@ -5,10 +5,6 @@ import {parseConfig} from './config.js';
 import {throwWithContext} from './util.js';
 import pg from 'pg';
 
-export interface PgOptions extends pg.PoolConfig {
-  searchPath?: string[];
-}
-
 /**
  * PostgreSQL pool class.
  */
@@ -18,27 +14,11 @@ export class Pg extends EventEmitter {
    */
   public pool: pg.Pool;
 
-  /**
-   * Search path.
-   */
-  private searchPath: string[] = [];
-
-  constructor(config: string, options: PgOptions = {}) {
+  constructor(config: string) {
     super();
-
-    this.pool = new pg.Pool({allowExitOnIdle: true, ...options, ...parseConfig(config)});
-
-    if (options.searchPath !== undefined) this.searchPath = options.searchPath;
-
+    this.pool = new pg.Pool({allowExitOnIdle: true, ...parseConfig(config)});
     // Convert BIGINT to number (even if not all 64bit are usable)
     pg.types.setTypeParser(20, parseInt);
-
-    this.pool.on('connect', client => {
-      if (this.searchPath.length > 0) {
-        const searchPath = this.searchPath.map(path => client.escapeIdentifier(path)).join(', ');
-        client.query(`SET search_path TO ${searchPath}`);
-      }
-    });
   }
 
   async [Symbol.asyncDispose]() {

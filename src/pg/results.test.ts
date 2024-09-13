@@ -6,7 +6,7 @@ const pgConfig = process.env.TEST_ONLINE!;
 
 t.test('Results', skip, async t => {
   // Isolate tests
-  const pg = new Pg(pgConfig, {searchPath: ['mojo_results_test']});
+  const pg = new Pg(`${pgConfig}?currentSchema=mojo_results_test`);
   const db = await pg.getConnection();
   await db.query('DROP SCHEMA IF EXISTS mojo_results_test CASCADE');
   await db.query('CREATE SCHEMA mojo_results_test');

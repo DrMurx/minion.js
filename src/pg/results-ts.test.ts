@@ -11,7 +11,7 @@ interface TestRecord {
 
 t.test('Results', skip, async t => {
   // Isolate tests
-  await using pg = new Pg(pgConfig, {searchPath: ['mojo_ts_results_test']});
+  await using pg = new Pg(`${pgConfig}?currentSchema=mojo_ts_results_test`);
   await using db = await pg.getConnection();
   await db.query('DROP SCHEMA IF EXISTS mojo_ts_results_test CASCADE');
   await db.query('CREATE SCHEMA mojo_ts_results_test');

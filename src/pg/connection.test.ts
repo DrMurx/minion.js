@@ -5,20 +5,6 @@ const skip = process.env.TEST_ONLINE === undefined ? {skip: 'set TEST_ONLINE to 
 const pgConfig = process.env.TEST_ONLINE!;
 
 t.test('Connection', skip, async t => {
-  await t.test('Options', async t => {
-    const pg = new Pg(pgConfig, {
-      allowExitOnIdle: true,
-      connectionTimeoutMillis: 10000,
-      idleTimeoutMillis: 20000,
-      max: 1
-    });
-    t.equal(pg.pool.options.allowExitOnIdle, true);
-    t.equal(pg.pool.options.connectionTimeoutMillis, 10000);
-    t.equal(pg.pool.options.idleTimeoutMillis, 20000);
-    t.equal(pg.pool.options.max, 1);
-    await pg.end();
-  });
-
   await t.test('Close connection', async t => {
     const pg = new Pg(pgConfig);
 
@@ -72,9 +58,9 @@ t.test('Connection', skip, async t => {
   });
 
   await t.test('Custom search path', async t => {
-    const pg = new Pg(pgConfig, {searchPath: ['$user', 'foo', 'bar']});
+    const pg = new Pg(`${pgConfig}?currentSchema="$user",foo,bar`);
     const results = await pg.query('SHOW search_path');
-    t.same(results, [{search_path: '"$user", foo, bar'}]);
+    t.same(results, [{search_path: '"$user",foo,bar'}]);
     await pg.end();
   });
 

@@ -8,7 +8,7 @@ const pgConfig = process.env.TEST_ONLINE!;
 
 t.test('Worker', skip, async t => {
   // Isolate tests
-  const pg = new Pg(pgConfig, {searchPath: ['minion_worker_test']});
+  const pg = new Pg(`${pgConfig}?currentSchema=minion_worker_test`);
   await pg.query('DROP SCHEMA IF EXISTS minion_worker_test CASCADE');
   await pg.query('CREATE SCHEMA minion_worker_test');
 

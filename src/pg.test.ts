@@ -9,7 +9,7 @@ const pgConfig = process.env.TEST_ONLINE!;
 
 t.test('PostgreSQL backend', skip, async t => {
   // Isolate tests
-  const pg = new Pg(pgConfig, {searchPath: ['minion_backend_test']});
+  const pg = new Pg(`${pgConfig}?currentSchema=minion_backend_test`);
   await pg.query('DROP SCHEMA IF EXISTS minion_backend_test CASCADE');
   await pg.query('CREATE SCHEMA minion_backend_test');
 

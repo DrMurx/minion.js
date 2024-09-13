@@ -31,7 +31,7 @@ t.test('Debug', skip, async t => {
   await t.test('Select (with database object)', async t => {
     const output = await captureOutput(
       async () => {
-        const db = await pg.db();
+        const db = await pg.getConnection();
         await db.query('SELECT 2 AS two');
         await db.release();
       },
@@ -41,7 +41,7 @@ t.test('Debug', skip, async t => {
 
     const output2 = await captureOutput(
       async () => {
-        const db = await pg.db();
+        const db = await pg.getConnection();
         await db.query({text: 'SELECT 1 AS one'});
         await db.release();
       },

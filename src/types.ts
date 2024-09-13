@@ -9,29 +9,35 @@ export interface MinionOptions {
 }
 
 export interface MinionBackend {
-  broadcast: (command: string, args?: any[], ids?: MinionJobId[]) => Promise<boolean>;
-  dequeue: (id: MinionWorkerId, wait?: number, options?: DequeueOptions) => Promise<DequeuedJob | null>;
-  end: () => Promise<void>;
-  enqueue: (task: string, args?: MinionArgs, options?: EnqueueOptions) => Promise<MinionJobId>;
-  failJob: (id: MinionJobId, retries: number, result?: any) => Promise<boolean>;
-  finishJob: (id: MinionJobId, retries: number, result?: any) => Promise<boolean>;
-  history: () => Promise<any>;
-  listJobs: (offset: number, limit: number, options?: ListJobsOptions) => Promise<JobList>;
-  listLocks: (offset: number, limit: number, options?: ListLocksOptions) => Promise<LockList>;
-  listWorkers: (offset: number, limit: number, options?: ListWorkersOptions) => Promise<WorkerList>;
-  lock: (name: string, duration: number, options?: LockOptions) => Promise<boolean>;
   name: string;
-  note: (id: MinionJobId, merge: Record<string, any>) => Promise<boolean>;
-  receive: (id: MinionWorkerId) => Promise<Array<[string, ...any[]]>>;
-  registerWorker: (id?: MinionWorkerId, options?: RegisterWorkerOptions) => Promise<number>;
-  removeJob: (id: MinionJobId) => Promise<boolean>;
-  repair: () => Promise<void>;
-  reset: (options: ResetOptions) => Promise<void>;
+
+  addJob: (task: string, args?: MinionArgs, options?: EnqueueOptions) => Promise<MinionJobId>;
+  getNextJob: (id: MinionWorkerId, wait: number, options: DequeueOptions) => Promise<DequeuedJob | null>;
+  markJobFailed: (id: MinionJobId, retries: number, result?: any) => Promise<boolean>;
+  markJobFinished: (id: MinionJobId, retries: number, result?: any) => Promise<boolean>;
   retryJob: (id: MinionJobId, retries: number, options: RetryOptions) => Promise<boolean>;
-  stats: () => Promise<any>;
-  unlock: (name: string) => Promise<boolean>;
+  removeJob: (id: MinionJobId) => Promise<boolean>;
+  getJobInfos: (offset: number, limit: number, options?: ListJobsOptions) => Promise<JobList>;
+  getJobHistory: () => Promise<any>;
+
+  addNotes: (id: MinionJobId, notes: Record<string, any>) => Promise<boolean>;
+
+  registerWorker: (id?: MinionWorkerId, options?: RegisterWorkerOptions) => Promise<number>;
   unregisterWorker: (id: MinionWorkerId) => Promise<void>;
-  update: () => Promise<void>;
+  getWorkers: (offset: number, limit: number, options?: ListWorkersOptions) => Promise<WorkerList>;
+  notifyWorkers: (command: string, args?: any[], ids?: MinionJobId[]) => Promise<boolean>;
+  getWorkerNotifications: (id: MinionWorkerId) => Promise<Array<[string, ...any[]]>>;
+
+  lock: (name: string, duration: number, options?: LockOptions) => Promise<boolean>;
+  unlock: (name: string) => Promise<boolean>;
+  getLocks: (offset: number, limit: number, options?: ListLocksOptions) => Promise<LockList>;
+
+  stats: () => Promise<any>;
+  repair: () => Promise<void>;
+  updateSchema: () => Promise<void>;
+  reset: (options: ResetOptions) => Promise<void>;
+
+  end: () => Promise<void>;
 }
 
 export type MinionArgs = any[];

@@ -1,4 +1,4 @@
-import type {Database} from './database.js';
+import type {Connection} from './connection.js';
 
 /**
  * PostgreSQL transaction class.
@@ -6,7 +6,7 @@ import type {Database} from './database.js';
 export class Transaction {
   private finished = false;
 
-  constructor(private db: Database) {}
+  constructor(private conn: Connection) {}
 
   async [Symbol.asyncDispose]() {
     await this.rollback();
@@ -17,7 +17,7 @@ export class Transaction {
    */
   async commit(): Promise<void> {
     if (this.finished === true) return;
-    await this.db.client.query('COMMIT');
+    await this.conn.client.query('COMMIT');
     this.finished = true;
   }
 
@@ -26,7 +26,7 @@ export class Transaction {
    */
   async rollback(): Promise<void> {
     if (this.finished === true) return;
-    await this.db.client.query('ROLLBACK');
+    await this.conn.client.query('ROLLBACK');
     this.finished = true;
   }
 }

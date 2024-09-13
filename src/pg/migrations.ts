@@ -1,5 +1,5 @@
 import {readdir, readFile} from 'fs/promises';
-import type {Database} from './database.js';
+import type {Connection} from './connection.js';
 import type {Pg} from './pg.js';
 import { join } from 'path';
 import pg from 'pg';
@@ -38,15 +38,15 @@ export class Migrations {
   /**
    * Currently active version.
    */
-  async active(): Promise<number> {
-    const db = await this.pg.db();
-    return await this._active(db).finally(() => db.release());
+  async currentVersion(): Promise<number> {
+    const conn = await this.pg.getConnection();
+    return await this.active(conn).finally(() => conn.release());
   }
 
   /**
    * Extract migrations from a directory.
    */
-  async fromDirectory(dir: string, options: MigrationOptions = {}): Promise<void> {
+  async loadFromDirectory(dir: string, options: MigrationOptions = {}): Promise<void> {
     if (options.name !== undefined) this.name = options.name;
 
     const steps: Steps = [];
@@ -70,14 +70,14 @@ export class Migrations {
   /**
    * Extract migrations from a file.
    */
-  async fromFile(file: string, options?: MigrationOptions): Promise<void> {
-    this.fromString((await readFile(file, {encoding: 'utf8'})), options);
+  async loadFromFile(file: string, options?: MigrationOptions): Promise<void> {
+    this.loadFromString((await readFile(file, {encoding: 'utf8'})), options);
   }
 
   /**
    * Extract migrations from string.
    */
-  fromString(str: string, options: MigrationOptions = {}): void {
+  loadFromString(str: string, options: MigrationOptions = {}): void {
     if (options.name !== undefined) this.name = options.name;
 
     const steps: Steps = [];
@@ -109,28 +109,28 @@ export class Migrations {
    * Migrate from `active` to a different version, up or down, defaults to using the `latest` version. All version
    * numbers need to be positive, with version `0` representing an empty database.
    */
-  async migrate(target?: number): Promise<void> {
+  async migrateTo(target?: number): Promise<void> {
     const latest = this.latest;
     if (target === undefined) target = latest;
     const hasStep = this.steps.find(step => step.direction === 'up' && step.version === target) !== undefined;
     if (target !== 0 && hasStep === false) throw new Error(`Version ${target} has no migration`);
 
-    const db = await this.pg.db();
+    const conn = await this.pg.getConnection();
     try {
       // Already the right version
-      if ((await this._active(db)) === target) return;
-      await db.query(`
+      if ((await this.active(conn)) === target) return;
+      await conn.query(`
         CREATE TABLE IF NOT EXISTS mojo_migrations (
           name    TEXT PRIMARY KEY,
           version BIGINT NOT NULL CHECK (version >= 0)
         )
       `);
 
-      const tx = await db.begin();
+      const tx = await conn.startTransaction();
       try {
         // Lock migrations table and check version again
-        await db.query('LOCK TABLE mojo_migrations IN EXCLUSIVE MODE');
-        const active = await this._active(db);
+        await conn.query('LOCK TABLE mojo_migrations IN EXCLUSIVE MODE');
+        const active = await this.active(conn);
         if (active === target) return;
 
         // Newer version
@@ -144,13 +144,13 @@ export class Migrations {
           INSERT INTO mojo_migrations (name, version) VALUES (${name}, ${target})
           ON CONFLICT (name) DO UPDATE SET version = ${target};
         `;
-        await db.query(migration);
+        await conn.query(migration);
         await tx.commit();
       } finally {
         await tx.rollback();
       }
     } finally {
-      await db.release();
+      await conn.release();
     }
   }
 
@@ -177,9 +177,9 @@ export class Migrations {
     }
   }
 
-  async _active(db: Database): Promise<number> {
+  private async active(conn: Connection): Promise<number> {
     try {
-      const results = await db.query<VersionResult>('SELECT version FROM mojo_migrations WHERE name = $1', this.name);
+      const results = await conn.query<VersionResult>('SELECT version FROM mojo_migrations WHERE name = $1', this.name);
       const first = results.first;
       return first === undefined ? 0 : first.version;
     } catch (error: any) {

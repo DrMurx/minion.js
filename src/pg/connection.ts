@@ -4,18 +4,18 @@ import {Results} from './results.js';
 import {Transaction} from './transaction.js';
 import {throwWithContext} from './util.js';
 
-interface DatabaseEvents {
-  end: (this: Database) => void;
-  notification: (this: Database, message: Notification) => void;
+interface ConnectionEvents {
+  end: (this: Connection) => void;
+  notification: (this: Connection, message: Notification) => void;
 }
 
-declare interface DatabaseEventEmitter {
-  on: <T extends keyof DatabaseEvents>(event: T, listener: DatabaseEvents[T]) => this;
-  once: <T extends keyof DatabaseEvents>(event: T, listener: DatabaseEvents[T]) => this;
-  emit: <T extends keyof DatabaseEvents>(event: T, ...args: Parameters<DatabaseEvents[T]>) => boolean;
+declare interface ConnectionEventEmitter {
+  on: <T extends keyof ConnectionEvents>(event: T, listener: ConnectionEvents[T]) => this;
+  once: <T extends keyof ConnectionEvents>(event: T, listener: ConnectionEvents[T]) => this;
+  emit: <T extends keyof ConnectionEvents>(event: T, ...args: Parameters<ConnectionEvents[T]>) => boolean;
 }
 
-interface DatabaseOptions {
+interface ConnectionOptions {
   verboseErrors: boolean;
 }
 
@@ -33,7 +33,7 @@ const DEBUG = process.env.MOJO_PG_DEBUG === '1';
 /**
  * PostgreSQL database connection class.
  */
-class Database extends EventEmitter implements DatabaseEventEmitter {
+export class Connection extends EventEmitter implements ConnectionEventEmitter {
   /**
    * Show SQL context for errors.
    */
@@ -45,7 +45,7 @@ class Database extends EventEmitter implements DatabaseEventEmitter {
    * @param client PostgreSQL client.
    * @param options
    */
-  constructor(public client: PoolClient, options: DatabaseOptions) {
+  constructor(public client: PoolClient, options: ConnectionOptions) {
     super();
     this.verboseErrors = options.verboseErrors;
     client.on('end', () => this.emit('end'));
@@ -70,14 +70,6 @@ class Database extends EventEmitter implements DatabaseEventEmitter {
   }
 
   /**
-   * Start transaction.
-   */
-  async begin(): Promise<Transaction> {
-    await this.client.query('BEGIN');
-    return new Transaction(this);
-  }
-
-  /**
    * Close database connection.
    */
   async end(): Promise<void> {
@@ -85,13 +77,64 @@ class Database extends EventEmitter implements DatabaseEventEmitter {
   }
 
   /**
-   * Listen for notifications.
+   * Release database connection back into the pool.
    */
-  async listen(channel: string): Promise<void> {
+  async release(): Promise<void> {
     const client = this.client;
-    const escapedChannel = client.escapeIdentifier(channel);
-    await this.client.query(`LISTEN ${escapedChannel}`);
-    this.channels.push(channel);
+    ['end', 'notification'].forEach(event => client.removeAllListeners(event));
+    if (this.channels.length > 0) await this.unlisten();
+    client.release();
+  }
+
+  /**
+   * Perform raw SQL query.
+   * @example
+   * // Simple query with placeholder
+   * const results = await conn.query('SELECT * FROM users WHERE name = $1', 'Sara'});
+   *
+   * // Query with result type
+   * const results = await conn.query<User>('SELECT * FROM users');
+   *
+   * // Query with results as arrays
+   * const results = await conn.query({text: 'SELECT * FROM users', rowMode: 'array'});
+   */
+  async query<T = any>(query: string | QueryConfig, ...values: any[]): Promise<Results<T>> {
+    if (typeof query === 'string') query = {text: query, values};
+    if (DEBUG === true) process.stderr.write(`\n${query.text}\n`);
+
+    try {
+      const result = await this.client.query(query);
+      const rows = result.rows;
+      return rows === undefined ? new Results(result.rowCount) : new Results(result.rowCount, ...rows);
+    } catch (error) {
+      if (this.verboseErrors === true) throwWithContext(error, query);
+      throw error;
+    }
+  }
+
+  /**
+   * Start transaction.
+   */
+  async startTransaction(): Promise<Transaction> {
+    await this.client.query('BEGIN');
+    return new Transaction(this);
+  }
+
+  /**
+   * Get all non-system tables.
+   */
+  async getTables(): Promise<string[]> {
+    const results = await this.query<TablesResult>(`
+      SELECT schemaname, tablename FROM pg_catalog.pg_tables
+      WHERE schemaname != 'pg_catalog' AND schemaname != 'information_schema'`);
+    return results.map(row => `${row.schemaname}.${row.tablename}`);
+  }
+
+  /**
+   * Get backend process id.
+   */
+  async getBackendPid(): Promise<number> {
+    return (await this.query<PidResult>('SELECT pg_backend_pid()'))[0].pg_backend_pid;
   }
 
   /**
@@ -114,56 +157,13 @@ class Database extends EventEmitter implements DatabaseEventEmitter {
   }
 
   /**
-   * Get backend process id.
+   * Listen for notifications.
    */
-  async pid(): Promise<number> {
-    return (await this.query<PidResult>('SELECT pg_backend_pid()'))[0].pg_backend_pid;
-  }
-
-  /**
-   * Perform raw SQL query.
-   * @example
-   * // Simple query with placeholder
-   * const results = await db.query('SELECT * FROM users WHERE name = $1', 'Sara'});
-   *
-   * // Query with result type
-   * const results = await db.query<User>('SELECT * FROM users');
-   *
-   * // Query with results as arrays
-   * const results = await db.query({text: 'SELECT * FROM users', rowMode: 'array'});
-   */
-  async query<T = any>(query: string | QueryConfig, ...values: any[]): Promise<Results<T>> {
-    if (typeof query === 'string') query = {text: query, values};
-    if (DEBUG === true) process.stderr.write(`\n${query.text}\n`);
-
-    try {
-      const result = await this.client.query(query);
-      const rows = result.rows;
-      return rows === undefined ? new Results(result.rowCount) : new Results(result.rowCount, ...rows);
-    } catch (error) {
-      if (this.verboseErrors === true) throwWithContext(error, query);
-      throw error;
-    }
-  }
-
-  /**
-   * Release database connection back into the pool.
-   */
-  async release(): Promise<void> {
+  async listen(channel: string): Promise<void> {
     const client = this.client;
-    ['end', 'notification'].forEach(event => client.removeAllListeners(event));
-    if (this.channels.length > 0) await this.unlisten();
-    client.release();
-  }
-
-  /**
-   * Get all non-system tables.
-   */
-  async tables(): Promise<string[]> {
-    const results = await this.query<TablesResult>(`
-      SELECT schemaname, tablename FROM pg_catalog.pg_tables
-      WHERE schemaname != 'pg_catalog' AND schemaname != 'information_schema'`);
-    return results.map(row => `${row.schemaname}.${row.tablename}`);
+    const escapedChannel = client.escapeIdentifier(channel);
+    await this.client.query(`LISTEN ${escapedChannel}`);
+    this.channels.push(channel);
   }
 
   /**
@@ -186,5 +186,3 @@ class Database extends EventEmitter implements DatabaseEventEmitter {
     }
   }
 }
-
-export {Database};

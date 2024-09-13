@@ -1,5 +1,5 @@
 import EventEmitter from 'events';
-import {Database} from './database.js';
+import {Connection} from './connection.js';
 import {Results} from './results.js';
 import {parseConfig} from './config.js';
 import {throwWithContext} from './util.js';
@@ -64,20 +64,19 @@ export class Pg extends EventEmitter {
   }
 
   /**
-   * Get database connection from pool.
-   */
-  async db(): Promise<Database> {
-    const client = await this.pool.connect();
-    return new Database(client, {verboseErrors: this.verboseErrors});
-  }
-
-  /**
    * Close all database connections in the pool.
    */
   async end(): Promise<void> {
     if (this.doNotEnd === false) await this.pool.end();
   }
 
+  /**
+   * Get database connection from pool.
+   */
+  async getConnection(): Promise<Connection> {
+    const client = await this.pool.connect();
+    return new Connection(client, {verboseErrors: this.verboseErrors});
+  }
 
   /**
    * Perform raw SQL query.
@@ -86,7 +85,7 @@ export class Pg extends EventEmitter {
    * const results = await pg.query('SELECT * FROM users WHERE name = $1', 'Sara'});
    *
    * // Query with result type
-   * const results = await db.query<User>('SELECT * FROM users');
+   * const results = await pg.query<User>('SELECT * FROM users');
    *
    * // Query with results as arrays
    * const results = await pg.query({text: 'SELECT * FROM users', rowMode: 'array'});
@@ -108,8 +107,8 @@ export class Pg extends EventEmitter {
   /**
    * Get all non-system tables.
    */
-  async tables(): Promise<string[]> {
-    const db = await this.db();
-    return await db.tables().finally(() => db.release());
+  async getTables(): Promise<string[]> {
+    const conn = await this.getConnection();
+    return await conn.getTables().finally(() => conn.release());
   }
 }

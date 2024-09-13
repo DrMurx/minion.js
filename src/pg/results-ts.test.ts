@@ -11,7 +11,7 @@ interface TestRecord {
 t.test('Results', skip, async t => {
   // Isolate tests
   await using pg = new Pg(process.env.TEST_ONLINE, {searchPath: ['mojo_ts_results_test']});
-  await using db = await pg.db();
+  await using db = await pg.getConnection();
   await db.query('DROP SCHEMA IF EXISTS mojo_ts_results_test CASCADE');
   await db.query('CREATE SCHEMA mojo_ts_results_test');
 
@@ -36,7 +36,7 @@ t.test('Results', skip, async t => {
   await t.test('Transactions', async t => {
     let result: any;
     try {
-      await using tx = await db.begin();
+      await using tx = await db.startTransaction();
       await db.query("INSERT INTO results_test (name) VALUES ('tx1')");
       await db.query("INSERT INTO results_test (name) VALUES ('tx1')");
       await tx.commit();
@@ -50,7 +50,7 @@ t.test('Results', skip, async t => {
     ]);
 
     try {
-      await using tx2 = await db.begin();
+      await using tx2 = await db.startTransaction();
       await db.query("INSERT INTO results_test (name) VALUES ('tx1')");
       await db.query("INSERT INTO results_test (name) VALUES ('tx1')");
       await db.query('does_not_exist');

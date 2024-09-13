@@ -15,100 +15,100 @@ t.test('Migrations', skip, async t => {
 
   await t.test('Defaults', async t => {
     t.equal(migrations.name, 'migrations');
-    t.equal(await migrations.active(), 0);
+    t.equal(await migrations.currentVersion(), 0);
     t.equal(migrations.latest, 0);
   });
 
   await t.test('Create migrations table', async t => {
-    t.same((await pg.tables()).includes('mojo_migrations_test.mojo_migrations'), false);
-    t.equal(await migrations.active(), 0);
+    t.same((await pg.getTables()).includes('mojo_migrations_test.mojo_migrations'), false);
+    t.equal(await migrations.currentVersion(), 0);
 
-    await migrations.migrate();
-    t.same((await pg.tables()).includes('mojo_migrations_test.mojo_migrations'), false);
-    t.equal(await migrations.active(), 0);
+    await migrations.migrateTo();
+    t.same((await pg.getTables()).includes('mojo_migrations_test.mojo_migrations'), false);
+    t.equal(await migrations.currentVersion(), 0);
 
-    migrations.fromString('-- 1 up\n\n');
-    await migrations.migrate();
-    t.same((await pg.tables()).includes('mojo_migrations_test.mojo_migrations'), true);
-    t.equal(await migrations.active(), 1);
+    migrations.loadFromString('-- 1 up\n\n');
+    await migrations.migrateTo();
+    t.same((await pg.getTables()).includes('mojo_migrations_test.mojo_migrations'), true);
+    t.equal(await migrations.currentVersion(), 1);
   });
 
   await t.test('Simple migrations', async t => {
     migrations.name = 'simple';
-    migrations.fromString(simpleMigrations);
+    migrations.loadFromString(simpleMigrations);
     t.equal(migrations.latest, 10);
-    t.equal(await migrations.active(), 0);
+    t.equal(await migrations.currentVersion(), 0);
 
     const sql = migrations.sqlFor(0, 10);
     t.match(sql, /CREATE TABLE migration_test_four/s);
-    await migrations.migrate();
-    t.equal(await migrations.active(), 10);
+    await migrations.migrateTo();
+    t.equal(await migrations.currentVersion(), 10);
 
     t.same(await pg.query('SELECT * FROM migration_test_four'), [{test: 10}]);
   });
 
   await t.test('Different stntax variations', async t => {
     migrations.name = 'syntax_variations';
-    migrations.fromString(syntaxVariations);
+    migrations.loadFromString(syntaxVariations);
     t.equal(migrations.latest, 10);
-    t.equal(await migrations.active(), 0);
-    await migrations.migrate();
-    t.same((await pg.tables()).includes('mojo_migrations_test.migration_test_one'), true);
-    t.same((await pg.tables()).includes('mojo_migrations_test.migration_test_two'), true);
+    t.equal(await migrations.currentVersion(), 0);
+    await migrations.migrateTo();
+    t.same((await pg.getTables()).includes('mojo_migrations_test.migration_test_one'), true);
+    t.same((await pg.getTables()).includes('mojo_migrations_test.migration_test_two'), true);
     t.same(await pg.query('SELECT * FROM migration_test_one'), [{foo: 'works ♥'}]);
-    t.equal(await migrations.active(), 10);
+    t.equal(await migrations.currentVersion(), 10);
 
-    await migrations.migrate(1);
-    t.equal(await migrations.active(), 1);
+    await migrations.migrateTo(1);
+    t.equal(await migrations.currentVersion(), 1);
     t.same(await pg.query('SELECT * FROM migration_test_one'), []);
 
-    await migrations.migrate(3);
-    t.equal(await migrations.active(), 3);
+    await migrations.migrateTo(3);
+    t.equal(await migrations.currentVersion(), 3);
     t.same(await pg.query('SELECT * FROM migration_test_one'), [{foo: 'works ♥'}]);
     t.same(await pg.query('SELECT * FROM migration_test_two'), []);
 
-    await migrations.migrate(10);
-    t.equal(await migrations.active(), 10);
+    await migrations.migrateTo(10);
+    t.equal(await migrations.currentVersion(), 10);
     t.same(await pg.query('SELECT * FROM migration_test_two'), [{bar: 'works too'}]);
 
-    await migrations.migrate(0);
-    t.equal(await migrations.active(), 0);
+    await migrations.migrateTo(0);
+    t.equal(await migrations.currentVersion(), 0);
   });
 
   await t.test('Bad and concurrent migrations', async t => {
     const pg2 = new Pg(process.env.TEST_ONLINE, {searchPath: ['mojo_migrations_test']});
     const migrations2 = new Migrations(pg2);
     const file = join(dirname(fileURLToPath(import.meta.url)), 'support', 'migrations', 'test.sql');
-    await migrations2.fromFile(file, {name: 'migrations_test2'});
+    await migrations2.loadFromFile(file, {name: 'migrations_test2'});
     t.equal(migrations2.latest, 4);
-    t.equal(await migrations2.active(), 0);
+    t.equal(await migrations2.currentVersion(), 0);
 
     let result: any;
     try {
-      await migrations2.migrate();
+      await migrations2.migrateTo();
     } catch (error) {
       result = error;
     }
     t.match(result.message, /does_not_exist/);
-    t.equal(await migrations2.active(), 0);
+    t.equal(await migrations2.currentVersion(), 0);
 
-    await migrations2.migrate(3);
-    t.equal(await migrations2.active(), 3);
+    await migrations2.migrateTo(3);
+    t.equal(await migrations2.currentVersion(), 3);
 
-    await migrations2.migrate(2);
-    t.equal(await migrations2.active(), 2);
+    await migrations2.migrateTo(2);
+    t.equal(await migrations2.currentVersion(), 2);
 
-    t.equal(await migrations.active(), 0);
-    await migrations.migrate();
-    t.equal(await migrations.active(), 10);
+    t.equal(await migrations.currentVersion(), 0);
+    await migrations.migrateTo();
+    t.equal(await migrations.currentVersion(), 10);
     t.same((await pg.query('SELECT * FROM migration_test_three')).first, {baz: 'just'});
     t.same(await pg.query('SELECT * FROM migration_test_three'), [{baz: 'just'}, {baz: 'works ♥'}]);
     t.same((await pg.query('SELECT * FROM migration_test_three')).last, {baz: 'works ♥'});
 
-    await migrations.migrate(0);
-    t.equal(await migrations.active(), 0);
-    await migrations2.migrate(0);
-    t.equal(await migrations2.active(), 0);
+    await migrations.migrateTo(0);
+    t.equal(await migrations.currentVersion(), 0);
+    await migrations2.migrateTo(0);
+    t.equal(await migrations2.currentVersion(), 0);
 
     await pg2.end();
   });
@@ -116,7 +116,7 @@ t.test('Migrations', skip, async t => {
   await t.test('Unknown version', async t => {
     let result: any;
     try {
-      await migrations.migrate(23);
+      await migrations.migrateTo(23);
     } catch (error) {
       result = error;
     }
@@ -124,14 +124,14 @@ t.test('Migrations', skip, async t => {
   });
 
   await t.test('Version mismatch', async t => {
-    migrations.fromString(newerVersion, {name: 'migrations_test3'});
-    await migrations.migrate();
-    t.equal(await migrations.active(), 2);
+    migrations.loadFromString(newerVersion, {name: 'migrations_test3'});
+    await migrations.migrateTo();
+    t.equal(await migrations.currentVersion(), 2);
 
-    migrations.fromString(olderVersion);
+    migrations.loadFromString(olderVersion);
     let result: any;
     try {
-      await migrations.migrate();
+      await migrations.migrateTo();
     } catch (error) {
       result = error;
     }
@@ -139,7 +139,7 @@ t.test('Migrations', skip, async t => {
 
     let result2: any;
     try {
-      await migrations.migrate(0);
+      await migrations.migrateTo(0);
     } catch (error) {
       result2 = error;
     }
@@ -150,16 +150,16 @@ t.test('Migrations', skip, async t => {
     const pg2 = new Pg(process.env.TEST_ONLINE, {searchPath: ['mojo_migrations_test']});
     const migrations2 = new Migrations(pg2);
     const dir = join(dirname(fileURLToPath(import.meta.url)), 'support', 'migrations', 'tree');
-    await migrations2.fromDirectory(dir, {name: 'directory tree'});
-    t.same((await pg2.tables()).includes('mojo_migrations_test.migration_test_three'), false);
-    await migrations2.migrate(2);
-    t.same((await pg2.tables()).includes('mojo_migrations_test.migration_test_three'), true);
-    t.equal(await migrations2.active(), 2);
+    await migrations2.loadFromDirectory(dir, {name: 'directory tree'});
+    t.same((await pg2.getTables()).includes('mojo_migrations_test.migration_test_three'), false);
+    await migrations2.migrateTo(2);
+    t.same((await pg2.getTables()).includes('mojo_migrations_test.migration_test_three'), true);
+    t.equal(await migrations2.currentVersion(), 2);
     t.same(await pg2.query('SELECT * FROM migration_test_three'), [{baz: 'just'}, {baz: 'works ♥'}]);
 
     let result: any;
     try {
-      await migrations.migrate(36);
+      await migrations.migrateTo(36);
     } catch (error) {
       result = error;
     }
@@ -167,7 +167,7 @@ t.test('Migrations', skip, async t => {
 
     let result2: any;
     try {
-      await migrations.migrate(54);
+      await migrations.migrateTo(54);
     } catch (error) {
       result2 = error;
     }
@@ -175,18 +175,18 @@ t.test('Migrations', skip, async t => {
 
     let result3: any;
     try {
-      await migrations.migrate(55);
+      await migrations.migrateTo(55);
     } catch (error) {
       result3 = error;
     }
     t.match(result3.message, /Version 55 has no migration/);
 
-    await migrations2.migrate(99);
-    t.equal(await migrations2.active(), 99);
-    t.same((await pg2.tables()).includes('mojo_migrations_test.migration_test_luft_balloons'), true);
+    await migrations2.migrateTo(99);
+    t.equal(await migrations2.currentVersion(), 99);
+    t.same((await pg2.getTables()).includes('mojo_migrations_test.migration_test_luft_balloons'), true);
 
     const dir2 = join(dirname(fileURLToPath(import.meta.url)), 'support', 'migrations', 'tree2');
-    await migrations2.fromDirectory(dir2);
+    await migrations2.loadFromDirectory(dir2);
     t.equal(migrations2.latest, 8);
 
     await pg2.end();

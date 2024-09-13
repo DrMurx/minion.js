@@ -25,11 +25,11 @@ export class Worker {
   private lastCommandAt = 0;
   private lastHeartbeatAt = 0;
   private lastRepairAt = 0;
-  private running = false;
+  private _isRunning = false;
   private stopPromises: Array<() => void> = [];
 
   private _id: number | undefined = undefined;
-  private _minion: Minion;
+  private minion: Minion;
 
   constructor(minion: Minion, options: WorkerOptions = {}) {
     this.commands = {jobs: jobsCommand, ...options.commands};
@@ -48,7 +48,7 @@ export class Worker {
     });
     status.repairInterval -= Math.ceil(Math.random() * (status.repairInterval / 2));
 
-    this._minion = minion;
+    this.minion = minion;
   }
 
   /**
@@ -66,7 +66,7 @@ export class Worker {
     const id = this._id;
     if (id === undefined) return null;
 
-    const job = await this.minion.backend.dequeue(id, wait, options);
+    const job = await this.minion.backend.getNextJob(id, wait, options);
     return job === null ? null : new Job(this.minion, job.id, job.args, job.retries, job.task);
   }
 
@@ -80,39 +80,11 @@ export class Worker {
   /**
    * Get worker information.
    */
-  async info(): Promise<WorkerInfo | null> {
+  async getInfo(): Promise<WorkerInfo | null> {
     const id = this._id;
     if (id === undefined) return null;
-    const list = await this.minion.backend.listWorkers(0, 1, {ids: [id]});
+    const list = await this.minion.backend.getWorkers(0, 1, {ids: [id]});
     return list.workers[0];
-  }
-
-  /**
-   * Check if worker is currently running.
-   */
-  get isRunning(): boolean {
-    return this.running;
-  }
-
-  /**
-   * Minion instance this worker belongs to.
-   */
-  get minion(): Minion {
-    return this._minion;
-  }
-
-  /**
-   * Process worker remote control commands.
-   */
-  async processCommands(): Promise<void> {
-    const id = this._id;
-    if (id === undefined) return;
-
-    const commands = await this.minion.backend.receive(id);
-    for (const [command, ...args] of commands) {
-      const fn = this.commands[command];
-      if (fn !== undefined) await fn(this, ...args);
-    }
   }
 
   /**
@@ -125,13 +97,23 @@ export class Worker {
   }
 
   /**
+   * Unregister worker.
+   */
+  async unregister(): Promise<this> {
+    if (this._id === undefined) return this;
+    await this.minion.backend.unregisterWorker(this._id);
+    this._id = undefined;
+    return this;
+  }
+
+  /**
    * Start worker.
    */
   async start(): Promise<this> {
     if (this.isRunning === true) return this;
 
-    this._mainLoop().catch(error => console.error(error));
-    this.running = true;
+    this.mainLoop().catch(error => console.error(error));
+    this._isRunning = true;
 
     return this;
   }
@@ -145,23 +127,35 @@ export class Worker {
   }
 
   /**
-   * Unregister worker.
+   * Check if worker is currently running.
    */
-  async unregister(): Promise<this> {
-    if (this._id === undefined) return this;
-    await this.minion.backend.unregisterWorker(this._id);
-    this._id = undefined;
-    return this;
+  get isRunning(): boolean {
+    return this._isRunning;
   }
 
-  async _mainLoop(): Promise<void> {
+  /**
+   * Process worker remote control commands.
+   */
+  async processCommands(): Promise<void> {
+    const id = this._id;
+    if (id === undefined) return;
+
+    const commands = await this.minion.backend.getWorkerNotifications(id);
+    for (const [command, ...args] of commands) {
+      const fn = this.commands[command];
+      if (fn !== undefined) await fn(this, ...args);
+    }
+  }
+
+
+  protected async mainLoop(): Promise<void> {
     const status = this.status;
     const stop = this.stopPromises;
 
     while (stop.length === 0 || this.activeJobs.length > 0) {
       const options: DequeueOptions = {queues: status.queues};
 
-      await this._maintenance(status);
+      await this.maintenance(status);
 
       // Check if jobs are finished
       const before = this.activeJobs.length;
@@ -185,10 +179,10 @@ export class Worker {
     await this.unregister();
     this.stopPromises = [];
     stop.forEach(resolve => resolve());
-    this.running = false;
+    this._isRunning = false;
   }
 
-  async _maintenance(status: MinionStatus): Promise<void> {
+  protected async maintenance(status: MinionStatus): Promise<void> {
     // Send heartbeats in regular intervals
     if (this.lastHeartbeatAt + status.heartbeatInterval < Date.now()) {
       await this.register();

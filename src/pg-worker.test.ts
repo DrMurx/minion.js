@@ -11,18 +11,18 @@ t.test('Worker', skip, async t => {
   await pg.query('CREATE SCHEMA minion_worker_test');
 
   const minion = new Minion(pg);
-  await minion.update();
+  await minion.updateSchema();
 
   minion.addTask('test', async job => {
-    await job.note({test: 'pass'});
+    await job.addNotes({test: 'pass'});
   });
 
-  const worker = await minion.worker().start();
+  const worker = await minion.createWorker().start();
   t.equal(worker.isRunning, true);
 
   await t.test('Wait for jobs', async t => {
-    const id = await minion.enqueue('test');
-    const result = await minion.result(id, {interval: 500});
+    const id = await minion.addJob('test');
+    const result = await minion.getJobResult(id, {interval: 500});
     t.equal(result!.state, 'finished');
     t.same(result!.notes, {test: 'pass'});
   });

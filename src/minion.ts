@@ -74,35 +74,6 @@ export class Minion {
   }
 
   /**
-   * Register a task.
-   */
-  addTask(name: string, fn: MinionTask): void {
-    this.tasks[name] = fn;
-  }
-
-  /**
-   * Used to calculate the delay for automatically retried jobs, defaults to `(retries ** 4) + 15` (15, 16, 31, 96,
-   * 271, 640...), which means that roughly `25` attempts can be made in `21` days.
-   */
-  backoff(retries: number): number {
-    return retries ** 4 + 15;
-  }
-
-  /**
-   * Broadcast remote control command to one or more workers.
-   */
-  async broadcast(command: string, args?: any[], ids?: number[]): Promise<boolean> {
-    return await this.backend.broadcast(command, args, ids);
-  }
-
-  /**
-   * Stop using the queue.
-   */
-  async end(): Promise<void> {
-    await this.backend.end();
-  }
-
-  /**
    * Enqueue a new job with `inactive` state. Arguments get serialized by the backend as JSON, so you shouldn't send
    * objects that cannot be serialized, nested data structures are fine though.
    * @param options.attempts - Number of times performing this job will be attempted, with a delay based on
@@ -119,29 +90,70 @@ export class Minion {
    *                           `-100`.
    * @param options.queue - Queue to put job in, defaults to `default`.
    */
-  async enqueue(task: string, args?: MinionArgs, options?: EnqueueOptions): Promise<MinionJobId> {
-    return await this.backend.enqueue(task, args, options);
+  async addJob(task: string, args?: MinionArgs, options?: EnqueueOptions): Promise<MinionJobId> {
+    return await this.backend.addJob(task, args, options);
   }
+
+  /**
+   * Return a promise for the future result of a job. The state `finished` will result in the promise being
+   * `fullfilled`, and the state `failed` in the promise being `rejected`.
+   */
+  async getJobResult(id: MinionJobId, options: ResultOptions = {}): Promise<JobInfo | null> {
+    const interval = options.interval ?? 3000;
+    const signal = options.signal ?? null;
+    return new Promise((resolve, reject) => this.waitForResult(id, interval, signal, resolve, reject));
+  }
+
+  /**
+   * Get job object without making any changes to the actual job or return `null` if job does not exist.
+   */
+  async getJob(id: MinionJobId): Promise<MinionJob | null> {
+    const info = (await this.backend.getJobInfos(0, 1, {ids: [id]})).jobs[0];
+    return info === undefined ? null : new Job(this, info.id, info.args, info.retries, info.task);
+  }
+
+  /**
+   * Return iterator object to safely iterate through job information.
+   */
+  getJobs(options: ListJobsOptions = {}): BackendIterator<JobInfo> {
+    return new BackendIterator<JobInfo>(this, 'jobs', options);
+  }
+
+  /**
+   * Get history information for job queue.
+   */
+  async getJobHistory(): Promise<MinionHistory> {
+    return await this.backend.getJobHistory();
+  }
+
+  /**
+   * Used to calculate the delay for automatically retried jobs, defaults to `(retries ** 4) + 15` (15, 16, 31, 96,
+   * 271, 640...), which means that roughly `25` attempts can be made in `21` days.
+   */
+  calcBackoff(retries: number): number {
+    return retries ** 4 + 15;
+  }
+
 
   /**
    * Retry job in `minion_foreground` queue, then perform it right away with a temporary worker in this process,
    * very useful for debugging.
    */
-  async foreground(id: number): Promise<boolean> {
-    let job = await this.job(id);
+  async runJob(id: number): Promise<boolean> {
+    let job = await this.getJob(id);
     if (job === null) return false;
     if ((await job.retry({attempts: 1, queue: 'minion_foreground'})) !== true) return false;
 
-    const worker = await this.worker().register();
+    const worker = await this.createWorker().register();
     try {
       job = await worker.dequeue(0, {id, queues: ['minion_foreground']});
       if (job === null) return false;
       try {
         await job.execute();
-        await job.finish();
+        await job.markFinished();
         return true;
       } catch (error: any) {
-        await job.fail(error);
+        await job.markFailed(error);
         throw error;
       }
     } finally {
@@ -150,47 +162,10 @@ export class Minion {
   }
 
   /**
-   * Get history information for job queue.
-   */
-  async history(): Promise<MinionHistory> {
-    return await this.backend.history();
-  }
-
-  /**
-   * Check if a lock with that name is currently active.
-   */
-  async isLocked(name: string): Promise<boolean> {
-    return !(await this.backend.lock(name, 0));
-  }
-
-  /**
-   * Get job object without making any changes to the actual job or return `null` if job does not exist.
-   */
-  async job(id: MinionJobId): Promise<MinionJob | null> {
-    const info = (await this.backend.listJobs(0, 1, {ids: [id]})).jobs[0];
-    return info === undefined ? null : new Job(this, info.id, info.args, info.retries, info.task);
-  }
-
-  /**
-   * Return iterator object to safely iterate through job information.
-   */
-  jobs(options: ListJobsOptions = {}): BackendIterator<JobInfo> {
-    return new BackendIterator<JobInfo>(this, 'jobs', options);
-  }
-
-  /**
-   * Try to acquire a named lock that will expire automatically after the given amount of time in milliseconds. You can
-   * release the lock manually with `minion.unlock()` to limit concurrency, or let it expire for rate limiting.
-   */
-  async lock(name: string, duration: number, options?: LockOptions): Promise<boolean> {
-    return await this.backend.lock(name, duration, options);
-  }
-
-  /**
    * Perform all jobs with a temporary worker, very useful for testing.
    */
-  async performJobs(options?: DequeueOptions): Promise<void> {
-    const worker = await this.worker().register();
+  async runJobs(options?: DequeueOptions): Promise<void> {
+    const worker = await this.createWorker().register();
     try {
       let job;
       while ((job = await worker.register().then(worker => worker.dequeue(0, options)))) {
@@ -201,35 +176,43 @@ export class Minion {
     }
   }
 
+
   /**
-   * Repair worker registry and job queue if necessary.
+   * Register a task.
    */
-  async repair(): Promise<void> {
-    await this.backend.repair();
+  addTask(name: string, fn: MinionTask): void {
+    this.tasks[name] = fn;
+  }
+
+
+  /**
+   * Build worker object. Note that this method should only be used to implement custom workers.
+   */
+  createWorker(options?: WorkerOptions): MinionWorker {
+    return new Worker(this, options);
   }
 
   /**
-   * Reset job queue.
+   * Return iterator object to safely iterate through worker information.
    */
-  async reset(options: ResetOptions): Promise<void> {
-    await this.backend.reset(options);
+  getWorkers(options: ListWorkersOptions = {}): BackendIterator<WorkerInfo> {
+    return new BackendIterator<WorkerInfo>(this, 'workers', options);
   }
 
   /**
-   * Return a promise for the future result of a job. The state `finished` will result in the promise being
-   * `fullfilled`, and the state `failed` in the promise being `rejected`.
+   * Broadcast remote control command to one or more workers.
    */
-  async result(id: MinionJobId, options: ResultOptions = {}): Promise<JobInfo | null> {
-    const interval = options.interval ?? 3000;
-    const signal = options.signal ?? null;
-    return new Promise((resolve, reject) => this._result(id, interval, signal, resolve, reject));
+  async notifyWorkers(command: string, args?: any[], ids?: number[]): Promise<boolean> {
+    return await this.backend.notifyWorkers(command, args, ids);
   }
 
+
   /**
-   * Get statistics for the job queue.
+   * Try to acquire a named lock that will expire automatically after the given amount of time in milliseconds. You can
+   * release the lock manually with `minion.unlock()` to limit concurrency, or let it expire for rate limiting.
    */
-  async stats(): Promise<MinionStats> {
-    return await this.backend.stats();
+  async lock(name: string, duration: number, options?: LockOptions): Promise<boolean> {
+    return await this.backend.lock(name, duration, options);
   }
 
   /**
@@ -240,36 +223,59 @@ export class Minion {
   }
 
   /**
+   * Check if a lock with that name is currently active.
+   */
+  async isLocked(name: string): Promise<boolean> {
+    return !(await this.backend.lock(name, 0));
+  }
+
+
+  /**
+   * Get statistics for the job queue.
+   */
+  async stats(): Promise<MinionStats> {
+    return await this.backend.stats();
+  }
+
+  /**
+   * Repair worker registry and job queue if necessary.
+   */
+  async repair(): Promise<void> {
+    await this.backend.repair();
+  }
+
+  /**
    * Update backend database schema to the latest version.
    */
-  async update(): Promise<void> {
-    await this.backend.update();
+  async updateSchema(): Promise<void> {
+    await this.backend.updateSchema();
   }
 
   /**
-   * Build worker object. Note that this method should only be used to implement custom workers.
+   * Reset job queue.
    */
-  worker(options?: WorkerOptions): MinionWorker {
-    return new Worker(this, options);
+  async reset(options: ResetOptions): Promise<void> {
+    await this.backend.reset(options);
   }
 
   /**
-   * Return iterator object to safely iterate through worker information.
+   * Stop using the queue.
    */
-  workers(options: ListWorkersOptions = {}): BackendIterator<WorkerInfo> {
-    return new BackendIterator<WorkerInfo>(this, 'workers', options);
+  async end(): Promise<void> {
+    await this.backend.end();
   }
 
-  async _result(
+
+  protected async waitForResult(
     id: MinionJobId,
     interval: number,
     signal: AbortSignal | null,
     resolve: (value?: any) => void,
     reject: (reason?: any) => void
   ) {
-    const rerun = () => this._result(id, interval, signal, resolve, reject);
+    const rerun = () => this.waitForResult(id, interval, signal, resolve, reject);
     try {
-      const info = (await this.backend.listJobs(0, 1, {ids: [id]})).jobs[0];
+      const info = (await this.backend.getJobInfos(0, 1, {ids: [id]})).jobs[0];
       if (info === undefined) {
         resolve(null);
       } else if (info.state === 'finished') {

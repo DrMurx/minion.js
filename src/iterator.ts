@@ -12,7 +12,7 @@ export class BackendIterator<T> {
 
   private cache: T[] = [];
   private count = 0;
-  private _total = 0;
+  private total = 0;
 
   /**
    *
@@ -38,27 +38,30 @@ export class BackendIterator<T> {
    */
   async next(): Promise<T | undefined> {
     const cache = this.cache;
-    if (cache.length < 1) await this._fetch();
+    if (cache.length < 1) await this.loadNext();
     return cache.shift();
   }
 
   /**
    * Total number of results.
    */
-  async total(): Promise<number> {
-    if (this._total === 0) await this._fetch();
-    return this._total;
+  async numRows(): Promise<number> {
+    if (this.total === 0) await this.loadNext();
+    return this.total;
   }
 
-  private async _fetch(): Promise<void> {
+  private async loadNext(): Promise<void> {
     const name = this.name;
-    const methodName = name === 'workers' ? 'listWorkers' : 'listJobs';
-    const results = (await this.minion.backend[methodName](0, this.fetch, this.options)) as any;
+    const results: any = await (
+      name === 'workers' ?
+      this.minion.backend.getWorkers(0, this.fetch, this.options) :
+      this.minion.backend.getJobInfos(0, this.fetch, this.options)
+    );
     const batch = results[name];
 
     const len = batch.length;
     if (len > 0) {
-      this._total = results.total + this.count;
+      this.total = results.total + this.count;
       this.count += len;
       this.cache.push(...batch);
       this.options.before = batch[batch.length - 1].id;

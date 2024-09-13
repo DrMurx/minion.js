@@ -6,7 +6,7 @@ const skip = process.env.TEST_ONLINE === undefined ? {skip: 'set TEST_ONLINE to 
 t.test('Results', skip, async t => {
   // Isolate tests
   const pg = new Pg(process.env.TEST_ONLINE, {searchPath: ['mojo_results_test']});
-  const db = await pg.db();
+  const db = await pg.getConnection();
   await db.query('DROP SCHEMA IF EXISTS mojo_results_test CASCADE');
   await db.query('CREATE SCHEMA mojo_results_test');
 
@@ -20,9 +20,9 @@ t.test('Results', skip, async t => {
   await db.query('INSERT INTO results_test (name) VALUES ($1)', 'bar');
 
   await t.test('Tables', async t => {
-    t.same((await db.tables()).includes('mojo_results_test.results_test'), true);
-    t.same((await db.tables()).includes('information_schema.tables'), false);
-    t.same((await db.tables()).includes('pg_catalog.pg_tables'), false);
+    t.same((await db.getTables()).includes('mojo_results_test.results_test'), true);
+    t.same((await db.getTables()).includes('information_schema.tables'), false);
+    t.same((await db.getTables()).includes('pg_catalog.pg_tables'), false);
   });
 
   await t.test('Result methods', async t => {
@@ -43,7 +43,7 @@ t.test('Results', skip, async t => {
   await t.test('Shared connection cache', async () => {
     const pg2 = new Pg(pg);
 
-    const db = await pg2.db();
+    const db = await pg2.getConnection();
     t.same((await db.query('SELECT * FROM results_test')).first, {id: 1, name: 'foo'});
     t.same((await db.query('SELECT * FROM results_test')).last, {id: 2, name: 'bar'});
     await db.release();
@@ -56,7 +56,7 @@ t.test('Results', skip, async t => {
   });
 
   await t.test('Transactions', async t => {
-    const tx = await db.begin();
+    const tx = await db.startTransaction();
     try {
       await db.query("INSERT INTO results_test (name) VALUES ('tx1')");
       await db.query("INSERT INTO results_test (name) VALUES ('tx1')");
@@ -69,7 +69,7 @@ t.test('Results', skip, async t => {
       {id: 4, name: 'tx1'}
     ]);
 
-    const tx2 = await db.begin();
+    const tx2 = await db.startTransaction();
     try {
       await db.query("INSERT INTO results_test (name) VALUES ('tx1')");
       await db.query("INSERT INTO results_test (name) VALUES ('tx1')");
@@ -82,7 +82,7 @@ t.test('Results', skip, async t => {
     ]);
 
     let result: any;
-    const tx3 = await db.begin();
+    const tx3 = await db.startTransaction();
     try {
       await db.query("INSERT INTO results_test (name) VALUES ('tx1')");
       await db.query("INSERT INTO results_test (name) VALUES ('tx1')");

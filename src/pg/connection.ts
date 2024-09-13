@@ -15,10 +15,6 @@ declare interface ConnectionEventEmitter {
   emit: <T extends keyof ConnectionEvents>(event: T, ...args: Parameters<ConnectionEvents[T]>) => boolean;
 }
 
-interface ConnectionOptions {
-  verboseErrors: boolean;
-}
-
 interface PidResult {
   pg_backend_pid: number;
 }
@@ -28,26 +24,18 @@ interface TablesResult {
   tablename: string;
 }
 
-const DEBUG = process.env.MOJO_PG_DEBUG === '1';
-
 /**
  * PostgreSQL database connection class.
  */
 export class Connection extends EventEmitter implements ConnectionEventEmitter {
-  /**
-   * Show SQL context for errors.
-   */
-  private verboseErrors = true;
-
   private channels: string[] = [];
 
   /**
    * @param client PostgreSQL client.
    * @param options
    */
-  constructor(public client: PoolClient, options: ConnectionOptions) {
+  constructor(public client: PoolClient) {
     super();
-    this.verboseErrors = options.verboseErrors;
     client.on('end', () => this.emit('end'));
     client.on('notification', message => this.emit('notification', message));
   }
@@ -100,15 +88,13 @@ export class Connection extends EventEmitter implements ConnectionEventEmitter {
    */
   async query<T = any>(query: string | QueryConfig, ...values: any[]): Promise<Results<T>> {
     if (typeof query === 'string') query = {text: query, values};
-    if (DEBUG === true) process.stderr.write(`\n${query.text}\n`);
 
     try {
       const result = await this.client.query(query);
       const rows = result.rows;
       return rows === undefined ? new Results(result.rowCount) : new Results(result.rowCount, ...rows);
     } catch (error) {
-      if (this.verboseErrors === true) throwWithContext(error, query);
-      throw error;
+      throwWithContext(error, query);
     }
   }
 

@@ -277,7 +277,7 @@ t.test('Database', skip, async t => {
       await pg.end();
     });
 
-    await t.test('Exception with context (with database object)', async t => {
+    await t.test('Exception (with connection object)', async t => {
       const pg = new Pg(process.env.TEST_ONLINE);
       const conn = await pg.getConnection();
 
@@ -300,32 +300,6 @@ t.test('Database', skip, async t => {
         result = error;
       }
       t.match(result.message, /syntax error at or near "one".+Line 1: SELECT 1 A one/s);
-
-      await conn.release();
-      await pg.end();
-    });
-
-    await t.test('Exception without context', async t => {
-      const pg = new Pg(process.env.TEST_ONLINE, {verboseErrors: false});
-      const conn = await pg.getConnection();
-
-      let result: any;
-      try {
-        await pg.query('SELECT 1 A one');
-      } catch (error) {
-        result = error;
-      }
-      t.match(result.message, /syntax error at or near "one"/s);
-      t.notMatch(result.message, /SELECT 1 A one/s);
-
-      result = undefined;
-      try {
-        await conn.query('SELECT 2 A two');
-      } catch (error) {
-        result = error;
-      }
-      t.match(result.message, /syntax error at or near "two"/s);
-      t.notMatch(result.message, /SELECT 2 A two/s);
 
       await conn.release();
       await pg.end();

@@ -20,8 +20,6 @@ interface VersionResult {
 
 type Steps = Step[];
 
-const DEBUG = process.env.MOJO_MIGRATIONS_DEBUG === '1';
-
 /**
  * PostgreSQL migrations class.
  */
@@ -137,7 +135,6 @@ export class Migrations {
         if (active > latest) throw new Error(`Active version ${active} is greater than the latest version ${latest}`);
 
         const sql = this.sqlFor(active, target);
-        if (DEBUG) process.stderr.write(`-- Migrate (${active} -> ${target})\n${sql}\n`);
         const name = pg.escapeLiteral(this.name);
         const migration = `
           ${sql}

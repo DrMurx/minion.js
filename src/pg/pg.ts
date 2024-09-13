@@ -5,10 +5,7 @@ import {parseConfig} from './config.js';
 import {throwWithContext} from './util.js';
 import pg from 'pg';
 
-const DEBUG = process.env.MOJO_PG_DEBUG === '1';
-
 export interface PgOptions extends pg.PoolConfig {
-  verboseErrors?: boolean;
   searchPath?: string[];
 }
 
@@ -28,11 +25,6 @@ export class Pg extends EventEmitter {
    */
   private searchPath: string[] = [];
 
-  /**
-   * Show SQL context for errors.
-   */
-  private verboseErrors = true;
-
   private doNotEnd = false;
 
   constructor(config: PgConfig | undefined, options: PgOptions = {}) {
@@ -46,7 +38,6 @@ export class Pg extends EventEmitter {
     }
 
     if (options.searchPath !== undefined) this.searchPath = options.searchPath;
-    if (options.verboseErrors !== undefined) this.verboseErrors = options.verboseErrors;
 
     // Convert BIGINT to number (even if not all 64bit are usable)
     pg.types.setTypeParser(20, parseInt);
@@ -75,7 +66,7 @@ export class Pg extends EventEmitter {
    */
   async getConnection(): Promise<Connection> {
     const client = await this.pool.connect();
-    return new Connection(client, {verboseErrors: this.verboseErrors});
+    return new Connection(client);
   }
 
   /**
@@ -92,15 +83,13 @@ export class Pg extends EventEmitter {
    */
   async query<T = any>(query: string | pg.QueryConfig, ...values: any[]): Promise<Results<T>> {
     if (typeof query === 'string') query = {text: query, values};
-    if (DEBUG === true) process.stderr.write(`\n${query.text}\n`);
 
     try {
       const result = await this.pool.query(query);
       const rows = result.rows;
       return rows === undefined ? new Results(result.rowCount) : new Results(result.rowCount, ...rows);
     } catch (error) {
-      if (this.verboseErrors === true) throwWithContext(error, query);
-      throw error;
+      throwWithContext(error, query);
     }
   }
 

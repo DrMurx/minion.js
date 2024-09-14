@@ -34,19 +34,6 @@ export class Connection extends EventEmitter implements ConnectionEventEmitter {
     client.on('notification', message => this.emit('notification', message));
   }
 
-  async *[Symbol.asyncIterator](): AsyncIterableIterator<Notification> {
-    const ac = new AbortController();
-    this.once('end', () => ac.abort());
-
-    try {
-      for await (const [message] of on(this, 'notification', {signal: ac.signal})) {
-        yield message;
-      }
-    } catch (error) {
-      if (!(error instanceof Error) || error.name !== 'AbortError') throw error;
-    }
-  }
-
   async [Symbol.asyncDispose]() {
     await this.release();
   }
@@ -62,10 +49,9 @@ export class Connection extends EventEmitter implements ConnectionEventEmitter {
    * Release database connection back into the pool.
    */
   async release(): Promise<void> {
-    const client = this.client;
-    ['end', 'notification'].forEach(event => client.removeAllListeners(event));
+    this.client.removeAllListeners('end').removeAllListeners('notification');
     if (this.channels.length > 0) await this.unlisten();
-    client.release();
+    this.client.release();
   }
 
   /**
@@ -98,27 +84,16 @@ export class Connection extends EventEmitter implements ConnectionEventEmitter {
    * Send notification.
    */
   async notify(channel: string, payload?: string): Promise<void> {
-    const client = this.client;
-    const escapedChannel = client.escapeIdentifier(channel);
-
-    // No payload
-    if (payload === undefined) {
-      await this.client.query(`NOTIFY ${escapedChannel}`);
-    }
-
-    // Payload
-    else {
-      const escapedPayload = client.escapeLiteral(payload);
-      await this.client.query(`NOTIFY ${escapedChannel}, ${escapedPayload}`);
-    }
+    const escapedChannel = this.client.escapeIdentifier(channel);
+    const escapedPayload = payload !== undefined ? `, ${this.client.escapeLiteral(payload)}` : '';
+    await this.client.query(`NOTIFY ${escapedChannel}${escapedPayload}`);
   }
 
   /**
    * Listen for notifications.
    */
   async listen(channel: string): Promise<void> {
-    const client = this.client;
-    const escapedChannel = client.escapeIdentifier(channel);
+    const escapedChannel = this.client.escapeIdentifier(channel);
     await this.client.query(`LISTEN ${escapedChannel}`);
     this.channels.push(channel);
   }
@@ -127,19 +102,10 @@ export class Connection extends EventEmitter implements ConnectionEventEmitter {
    * Stop listenting for notifications.
    */
   async unlisten(channel?: string): Promise<void> {
+    const allChannels = channel === undefined;
     const client = this.client;
-
-    // All channels
-    if (channel === undefined) {
-      await this.client.query('UNLISTEN *');
-      this.channels = [];
-    }
-
-    // One channel
-    else {
-      const escapedChannel = client.escapeIdentifier(channel);
-      await this.client.query(`UNLISTEN ${escapedChannel}`);
-      this.channels = this.channels.filter(c => c !== channel);
-    }
+    const escapedChannel = allChannels ? '*' : client.escapeIdentifier(channel);
+    await this.client.query(`UNLISTEN ${escapedChannel}`);
+    this.channels = allChannels ? [] : this.channels.filter(c => c !== channel);
   }
 }

@@ -57,6 +57,60 @@ t.test('Connection', skip, async t => {
     await pg.end();
   });
 
+  await t.test('Exception (ad-hoc query)', async t => {
+    const pg = new Pg(pgConfig);
+
+    let result: any;
+    try {
+      await pg.query(`
+        SELECT 1 AS one,
+               2 A two,
+               3 AS three
+      `);
+    } catch (error) {
+      result = error;
+    }
+    t.match(result.message, /syntax error at or near "two".+Line 3: +2 A two,/s);
+
+    result = undefined;
+    try {
+      await pg.query('SELECT 1 A one');
+    } catch (error) {
+      result = error;
+    }
+    t.match(result.message, /syntax error at or near "one".+Line 1: SELECT 1 A one/s);
+
+    await pg.end();
+  });
+
+  await t.test('Exception (with connection object)', async t => {
+    const pg = new Pg(pgConfig);
+    const conn = await pg.getConnection();
+
+    let result: any;
+    try {
+      await conn.query(`
+        SELECT 1 AS one,
+               2 A two,
+               3 AS three
+      `);
+    } catch (error) {
+      result = error;
+    }
+    t.match(result.message, /syntax error at or near "two".+Line 3: +2 A two,/s);
+
+    result = undefined;
+    try {
+      await conn.query('SELECT 1 A one');
+    } catch (error) {
+      result = error;
+    }
+    t.match(result.message, /syntax error at or near "one".+Line 1: SELECT 1 A one/s);
+
+    await conn.release();
+    await pg.end();
+  });
+
   await t.test('Custom search path', async t => {
     const pg = new Pg(`${pgConfig}?currentSchema="$user",foo,bar`);
     const results = await pg.query('SHOW search_path');
@@ -184,94 +238,4 @@ t.test('Connection', skip, async t => {
     await pg.end();
   });
 
-  await t.test('Notifications (iterator)', async t => {
-    const pg = new Pg(pgConfig);
-
-    const conn = await pg.getConnection();
-    await conn.listen('dbtest2');
-    await conn.listen('dbtest3');
-
-    const messages = [];
-    process.nextTick(() => conn.notify('dbtest2', 'works'));
-    for await (const message of conn) {
-      messages.push(message);
-      break;
-    }
-    await conn.unlisten('dbtest2');
-    process.nextTick(async () => {
-      await conn.notify('dbtest3', 'maybe');
-      await conn.notify('dbtest2', 'failed');
-      await conn.notify('dbtest3', 'too');
-    });
-    for await (const message of conn) {
-      messages.push(message);
-      if (messages.length > 2) break;
-    }
-    t.same(
-      messages.map(message => [message.channel, message.payload]),
-      [
-        ['dbtest2', 'works'],
-        ['dbtest3', 'maybe'],
-        ['dbtest3', 'too']
-      ]
-    );
-
-    await t.test('Exception with context (ad-hoc)', async t => {
-      const pg = new Pg(pgConfig);
-
-      let result: any;
-      try {
-        await pg.query(`
-          SELECT 1 AS one,
-                 2 A two,
-                 3 AS three
-        `);
-      } catch (error) {
-        result = error;
-      }
-      t.match(result.message, /syntax error at or near "two".+Line 3: {18}2 A two,/s);
-
-      result = undefined;
-      try {
-        await pg.query('SELECT 1 A one');
-      } catch (error) {
-        result = error;
-      }
-      t.match(result.message, /syntax error at or near "one".+Line 1: SELECT 1 A one/s);
-
-      await pg.end();
-    });
-
-    await t.test('Exception (with connection object)', async t => {
-      const pg = new Pg(pgConfig);
-      const conn = await pg.getConnection();
-
-      let result: any;
-      try {
-        await conn.query(`
-          SELECT 1 AS one,
-                 2 A two,
-                 3 AS three
-        `);
-      } catch (error) {
-        result = error;
-      }
-      t.match(result.message, /syntax error at or near "two".+Line 3: {18}2 A two,/s);
-
-      result = undefined;
-      try {
-        await conn.query('SELECT 1 A one');
-      } catch (error) {
-        result = error;
-      }
-      t.match(result.message, /syntax error at or near "one".+Line 1: SELECT 1 A one/s);
-
-      await conn.release();
-      await pg.end();
-    });
-
-    await conn.release();
-
-    await pg.end();
-  });
 });

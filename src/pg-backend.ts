@@ -138,17 +138,17 @@ export class PgBackend implements MinionBackend {
     const job = await this.tryGetNextJob(id, options);
     if (job !== null) return job;
 
-    const db = await this.pg.getConnection();
+    const conn = await this.pg.getConnection();
     try {
-      await db.listen('minion.job');
+      await conn.listen('minion.job');
       let timer;
       await Promise.race([
-        new Promise(resolve => db.on('notification', resolve)),
+        new Promise(resolve => conn.on('notification', resolve)),
         new Promise(resolve => (timer = setTimeout(resolve, wait)))
       ]);
       clearTimeout(timer);
     } finally {
-      await db.release();
+      await conn.release();
     }
 
     return await this.tryGetNextJob(id, options);

@@ -1,4 +1,6 @@
-import type {Minion} from './minion.js';
+import os from 'node:os';
+import { Migrations } from './pg/migrations.js';
+import { Pg } from './pg/pg.js';
 import type {
   DailyHistory,
   DequeueOptions,
@@ -10,23 +12,22 @@ import type {
   ListLocksOptions,
   ListWorkersOptions,
   LockInfo,
-  LockOptions,
   LockList,
+  LockOptions,
   MinionArgs,
+  MinionBackend,
+  MinionBackoffStrategy,
   MinionHistory,
   MinionJobId,
   MinionStats,
   MinionWorkerId,
   RegisterWorkerOptions,
+  RepairOptions,
   ResetOptions,
   RetryOptions,
   WorkerInfo,
-  WorkerList,
-  MinionBackend
+  WorkerList
 } from './types.js';
-import os from 'node:os';
-import { Pg } from './pg/pg.js';
-import { Migrations } from './pg/migrations.js';
 
 interface DequeueResult {
   id: MinionJobId;
@@ -94,10 +95,9 @@ export class PgBackend implements MinionBackend {
   private hostname = os.hostname();
 
   /**
-   * @param minion Minion instance this backend belongs to.
    * @param database
    */
-  constructor(private minion: Minion, database: string | Pg) {
+  constructor(database: string | Pg, private calcBackoff: MinionBackoffStrategy) {
     const isExternalPg = this.isExternalPg = database instanceof Pg;
     this.pg = isExternalPg ? database : new Pg(database);
   }
@@ -134,8 +134,8 @@ export class PgBackend implements MinionBackend {
    * Wait a given amount of time in milliseconds for a job, dequeue it and transition from `inactive` to `active`
    * state, or return `null` if queues were empty.
    */
-  async getNextJob(id: MinionWorkerId, wait: number, options: DequeueOptions): Promise<DequeuedJob | null> {
-    const job = await this.tryGetNextJob(id, options);
+  async getNextJob(id: MinionWorkerId, tasks: string[], wait: number, options: DequeueOptions): Promise<DequeuedJob | null> {
+    const job = await this.tryGetNextJob(id, tasks, options);
     if (job !== null) return job;
 
     const conn = await this.pg.getConnection();
@@ -151,7 +151,7 @@ export class PgBackend implements MinionBackend {
       await conn.release();
     }
 
-    return await this.tryGetNextJob(id, options);
+    return await this.tryGetNextJob(id, tasks, options);
   }
 
   /**
@@ -411,17 +411,17 @@ export class PgBackend implements MinionBackend {
   /**
    * Repair worker registry and job queue if necessary.
    */
-  async repair(): Promise<void> {
+  async repair(options: RepairOptions): Promise<void> {
     // Workers without heartbeat
     await this.pg.query(`
       DELETE FROM minion_workers WHERE notified < NOW() - INTERVAL '1 millisecond' * $1
-    `, this.minion.missingAfter);
+    `, options.missingAfter);
 
     // Old jobs
     await this.pg.query(`
       DELETE FROM minion_jobs
       WHERE state = 'finished' AND finished <= NOW() - INTERVAL '1 millisecond' * $1
-    `, this.minion.removeAfter);
+    `, options.removeAfter);
 
     // Expired jobs
     await this.pg.query("DELETE FROM minion_jobs WHERE state = 'inactive' AND expires <= NOW()");
@@ -440,7 +440,7 @@ export class PgBackend implements MinionBackend {
     await this.pg.query(`
       UPDATE minion_jobs SET state = 'failed', result = '"Job appears stuck in queue"'
           WHERE state = 'inactive' AND delayed + $1 * INTERVAL '1 millisecond' < NOW()
-    `, this.minion.stuckAfter);
+    `, options.stuckAfter);
   }
 
   /**
@@ -471,11 +471,10 @@ export class PgBackend implements MinionBackend {
   }
 
 
-  protected async tryGetNextJob(id: MinionWorkerId, options: DequeueOptions): Promise<DequeuedJob | null> {
+  protected async tryGetNextJob(id: MinionWorkerId, tasks: string[], options: DequeueOptions): Promise<DequeuedJob | null> {
     const jobId = options.id;
     const minPriority = options.minPriority;
     const queues = options.queues ?? ['default'];
-    const tasks = Object.keys(this.minion.tasks);
 
     const results = await this.pg.query<DequeueResult>(`
       UPDATE minion_jobs SET started = NOW(), state = 'active', worker = ${id}
@@ -511,7 +510,7 @@ export class PgBackend implements MinionBackend {
 
   protected async autoRetryJob(id: number, retries: number, attempts: number): Promise<boolean> {
     if (attempts <= 1) return true;
-    const delay = this.minion.calcBackoff(retries);
+    const delay = this.calcBackoff(retries);
     return this.retryJob(id, retries, {attempts: attempts > 1 ? attempts - 1 : 1, delay});
   }
 }

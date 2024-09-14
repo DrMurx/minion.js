@@ -66,7 +66,7 @@ export class Worker {
     const id = this._id;
     if (id === undefined) return null;
 
-    const job = await this.minion.backend.getNextJob(id, wait, options);
+    const job = await this.minion.backend.getNextJob(id, Object.keys(this.minion.tasks), wait, options);
     return job === null ? null : new Job(this.minion, job.id, job.args, job.retries, job.task);
   }
 

@@ -3,6 +3,7 @@ import {Minion} from './index.js';
 import {Pg} from './pg/pg.js';
 import t from 'tap';
 import { PgBackend } from './pg-backend.js';
+import { defaultBackoffStrategy } from './minion.js';
 
 const skip = process.env.TEST_ONLINE === undefined ? {skip: 'set TEST_ONLINE to enable this test'} : {};
 const pgConfig = process.env.TEST_ONLINE!;
@@ -125,7 +126,7 @@ t.test('PostgreSQL backend', skip, async t => {
     t.equal(job.id, id);
     t.equal((await job.getInfo())!.state, 'active');
     const workerId = worker2.id;
-    const missingAfter = minion.missingAfter + 1;
+    const missingAfter = minion.repairOptions.missingAfter + 1;
     t.ok(await worker2.getInfo());
     await pg.query("UPDATE minion_workers SET notified = NOW() - INTERVAL '1 millisecond' * $1 WHERE id = $2", missingAfter, workerId);
 
@@ -162,7 +163,7 @@ t.test('PostgreSQL backend', skip, async t => {
   });
 
   await t.test('Repair old jobs', async t => {
-    t.equal(minion.removeAfter, 172800000);
+    t.equal(minion.repairOptions.removeAfter, 172800000);
 
     const worker = await minion.createWorker().register();
     const id = await minion.addJob('test');
@@ -176,11 +177,11 @@ t.test('PostgreSQL backend', skip, async t => {
     const finished = (
       await pg.query('SELECT EXTRACT(EPOCH FROM finished) AS finished FROM minion_jobs WHERE id = $1', id2)
     ).first.finished;
-    await pg.query('UPDATE minion_jobs SET finished = TO_TIMESTAMP($1) WHERE id = $2', finished - (minion.removeAfter + 1), id2);
+    await pg.query('UPDATE minion_jobs SET finished = TO_TIMESTAMP($1) WHERE id = $2', finished - (minion.repairOptions.removeAfter + 1), id2);
     const finished2 = (
       await pg.query('SELECT EXTRACT(EPOCH FROM finished) AS finished FROM minion_jobs WHERE id = $1', id3)
     ).first.finished;
-    await pg.query('UPDATE minion_jobs SET finished = TO_TIMESTAMP($1) WHERE id = $2', finished2 - (minion.removeAfter + 1), id3);
+    await pg.query('UPDATE minion_jobs SET finished = TO_TIMESTAMP($1) WHERE id = $2', finished2 - (minion.repairOptions.removeAfter + 1), id3);
 
     await worker.unregister();
     await minion.repair();
@@ -190,7 +191,7 @@ t.test('PostgreSQL backend', skip, async t => {
   });
 
   await t.test('Repair stuck jobs', async t => {
-    t.equal(minion.stuckAfter, 172800000);
+    t.equal(minion.repairOptions.stuckAfter, 172800000);
 
     const worker = await minion.createWorker().register();
     const id = await minion.addJob('test');
@@ -198,7 +199,7 @@ t.test('PostgreSQL backend', skip, async t => {
     const id3 = await minion.addJob('test');
     const id4 = await minion.addJob('test');
 
-    const stuck = minion.stuckAfter + 1;
+    const stuck = minion.repairOptions.stuckAfter + 1;
     await pg.query("UPDATE minion_jobs SET delayed = NOW() - $1 * INTERVAL '1 second' WHERE id = $2", stuck, id);
     await pg.query("UPDATE minion_jobs SET delayed = NOW() - $1 * INTERVAL '1 second' WHERE id = $2", stuck, id2);
     await pg.query("UPDATE minion_jobs SET delayed = NOW() - $1 * INTERVAL '1 second' WHERE id = $2", stuck, id3);
@@ -853,13 +854,13 @@ t.test('PostgreSQL backend', skip, async t => {
   });
 
   await t.test('Multiple attempts while processing', async t => {
-    t.equal(minion.calcBackoff(0), 15);
-    t.equal(minion.calcBackoff(1), 16);
-    t.equal(minion.calcBackoff(2), 31);
-    t.equal(minion.calcBackoff(3), 96);
-    t.equal(minion.calcBackoff(4), 271);
-    t.equal(minion.calcBackoff(5), 640);
-    t.equal(minion.calcBackoff(25), 390640);
+    t.equal(defaultBackoffStrategy(0), 15);
+    t.equal(defaultBackoffStrategy(1), 16);
+    t.equal(defaultBackoffStrategy(2), 31);
+    t.equal(defaultBackoffStrategy(3), 96);
+    t.equal(defaultBackoffStrategy(4), 271);
+    t.equal(defaultBackoffStrategy(5), 640);
+    t.equal(defaultBackoffStrategy(25), 390640);
 
     const id = await minion.addJob('fail', [], {attempts: 3});
     const worker = await minion.createWorker().register();
@@ -980,8 +981,7 @@ t.test('PostgreSQL backend', skip, async t => {
   });
 
   await t.test('Job dependencies', async t => {
-    minion.removeAfter = 0;
-    await minion.repair();
+    await minion.repair({removeAfter: 0});
     t.equal((await minion.stats()).finished_jobs, 0);
     const worker = await minion.createWorker().register();
     const id = await minion.addJob('test');
@@ -1009,14 +1009,13 @@ t.test('PostgreSQL backend', skip, async t => {
     t.same((await job4.getInfo())!.children, []);
     t.same((await job4.getInfo())!.parents, [id, id2]);
     t.equal((await minion.stats()).finished_jobs, 2);
-    await minion.repair();
+    await minion.repair({removeAfter: 0});
     t.equal((await minion.stats()).finished_jobs, 0);
     t.ok(await job4.markFinished());
     t.equal((await minion.stats()).finished_jobs, 1);
-    await minion.repair();
+    await minion.repair({removeAfter: 0});
     t.equal((await minion.stats()).finished_jobs, 0);
 
-    minion.removeAfter = 172800000;
     const id4 = await minion.addJob('test', [], {parents: [-1]});
     const job5 = (await worker.dequeue())!;
     t.equal(job5.id, id4);

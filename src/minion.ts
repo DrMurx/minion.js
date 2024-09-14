@@ -1,12 +1,15 @@
+import { BackendIterator } from './iterator.js';
+import { Job } from './job.js';
 import type {
-  EnqueueOptions,
   DequeueOptions,
+  EnqueueOptions,
   JobInfo,
   ListJobsOptions,
   ListWorkersOptions,
   LockOptions,
   MinionArgs,
   MinionBackend,
+  MinionBackoffStrategy,
   MinionHistory,
   MinionJob,
   MinionJobId,
@@ -14,15 +17,13 @@ import type {
   MinionStats,
   MinionTask,
   MinionWorker,
+  RepairOptions,
   ResetOptions,
+  ResultOptions,
   WorkerInfo,
-  WorkerOptions,
-  ResultOptions
+  WorkerOptions
 } from './types.js';
-import {Job} from './job.js';
-import {PgBackend} from './pg-backend.js';
-import {Worker} from './worker.js';
-import {BackendIterator} from './iterator.js';
+import { Worker } from './worker.js';
 
 export class AbortError extends Error {
   constructor(message?: string, options?: ErrorOptions) {
@@ -30,6 +31,13 @@ export class AbortError extends Error {
     this.name = 'AbortError';
   }
 }
+
+/**
+ * The Minion default backoff strategy
+ * @param retries
+ * @returns
+ */
+export const defaultBackoffStrategy: MinionBackoffStrategy = (retries) => retries ** 4 + 15;
 
 /**
  * Minion job queue class.
@@ -41,35 +49,20 @@ export class Minion {
   public backend: MinionBackend;
 
   /**
-   * Amount of time in milliseconds after which workers without a heartbeat will be considered missing and removed from
-   * the registry by `minion.repair()`, defaults to `1800000` (30 minutes).
-   */
-  public missingAfter = 1800000;
-
-  /**
-   * Amount of time in milliseconds after which jobs that have reached the state `finished` and have no unresolved
-   * dependencies will be removed automatically by `minion.repair()`, defaults to `172800000` (2 days). It is not
-   * recommended to set this value below 2 days.
-   */
-  public removeAfter = 172800000;
-
-  /**
-   * Amount of time in milliseconds after which jobs that have not been processed will be considered stuck by
-   * `minion.repair()` and transition to the `failed` state, defaults to `172800000` (2 days).
-   */
-  public stuckAfter = 172800000;
-
-  /**
    * Registered tasks.
    */
   public tasks: Record<string, MinionTask> = {};
 
-  constructor(config: any, options: MinionOptions) {
-    this.backend = new options.backendClass(this, config);
+  private _repairOptions: RepairOptions;
 
-    if (options.missingAfter !== undefined) this.missingAfter = options.missingAfter;
-    if (options.removeAfter !== undefined) this.removeAfter = options.removeAfter;
-    if (options.stuckAfter !== undefined) this.stuckAfter = options.stuckAfter;
+  constructor(config: any, options: MinionOptions) {
+    this.backend = new options.backendClass(config, options.backoffStrategy ?? defaultBackoffStrategy);
+
+    this._repairOptions = {
+      missingAfter: options.missingAfter ?? 1800000,
+      removeAfter: options.removeAfter ?? 172800000,
+      stuckAfter: options.stuckAfter ?? 172800000,
+    };
   }
 
   /**
@@ -123,14 +116,6 @@ export class Minion {
    */
   async getJobHistory(): Promise<MinionHistory> {
     return await this.backend.getJobHistory();
-  }
-
-  /**
-   * Used to calculate the delay for automatically retried jobs, defaults to `(retries ** 4) + 15` (15, 16, 31, 96,
-   * 271, 640...), which means that roughly `25` attempts can be made in `21` days.
-   */
-  calcBackoff(retries: number): number {
-    return retries ** 4 + 15;
   }
 
 
@@ -236,11 +221,15 @@ export class Minion {
     return await this.backend.stats();
   }
 
+  get repairOptions(): Readonly<RepairOptions> {
+    return Object.freeze({...this._repairOptions});
+  }
+
   /**
    * Repair worker registry and job queue if necessary.
    */
-  async repair(): Promise<void> {
-    await this.backend.repair();
+  async repair(repairOptionsOverride: Partial<RepairOptions> = {}): Promise<void> {
+    await this.backend.repair({...this._repairOptions, ...repairOptionsOverride});
   }
 
   /**

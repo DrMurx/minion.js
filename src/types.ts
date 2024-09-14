@@ -1,18 +1,40 @@
 import type {Job} from './job.js';
 import type {Worker} from './worker.js';
 
-export interface MinionOptions {
-  backendClass: any;
-  missingAfter?: number;
-  removeAfter?: number;
-  stuckAfter?: number;
+export interface MinionOptions extends Partial<RepairOptions> {
+  backendClass: MinionBackendConstructor;
+  backoffStrategy?: MinionBackoffStrategy;
 }
+
+export interface RepairOptions {
+  /**
+   * Amount of time in milliseconds after which workers without a heartbeat will be considered missing and removed from
+   * the registry by `minion.repair()`, defaults to `1800000` (30 minutes).
+   */
+  missingAfter: number;
+
+  /**
+   * Amount of time in milliseconds after which jobs that have reached the state `finished` and have no unresolved
+   * dependencies will be removed automatically by `minion.repair()`, defaults to `172800000` (2 days). It is not
+   * recommended to set this value below 2 days.
+   */
+  removeAfter: number;
+
+  /**
+   * Amount of time in milliseconds after which jobs that have not been processed will be considered stuck by
+   * `minion.repair()` and transition to the `failed` state, defaults to `172800000` (2 days).
+   */
+  stuckAfter: number;
+}
+
+export type MinionBackendConstructor = new (config: any, calcBackoff: MinionBackoffStrategy) => MinionBackend;
+export type MinionBackoffStrategy = (retries: number) => number;
 
 export interface MinionBackend {
   name: string;
 
   addJob: (task: string, args?: MinionArgs, options?: EnqueueOptions) => Promise<MinionJobId>;
-  getNextJob: (id: MinionWorkerId, wait: number, options: DequeueOptions) => Promise<DequeuedJob | null>;
+  getNextJob: (id: MinionWorkerId, tasks: string[], wait: number, options: DequeueOptions) => Promise<DequeuedJob | null>;
   markJobFailed: (id: MinionJobId, retries: number, result?: any) => Promise<boolean>;
   markJobFinished: (id: MinionJobId, retries: number, result?: any) => Promise<boolean>;
   retryJob: (id: MinionJobId, retries: number, options: RetryOptions) => Promise<boolean>;
@@ -33,7 +55,7 @@ export interface MinionBackend {
   getLocks: (offset: number, limit: number, options?: ListLocksOptions) => Promise<LockList>;
 
   stats: () => Promise<any>;
-  repair: () => Promise<void>;
+  repair: (options: RepairOptions) => Promise<void>;
   updateSchema: () => Promise<void>;
   reset: (options: ResetOptions) => Promise<void>;
 

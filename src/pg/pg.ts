@@ -58,12 +58,4 @@ export class Pg extends EventEmitter {
       throwWithContext(error, query);
     }
   }
-
-  /**
-   * Get all non-system tables.
-   */
-  async getTables(): Promise<string[]> {
-    const conn = await this.getConnection();
-    return await conn.getTables().finally(() => conn.release());
-  }
 }

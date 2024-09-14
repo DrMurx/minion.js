@@ -18,11 +18,6 @@ interface PidResult {
   pg_backend_pid: number;
 }
 
-interface TablesResult {
-  schemaname: string;
-  tablename: string;
-}
-
 /**
  * PostgreSQL database connection class.
  */
@@ -90,16 +85,6 @@ export class Connection extends EventEmitter implements ConnectionEventEmitter {
     } catch (error) {
       throwWithContext(error, query);
     }
-  }
-
-  /**
-   * Get all non-system tables.
-   */
-  async getTables(): Promise<string[]> {
-    const results = await this.query<TablesResult>(`
-      SELECT schemaname, tablename FROM pg_catalog.pg_tables
-      WHERE schemaname != 'pg_catalog' AND schemaname != 'information_schema'`);
-    return results.map(row => `${row.schemaname}.${row.tablename}`);
   }
 
   /**

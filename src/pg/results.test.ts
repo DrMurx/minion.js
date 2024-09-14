@@ -20,12 +20,6 @@ t.test('Results', skip, async t => {
   await conn.query('INSERT INTO results_test (name) VALUES ($1)', 'foo');
   await conn.query('INSERT INTO results_test (name) VALUES ($1)', 'bar');
 
-  await t.test('Tables', async t => {
-    t.same((await conn.getTables()).includes('mojo_results_test.results_test'), true);
-    t.same((await conn.getTables()).includes('information_schema.tables'), false);
-    t.same((await conn.getTables()).includes('pg_catalog.pg_tables'), false);
-  });
-
   await t.test('Result methods', async t => {
     t.same(await conn.query('SELECT * FROM results_test'), [
       {id: 1, name: 'foo'},

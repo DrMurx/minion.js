@@ -21,16 +21,16 @@ t.test('Migrations', skip, async t => {
   });
 
   await t.test('Create migrations table', async t => {
-    t.same((await pg.getTables()).includes('mojo_migrations_test.mojo_migrations'), false);
+    t.same((await getTables(pg)).includes('mojo_migrations_test.mojo_migrations'), false);
     t.equal(await migrations.currentVersion(), 0);
 
     await migrations.migrateTo();
-    t.same((await pg.getTables()).includes('mojo_migrations_test.mojo_migrations'), false);
+    t.same((await getTables(pg)).includes('mojo_migrations_test.mojo_migrations'), false);
     t.equal(await migrations.currentVersion(), 0);
 
     migrations.loadFromString('-- 1 up\n\n');
     await migrations.migrateTo();
-    t.same((await pg.getTables()).includes('mojo_migrations_test.mojo_migrations'), true);
+    t.same((await getTables(pg)).includes('mojo_migrations_test.mojo_migrations'), true);
     t.equal(await migrations.currentVersion(), 1);
   });
 
@@ -54,8 +54,8 @@ t.test('Migrations', skip, async t => {
     t.equal(migrations.latest, 10);
     t.equal(await migrations.currentVersion(), 0);
     await migrations.migrateTo();
-    t.same((await pg.getTables()).includes('mojo_migrations_test.migration_test_one'), true);
-    t.same((await pg.getTables()).includes('mojo_migrations_test.migration_test_two'), true);
+    t.same((await getTables(pg)).includes('mojo_migrations_test.migration_test_one'), true);
+    t.same((await getTables(pg)).includes('mojo_migrations_test.migration_test_two'), true);
     t.same(await pg.query('SELECT * FROM migration_test_one'), [{foo: 'works ♥'}]);
     t.equal(await migrations.currentVersion(), 10);
 
@@ -152,9 +152,9 @@ t.test('Migrations', skip, async t => {
     const migrations2 = new Migrations(pg2);
     const dir = join(dirname(fileURLToPath(import.meta.url)), 'support', 'migrations', 'tree');
     await migrations2.loadFromDirectory(dir, {name: 'directory tree'});
-    t.same((await pg2.getTables()).includes('mojo_migrations_test.migration_test_three'), false);
+    t.same((await getTables(pg2)).includes('mojo_migrations_test.migration_test_three'), false);
     await migrations2.migrateTo(2);
-    t.same((await pg2.getTables()).includes('mojo_migrations_test.migration_test_three'), true);
+    t.same((await getTables(pg2)).includes('mojo_migrations_test.migration_test_three'), true);
     t.equal(await migrations2.currentVersion(), 2);
     t.same(await pg2.query('SELECT * FROM migration_test_three'), [{baz: 'just'}, {baz: 'works ♥'}]);
 
@@ -184,7 +184,7 @@ t.test('Migrations', skip, async t => {
 
     await migrations2.migrateTo(99);
     t.equal(await migrations2.currentVersion(), 99);
-    t.same((await pg2.getTables()).includes('mojo_migrations_test.migration_test_luft_balloons'), true);
+    t.same((await getTables(pg2)).includes('mojo_migrations_test.migration_test_luft_balloons'), true);
 
     const dir2 = join(dirname(fileURLToPath(import.meta.url)), 'support', 'migrations', 'tree2');
     await migrations2.loadFromDirectory(dir2);
@@ -198,6 +198,23 @@ t.test('Migrations', skip, async t => {
 
   await pg.end();
 });
+
+interface TablesResult {
+  schemaname: string;
+  tablename: string;
+}
+
+async function getTables(pg: Pg): Promise<string[]> {
+  const conn = await pg.getConnection();
+  try {
+    const results = await conn.query<TablesResult>(`
+      SELECT schemaname, tablename FROM pg_catalog.pg_tables
+      WHERE schemaname != 'pg_catalog' AND schemaname != 'information_schema'`);
+    return results.map(row => `${row.schemaname}.${row.tablename}`);
+  } finally {
+    conn.release();
+  }
+}
 
 const simpleMigrations = `
 -- 7 up

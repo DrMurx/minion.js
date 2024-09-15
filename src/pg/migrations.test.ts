@@ -2,18 +2,18 @@ import { dirname, join } from 'path';
 import { PoolClient } from 'pg';
 import t from 'tap';
 import { fileURLToPath } from 'url';
+import { PgBackend } from '../pg-backend.js';
 import { Migrations } from './migrations.js';
-import { Pg } from './pg.js';
 
 const skip = process.env.TEST_ONLINE === undefined ? {skip: 'set TEST_ONLINE to enable this test'} : {};
 const pgConfig = process.env.TEST_ONLINE!;
 
 t.test('Migrations', skip, async t => {
   // Isolate tests
-  const pg = new Pg(`${pgConfig}?currentSchema=mojo_migrations_test`);
-  const conn = await pg.pool.connect();
-  await pg.pool.query('DROP SCHEMA IF EXISTS mojo_migrations_test CASCADE');
-  await pg.pool.query('CREATE SCHEMA mojo_migrations_test');
+  const pool = PgBackend.connect(`${pgConfig}?currentSchema=mojo_migrations_test`);
+  const conn = await pool.connect();
+  await pool.query('DROP SCHEMA IF EXISTS mojo_migrations_test CASCADE');
+  await pool.query('CREATE SCHEMA mojo_migrations_test');
   const migrations = new Migrations(conn);
 
   await t.test('Defaults', async t => {
@@ -79,8 +79,8 @@ t.test('Migrations', skip, async t => {
   });
 
   await t.test('Bad and concurrent migrations', async t => {
-    const pg2 = new Pg(`${pgConfig}?currentSchema=mojo_migrations_test`);
-    const conn2 = await pg2.pool.connect();;
+    const pool2 = PgBackend.connect(`${pgConfig}?currentSchema=mojo_migrations_test`);
+    const conn2 = await pool2.connect();;
     const migrations2 = new Migrations(conn2);
     const file = join(dirname(fileURLToPath(import.meta.url)), 'support', 'migrations', 'test.sql');
     await migrations2.loadFromFile(file, {name: 'migrations_test2'});
@@ -115,7 +115,7 @@ t.test('Migrations', skip, async t => {
     t.equal(await migrations2.currentVersion(), 0);
 
     conn2.release();
-    await pg2.end();
+    await pool2.end();
   });
 
   await t.test('Unknown version', async t => {
@@ -152,8 +152,8 @@ t.test('Migrations', skip, async t => {
   });
 
   await t.test('Migration directory', async t => {
-    const pg2 = new Pg(`${pgConfig}?currentSchema=mojo_migrations_test`);
-    const conn2 = await pg2.pool.connect();
+    const pool2 = PgBackend.connect(`${pgConfig}?currentSchema=mojo_migrations_test`);
+    const conn2 = await pool2.connect();
     const migrations2 = new Migrations(conn2);
     const dir = join(dirname(fileURLToPath(import.meta.url)), 'support', 'migrations', 'tree');
     await migrations2.loadFromDirectory(dir, {name: 'directory tree'});
@@ -196,14 +196,14 @@ t.test('Migrations', skip, async t => {
     t.equal(migrations2.latest, 8);
 
     conn2.release();
-    await pg2.end();
+    await pool2.end();
   });
 
   // Clean up once we are done
-  await pg.pool.query('DROP SCHEMA mojo_migrations_test CASCADE');
+  await pool.query('DROP SCHEMA mojo_migrations_test CASCADE');
 
   conn.release();
-  await pg.end();
+  await pool.end();
 });
 
 interface TablesResult {

@@ -44,20 +44,18 @@ export const defaultBackoffStrategy: MinionBackoffStrategy = (retries) => retrie
  */
 export class Minion {
   /**
-   * Backend, usually a PostgreSQL backend.
-   */
-  public backend: MinionBackend;
-
-  /**
    * Registered tasks.
    */
   public tasks: Record<string, MinionTask> = {};
 
   private _repairOptions: RepairOptions;
 
-  constructor(config: any, options: MinionOptions) {
-    this.backend = new options.backendClass(config, options.backoffStrategy ?? defaultBackoffStrategy);
-
+  /**
+   *
+   * @param backend
+   * @param options
+   */
+  constructor(public backend: MinionBackend, options: MinionOptions = {}) {
     this._repairOptions = {
       missingAfter: options.missingAfter ?? 1800000,
       removeAfter: options.removeAfter ?? 172800000,

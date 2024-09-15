@@ -1,7 +1,6 @@
 import os from 'node:os';
-import { Pool } from 'pg';
+import pg from 'pg';
 import { Migrations } from './pg/migrations.js';
-import { Pg } from './pg/pg.js';
 import type {
   DailyHistory,
   DequeueOptions,
@@ -29,6 +28,7 @@ import type {
   WorkerInfo,
   WorkerList
 } from './types.js';
+import { defaultBackoffStrategy } from './minion.js';
 
 interface DequeueResult {
   id: MinionJobId;
@@ -87,22 +87,32 @@ export class PgBackend implements MinionBackend {
    */
   public readonly name = 'Pg';
 
-  /**
-   * `pg` object used to store all data.
-   */
-  private isExternalPg: boolean = false;
-
-  private pool: Pool
-
   private hostname = os.hostname();
 
+  constructor(private pool: pg.Pool, private calcBackoff: MinionBackoffStrategy = defaultBackoffStrategy) {}
+
   /**
-   * @param database
+   * Parse PostgreSQL connection URI.
    */
-  constructor(database: string | Pg, private calcBackoff: MinionBackoffStrategy) {
-    const isExternalPg = this.isExternalPg = database instanceof Pg;
-    const pg = isExternalPg ? database : new Pg(database);
-    this.pool = pg.pool;
+  static parseConfig(config: string): pg.PoolConfig {
+    const url = new URL(config);
+    if (url.protocol.match('/^postgres(ql)?:$/')) throw new TypeError(`Invalid URL: ${config}`);
+
+    const poolConfig: pg.PoolConfig = {};
+    if (url.hostname !== '') poolConfig.host = decodeURIComponent(url.hostname);
+    if (url.port !== '') poolConfig.port = parseInt(url.port);
+    if (url.username !== '') poolConfig.user = url.username;
+    if (url.password !== '') poolConfig.password = url.password;
+    if (url.pathname.startsWith('/')) poolConfig.database = decodeURIComponent(url.pathname.slice(1));
+    const currentSchema = url.searchParams.get('currentSchema');
+    if (currentSchema !== null) poolConfig.options = `-c search_path=${currentSchema}`;
+
+    return poolConfig;
+  }
+
+  static connect(config: string): pg.Pool {
+    pg.types.setTypeParser(20, parseInt);
+    return new pg.Pool({allowExitOnIdle: true, ...PgBackend.parseConfig(config)});
   }
 
   /**
@@ -457,7 +467,6 @@ export class PgBackend implements MinionBackend {
    * Stop using the queue.
    */
   async end(): Promise<void> {
-    if (!this.isExternalPg) await this.pool.end();
   }
 
 

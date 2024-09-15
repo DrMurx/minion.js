@@ -2,8 +2,6 @@ import type {Job} from './job.js';
 import type {Worker} from './worker.js';
 
 export interface MinionOptions extends Partial<RepairOptions> {
-  backendClass: MinionBackendConstructor;
-  backoffStrategy?: MinionBackoffStrategy;
 }
 
 export interface RepairOptions {

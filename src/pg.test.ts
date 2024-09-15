@@ -1,21 +1,21 @@
 import os from 'node:os';
-import {Minion} from './index.js';
-import {Pg} from './pg/pg.js';
 import t from 'tap';
-import { PgBackend } from './pg-backend.js';
+import { Minion } from './index.js';
 import { defaultBackoffStrategy } from './minion.js';
+import { PgBackend } from './pg-backend.js';
 
 const skip = process.env.TEST_ONLINE === undefined ? {skip: 'set TEST_ONLINE to enable this test'} : {};
 const pgConfig = process.env.TEST_ONLINE!;
 
 t.test('PostgreSQL backend', skip, async t => {
-  // Isolate tests
-  const pg = new Pg(`${pgConfig}?currentSchema=minion_backend_test`);
-  const conn = await pg.getConnection();
-  await pg.pool.query('DROP SCHEMA IF EXISTS minion_backend_test CASCADE');
-  await pg.pool.query('CREATE SCHEMA minion_backend_test');
+  const pool = PgBackend.connect(`${pgConfig}?currentSchema=minion_backend_test`)
 
-  const minion = new Minion(pg, {backendClass: PgBackend});
+  // Isolate tests
+  await pool.query('DROP SCHEMA IF EXISTS minion_backend_test CASCADE');
+  await pool.query('CREATE SCHEMA minion_backend_test');
+
+  const backend = new PgBackend(pool);
+  const minion = new Minion(backend);
   await minion.updateSchema();
 
   await t.test('Nothing to repair', async t => {
@@ -129,7 +129,7 @@ t.test('PostgreSQL backend', skip, async t => {
     const workerId = worker2.id;
     const missingAfter = minion.repairOptions.missingAfter + 1;
     t.ok(await worker2.getInfo());
-    await pg.pool.query("UPDATE minion_workers SET notified = NOW() - INTERVAL '1 millisecond' * $1 WHERE id = $2", [missingAfter, workerId]);
+    await pool.query("UPDATE minion_workers SET notified = NOW() - INTERVAL '1 millisecond' * $1 WHERE id = $2", [missingAfter, workerId]);
 
     await minion.repair();
     t.ok(!(await worker2.getInfo()));
@@ -175,12 +175,12 @@ t.test('PostgreSQL backend', skip, async t => {
     await worker.dequeue().then(job => job!.perform());
     await worker.dequeue().then(job => job!.perform());
 
-    const result = await pg.pool.query('SELECT EXTRACT(EPOCH FROM finished) AS finished FROM minion_jobs WHERE id = $1', [id2]);
+    const result = await pool.query('SELECT EXTRACT(EPOCH FROM finished) AS finished FROM minion_jobs WHERE id = $1', [id2]);
     const finished = result.rows[0].finished
-    await pg.pool.query('UPDATE minion_jobs SET finished = TO_TIMESTAMP($1) WHERE id = $2', [finished - (minion.repairOptions.removeAfter + 1), id2]);
-    const result2 = await pg.pool.query('SELECT EXTRACT(EPOCH FROM finished) AS finished FROM minion_jobs WHERE id = $1', [id3]);
+    await pool.query('UPDATE minion_jobs SET finished = TO_TIMESTAMP($1) WHERE id = $2', [finished - (minion.repairOptions.removeAfter + 1), id2]);
+    const result2 = await pool.query('SELECT EXTRACT(EPOCH FROM finished) AS finished FROM minion_jobs WHERE id = $1', [id3]);
     const finished2 = result2.rows[0].finished;
-    await pg.pool.query('UPDATE minion_jobs SET finished = TO_TIMESTAMP($1) WHERE id = $2', [finished2 - (minion.repairOptions.removeAfter + 1), id3]);
+    await pool.query('UPDATE minion_jobs SET finished = TO_TIMESTAMP($1) WHERE id = $2', [finished2 - (minion.repairOptions.removeAfter + 1), id3]);
 
     await worker.unregister();
     await minion.repair();
@@ -199,10 +199,10 @@ t.test('PostgreSQL backend', skip, async t => {
     const id4 = await minion.addJob('test');
 
     const stuck = minion.repairOptions.stuckAfter + 1;
-    await pg.pool.query("UPDATE minion_jobs SET delayed = NOW() - $1 * INTERVAL '1 second' WHERE id = $2", [stuck, id]);
-    await pg.pool.query("UPDATE minion_jobs SET delayed = NOW() - $1 * INTERVAL '1 second' WHERE id = $2", [stuck, id2]);
-    await pg.pool.query("UPDATE minion_jobs SET delayed = NOW() - $1 * INTERVAL '1 second' WHERE id = $2", [stuck, id3]);
-    await pg.pool.query("UPDATE minion_jobs SET delayed = NOW() - $1 * INTERVAL '1 second' WHERE id = $2", [stuck, id4]);
+    await pool.query("UPDATE minion_jobs SET delayed = NOW() - $1 * INTERVAL '1 second' WHERE id = $2", [stuck, id]);
+    await pool.query("UPDATE minion_jobs SET delayed = NOW() - $1 * INTERVAL '1 second' WHERE id = $2", [stuck, id2]);
+    await pool.query("UPDATE minion_jobs SET delayed = NOW() - $1 * INTERVAL '1 second' WHERE id = $2", [stuck, id3]);
+    await pool.query("UPDATE minion_jobs SET delayed = NOW() - $1 * INTERVAL '1 second' WHERE id = $2", [stuck, id4]);
 
     const job = (await worker.dequeue(0, {id: id4}))!;
     await job.markFinished('Works!');
@@ -375,7 +375,7 @@ t.test('PostgreSQL backend', skip, async t => {
     t.notOk(results3.locks[2]);
     t.equal(results3.total, 2);
 
-    await pg.pool.query("UPDATE minion_locks SET expires = NOW() - INTERVAL '1 second' * 1 WHERE name = 'yada'");
+    await pool.query("UPDATE minion_locks SET expires = NOW() - INTERVAL '1 second' * 1 WHERE name = 'yada'");
     await minion.unlock('test');
     t.equal((await minion.stats()).active_locks, 0);
     t.same((await minion.backend.getLocks(0, 10)).total, 0);
@@ -755,7 +755,7 @@ t.test('PostgreSQL backend', skip, async t => {
     const job = (await minion.getJob(id))!;
     const info = (await job.getInfo())!;
     t.ok(info.delayed > info.created);
-    await pg.pool.query("UPDATE minion_jobs SET delayed = NOW() - INTERVAL '1 day' WHERE id = $1", [id]);
+    await pool.query("UPDATE minion_jobs SET delayed = NOW() - INTERVAL '1 day' WHERE id = $1", [id]);
     const job2 = (await worker.dequeue())!;
     t.equal(job2.id, id);
     t.same((await job2.getInfo())!.delayed instanceof Date, true);
@@ -875,7 +875,7 @@ t.test('PostgreSQL backend', skip, async t => {
     t.match(info2.result, {message: /Intentional failure/});
     t.ok(info.retried < info.delayed);
 
-    await pg.pool.query('UPDATE minion_jobs SET delayed = NOW() WHERE id = $1', [id]);
+    await pool.query('UPDATE minion_jobs SET delayed = NOW() WHERE id = $1', [id]);
     const job2 = (await worker.dequeue())!;
     t.equal(job2.id, id);
     t.equal(job2.retries, 1);
@@ -887,7 +887,7 @@ t.test('PostgreSQL backend', skip, async t => {
     t.equal(info4.attempts, 1);
     t.equal(info4.state, 'inactive');
 
-    await pg.pool.query('UPDATE minion_jobs SET delayed = NOW() WHERE id = $1', [id]);
+    await pool.query('UPDATE minion_jobs SET delayed = NOW() WHERE id = $1', [id]);
     const job3 = (await worker.dequeue())!;
     t.equal(job3.id, id);
     t.equal(job3.retries, 2);
@@ -905,7 +905,7 @@ t.test('PostgreSQL backend', skip, async t => {
     t.equal(job4.id, id);
     await job4.perform();
     t.equal((await job4.getInfo())!.state, 'inactive');
-    await pg.pool.query('UPDATE minion_jobs SET delayed = NOW() WHERE id = $1', [id]);
+    await pool.query('UPDATE minion_jobs SET delayed = NOW() WHERE id = $1', [id]);
     const job5 = (await worker.dequeue())!;
     t.equal(job5.id, id);
     await job5.perform();
@@ -926,7 +926,7 @@ t.test('PostgreSQL backend', skip, async t => {
     t.equal((await job.getInfo())!.state, 'inactive');
     t.match((await job.getInfo())!.result, 'Worker went away');
     t.ok((await job.getInfo())!.retried < (await job.getInfo())!.delayed);
-    await pg.pool.query('UPDATE minion_jobs SET delayed = NOW() WHERE id = $1', [id]);
+    await pool.query('UPDATE minion_jobs SET delayed = NOW() WHERE id = $1', [id]);
     const worker2 = await minion.createWorker().register();
     const job2 = (await worker2.dequeue())!;
     t.equal(job2.id, id);
@@ -1117,7 +1117,7 @@ t.test('PostgreSQL backend', skip, async t => {
 
     const id3 = await minion.addJob('test', [], {expire: 300000});
     t.equal(await minion.getJobs({states: ['inactive']}).numRows(), 1);
-    await pg.pool.query("UPDATE minion_jobs SET expires = NOW() - INTERVAL '1 day' WHERE id = $1", [id3]);
+    await pool.query("UPDATE minion_jobs SET expires = NOW() - INTERVAL '1 day' WHERE id = $1", [id3]);
     await minion.repair();
     t.notOk(await worker.dequeue());
     t.equal(await minion.getJobs({states: ['inactive']}).numRows(), 0);
@@ -1126,7 +1126,7 @@ t.test('PostgreSQL backend', skip, async t => {
     const job4 = (await worker.dequeue())!;
     t.equal(job4.id, id4);
     t.ok(await job4.markFinished());
-    await pg.pool.query("UPDATE minion_jobs SET expires = NOW() - INTERVAL '1 day' WHERE id = $1", [id4]);
+    await pool.query("UPDATE minion_jobs SET expires = NOW() - INTERVAL '1 day' WHERE id = $1", [id4]);
     await minion.repair();
     t.equal((await job4.getInfo())!.state, 'finished');
 
@@ -1134,14 +1134,14 @@ t.test('PostgreSQL backend', skip, async t => {
     const job5 = (await worker.dequeue())!;
     t.equal(job5.id, id5);
     t.ok(await job5.markFailed());
-    await pg.pool.query("UPDATE minion_jobs SET expires = NOW() - INTERVAL '1 day' WHERE id = $1", [id5]);
+    await pool.query("UPDATE minion_jobs SET expires = NOW() - INTERVAL '1 day' WHERE id = $1", [id5]);
     await minion.repair();
     t.equal((await job5.getInfo())!.state, 'failed');
 
     const id6 = await minion.addJob('test', [], {expire: 300000});
     const job6 = (await worker.dequeue())!;
     t.equal(job6.id, id6);
-    await pg.pool.query("UPDATE minion_jobs SET expires = NOW() - INTERVAL '1 day' WHERE id = $1", [id6]);
+    await pool.query("UPDATE minion_jobs SET expires = NOW() - INTERVAL '1 day' WHERE id = $1", [id6]);
     await minion.repair();
     t.equal((await job6.getInfo())!.state, 'active');
     t.ok(await job6.markFinished());
@@ -1149,7 +1149,7 @@ t.test('PostgreSQL backend', skip, async t => {
     const id7 = await minion.addJob('test', [], {expire: 300000});
     const id8 = await minion.addJob('test', [], {expire: 300000, parents: [id7]});
     t.notOk(await worker.dequeue(0, {id: id8}));
-    await pg.pool.query("UPDATE minion_jobs SET expires = NOW() - INTERVAL '1 day' WHERE id = $1", [id7]);
+    await pool.query("UPDATE minion_jobs SET expires = NOW() - INTERVAL '1 day' WHERE id = $1", [id7]);
     await minion.repair();
     const job8 = (await worker.dequeue(0, {id: id8}))!;
     t.ok(await job8.markFinished());
@@ -1265,8 +1265,7 @@ t.test('PostgreSQL backend', skip, async t => {
   await minion.end();
 
   // Clean up once we are done
-  await pg.pool.query('DROP SCHEMA minion_backend_test CASCADE');
+  await pool.query('DROP SCHEMA minion_backend_test CASCADE');
 
-  await conn.release();
-  await pg.end();
+  await pool.end();
 });

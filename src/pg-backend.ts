@@ -1,6 +1,6 @@
 import os from 'node:os';
 import pg from 'pg';
-import { Migrations } from './pg/migrations.js';
+import { Migration, MigrationStep } from './migration.js';
 import type {
   DailyHistory,
   DequeueOptions,
@@ -445,13 +445,12 @@ export class PgBackend implements MinionBackend {
     const version = (await this.pool.query<ServerVersionResult>('SHOW server_version_num')).rows[0].server_version_num;
     if (version < 90500) throw new Error('PostgreSQL 9.5 or later is required');
 
-    const client = await this.pool.connect();
+    const conn = await this.pool.connect();
     try {
-      const migrations = new Migrations(client);
-      await migrations.loadFromFile('migrations/minion.sql', {name: 'minion'});
-      await migrations.migrateTo();
+      const migration = new Migration('minion', minionDbUpgrades, conn);
+      await migration.migrate();
     } finally {
-      client.release();
+      conn.release();
     }
   }
 
@@ -524,3 +523,100 @@ function removeTotal<T extends Array<{total?: number}>>(results: T): number {
   }
   return total;
 }
+
+const minionDbUpgrades: MigrationStep[] = [
+  {
+    version: 10,
+    sql: `
+      CREATE TYPE minion_state AS ENUM ('inactive', 'active', 'failed', 'finished');
+      CREATE TABLE IF NOT EXISTS minion_jobs (
+        id       BIGSERIAL NOT NULL PRIMARY KEY,
+        args     JSONB NOT NULL CHECK(JSONB_TYPEOF(args) = 'array'),
+        attempts INT NOT NULL DEFAULT 1,
+        created  TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+        delayed  TIMESTAMP WITH TIME ZONE NOT NULL,
+        finished TIMESTAMP WITH TIME ZONE,
+        notes    JSONB CHECK(JSONB_TYPEOF(notes) = 'object') NOT NULL DEFAULT '{}',
+        parents  BIGINT[] NOT NULL DEFAULT '{}',
+        priority INT NOT NULL,
+        queue    TEXT NOT NULL DEFAULT 'default',
+        result   JSONB,
+        retried  TIMESTAMP WITH TIME ZONE,
+        retries  INT NOT NULL DEFAULT 0,
+        started  TIMESTAMP WITH TIME ZONE,
+        state    minion_state NOT NULL DEFAULT 'inactive'::MINION_STATE,
+        task     TEXT NOT NULL,
+        worker   BIGINT
+      );
+      CREATE INDEX ON minion_jobs (state, priority DESC, id);
+      CREATE INDEX ON minion_jobs USING GIN (parents);
+      CREATE TABLE IF NOT EXISTS minion_workers (
+        id       BIGSERIAL NOT NULL PRIMARY KEY,
+        host     TEXT NOT NULL,
+        inbox    JSONB CHECK(JSONB_TYPEOF(inbox) = 'array') NOT NULL DEFAULT '[]',
+        notified TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+        pid      INT NOT NULL,
+        started  TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+        status   JSONB CHECK(JSONB_TYPEOF(status) = 'object') NOT NULL DEFAULT '{}'
+      );
+      CREATE UNLOGGED TABLE IF NOT EXISTS minion_locks (
+        id      BIGSERIAL NOT NULL PRIMARY KEY,
+        name    TEXT NOT NULL,
+        expires TIMESTAMP WITH TIME ZONE NOT NULL
+      );
+      CREATE INDEX ON minion_locks (name, expires);
+
+      CREATE OR REPLACE FUNCTION minion_jobs_notify_workers() RETURNS trigger AS $$
+        BEGIN
+          IF new.delayed <= NOW() THEN
+            NOTIFY "minion.job";
+          END IF;
+          RETURN NULL;
+        END;
+      $$ LANGUAGE plpgsql;
+      CREATE TRIGGER minion_jobs_notify_workers_trigger
+        AFTER INSERT OR UPDATE OF retries ON minion_jobs
+        FOR EACH ROW EXECUTE PROCEDURE minion_jobs_notify_workers();
+
+      CREATE OR REPLACE FUNCTION minion_lock(TEXT, INT, INT) RETURNS BOOL AS $$
+      DECLARE
+        new_expires TIMESTAMP WITH TIME ZONE = NOW() + (INTERVAL '1 second' * $2);
+      BEGIN
+        lock TABLE minion_locks IN exclusive mode;
+        DELETE FROM minion_locks WHERE expires < NOW();
+        IF (SELECT COUNT(*) >= $3 FROM minion_locks WHERE NAME = $1) THEN
+          RETURN false;
+        END IF;
+        IF new_expires > NOW() THEN
+          INSERT INTO minion_locks (name, expires) VALUES ($1, new_expires);
+        END IF;
+        RETURN TRUE;
+      END;
+      $$ LANGUAGE plpgsql;`,
+  },
+  {
+    version: 19,
+    sql: `CREATE INDEX ON minion_jobs USING GIN (notes);`,
+  },
+  {
+    version: 20,
+    sql: `ALTER TABLE minion_workers SET UNLOGGED;`,
+  },
+  {
+    version: 22,
+    sql: `
+      ALTER TABLE minion_jobs DROP COLUMN IF EXISTS SEQUENCE;
+      ALTER TABLE minion_jobs DROP COLUMN IF EXISTS NEXT;
+      ALTER TABLE minion_jobs ADD COLUMN EXPIRES TIMESTAMP WITH TIME ZONE;
+      CREATE INDEX ON minion_jobs (expires);
+      `,
+  },
+  {
+    version: 23,
+    sql: `ALTER TABLE minion_jobs ADD COLUMN lax BOOL NOT NULL DEFAULT FALSE;`,
+  },
+  {
+    version: 24,
+    sql: `CREATE INDEX ON minion_jobs (finished, state);`,
+  }
+];

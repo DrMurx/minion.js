@@ -25,9 +25,9 @@ t.test('Worker', skip, async t => {
 
   await t.test('Wait for jobs', async t => {
     const id = await minion.addJob('test');
-    const result = await minion.getJobResult(id, {interval: 500});
-    t.equal(result!.state, 'finished');
-    t.same(result!.notes, {test: 'pass'});
+    const result = (await minion.getJobResult(id, {interval: 500}))!;
+    t.equal(result.state, 'finished');
+    t.same(result.notes, {test: 'pass'});
   });
 
   t.equal(worker.isRunning, true);

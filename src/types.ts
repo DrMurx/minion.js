@@ -48,10 +48,6 @@ export interface MinionBackend {
   notifyWorkers: (command: string, args?: any[], ids?: MinionJobId[]) => Promise<boolean>;
   getWorkerNotifications: (id: MinionWorkerId) => Promise<Array<[string, ...any[]]>>;
 
-  lock: (name: string, duration: number, options?: LockOptions) => Promise<boolean>;
-  unlock: (name: string) => Promise<boolean>;
-  getLocks: (offset: number, limit: number, options?: ListLocksOptions) => Promise<LockList>;
-
   stats: () => Promise<any>;
   repair: (options: RepairOptions) => Promise<void>;
   updateSchema: () => Promise<void>;
@@ -74,7 +70,6 @@ export interface MinionHistory {
 }
 
 export interface MinionStats {
-  active_locks: number;
   active_jobs: number;
   active_workers: number;
   delayed_jobs: number;
@@ -126,17 +121,9 @@ export interface ListJobsOptions {
   tasks?: string[];
 }
 
-export interface ListLocksOptions {
-  names?: string[];
-}
-
 export interface ListWorkersOptions {
   before?: number;
   ids?: MinionWorkerId[];
-}
-
-export interface LockOptions {
-  limit?: number;
 }
 
 export interface RegisterWorkerOptions {
@@ -145,7 +132,6 @@ export interface RegisterWorkerOptions {
 
 export interface ResetOptions {
   all?: boolean;
-  locks?: boolean;
 }
 
 export interface RetryOptions {
@@ -202,16 +188,6 @@ export interface JobInfo {
 
 export interface JobList {
   jobs: JobInfo[];
-  total: number;
-}
-
-export interface LockInfo {
-  expires: Date;
-  name: string;
-}
-
-export interface LockList {
-  locks: LockInfo[];
   total: number;
 }
 

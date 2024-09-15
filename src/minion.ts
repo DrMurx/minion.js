@@ -6,7 +6,6 @@ import type {
   JobInfo,
   ListJobsOptions,
   ListWorkersOptions,
-  LockOptions,
   MinionArgs,
   MinionBackend,
   MinionBackoffStrategy,
@@ -186,29 +185,6 @@ export class Minion {
    */
   async notifyWorkers(command: string, args?: any[], ids?: number[]): Promise<boolean> {
     return await this.backend.notifyWorkers(command, args, ids);
-  }
-
-
-  /**
-   * Try to acquire a named lock that will expire automatically after the given amount of time in milliseconds. You can
-   * release the lock manually with `minion.unlock()` to limit concurrency, or let it expire for rate limiting.
-   */
-  async lock(name: string, duration: number, options?: LockOptions): Promise<boolean> {
-    return await this.backend.lock(name, duration, options);
-  }
-
-  /**
-   * Release a named lock that has been previously acquired with `minion.lock()`.
-   */
-  async unlock(name: string): Promise<boolean> {
-    return await this.backend.unlock(name);
-  }
-
-  /**
-   * Check if a lock with that name is currently active.
-   */
-  async isLocked(name: string): Promise<boolean> {
-    return !(await this.backend.lock(name, 0));
   }
 
 

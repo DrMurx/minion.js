@@ -310,101 +310,17 @@ t.test('Minion with PostgreSQL backend', skip, async t => {
     await worker3.unregister();
   });
 
-  await t.test('Exclusive lock', async t => {
-    t.ok(await minion.lock('foo', 3600000));
-    t.ok(!(await minion.lock('foo', 3600000)));
-    t.ok(await minion.unlock('foo'));
-    t.ok(!(await minion.unlock('foo')));
-    t.ok(await minion.lock('foo', -3600000));
-    t.ok(await minion.lock('foo', 0));
-    t.ok(!(await minion.isLocked('foo')));
-    t.ok(await minion.lock('foo', 3600000));
-    t.ok(await minion.isLocked('foo'));
-    t.ok(!(await minion.lock('foo', -3600000)));
-    t.ok(!(await minion.lock('foo', 3600000)));
-    t.ok(await minion.unlock('foo'));
-    t.ok(!(await minion.unlock('foo')));
-    t.ok(await minion.lock('foo', 3600000, {limit: 1}));
-    t.ok(!(await minion.lock('foo', 3600000, {limit: 1})));
-  });
-
-  await t.test('Shared lock', async t => {
-    t.ok(await minion.lock('bar', 3600000, {limit: 3}));
-    t.ok(await minion.lock('bar', 3600000, {limit: 3}));
-    t.ok(await minion.isLocked('bar'));
-    t.ok(await minion.lock('bar', -3600000, {limit: 3}));
-    t.ok(await minion.lock('bar', 3600000, {limit: 3}));
-    t.ok(!(await minion.lock('bar', 3600000, {limit: 3})));
-    t.ok(await minion.lock('baz', 3600000, {limit: 3}));
-    t.ok(await minion.unlock('bar'));
-    t.ok(await minion.lock('bar', 3600000, {limit: 3}));
-    t.ok(await minion.unlock('bar'));
-    t.ok(await minion.unlock('bar'));
-    t.ok(await minion.unlock('bar'));
-    t.ok(!(await minion.unlock('bar')));
-    t.ok(!(await minion.isLocked('bar')));
-    t.ok(await minion.unlock('baz'));
-    t.ok(!(await minion.unlock('baz')));
-  });
-
-  await t.test('List locks', async t => {
-    t.equal((await minion.stats()).active_locks, 1);
-    const results = await minion.backend.getLocks(0, 2);
-    t.equal(results.locks[0].name, 'foo');
-    t.same(results.locks[0].expires instanceof Date, true);
-    t.notOk(results.locks[1]);
-    t.equal(results.total, 1);
-    await minion.unlock('foo');
-
-    await minion.lock('yada', 3600000, {limit: 2});
-    await minion.lock('test', 3600000, {limit: 1});
-    await minion.lock('yada', 3600000, {limit: 2});
-    t.equal((await minion.stats()).active_locks, 3);
-    const results2 = await minion.backend.getLocks(1, 1);
-    t.equal(results2.locks[0].name, 'test');
-    t.same(results2.locks[0].expires instanceof Date, true);
-    t.notOk(results2.locks[1]);
-    t.equal(results2.total, 3);
-
-    const results3 = await minion.backend.getLocks(0, 10, {names: ['yada']});
-    t.equal(results3.locks[0].name, 'yada');
-    t.same(results3.locks[0].expires instanceof Date, true);
-    t.equal(results3.locks[1].name, 'yada');
-    t.same(results3.locks[1].expires instanceof Date, true);
-    t.notOk(results3.locks[2]);
-    t.equal(results3.total, 2);
-
-    await pool.query("UPDATE minion_locks SET expires = NOW() - INTERVAL '1 second' * 1 WHERE name = 'yada'");
-    await minion.unlock('test');
-    t.equal((await minion.stats()).active_locks, 0);
-    t.same((await minion.backend.getLocks(0, 10)).total, 0);
-  });
-
-  await t.test('Reset (locks)', async t => {
+  await t.test('Reset (all)', async t => {
     await minion.addJob('test');
-    await minion.lock('test', 3600000);
     await minion.createWorker().register();
     t.equal((await minion.backend.getJobInfos(0, 1)).total, 1);
-    t.equal((await minion.backend.getLocks(0, 1)).total, 1);
-    t.equal((await minion.backend.getWorkers(0, 1)).total, 1);
-    await minion.reset({locks: true});
-    t.equal((await minion.backend.getJobInfos(0, 1)).total, 1);
-    t.equal((await minion.backend.getLocks(0, 1)).total, 0);
-    t.equal((await minion.backend.getWorkers(0, 1)).total, 1);
-  });
-
-  await t.test('Reset (all)', async t => {
-    await minion.lock('test', 3600000);
-    t.equal((await minion.backend.getJobInfos(0, 1)).total, 1);
-    t.equal((await minion.backend.getLocks(0, 1)).total, 1);
     t.equal((await minion.backend.getWorkers(0, 1)).total, 1);
     await minion.reset({all: true});
     t.equal((await minion.backend.getJobInfos(0, 1)).total, 0);
-    t.equal((await minion.backend.getLocks(0, 1)).total, 0);
     t.equal((await minion.backend.getWorkers(0, 1)).total, 0);
   });
 
-  await t.test('Stats)', async t => {
+  await t.test('Stats', async t => {
     minion.addTask('add', async (job, first, second) => {
       await job.markFinished({added: first + second});
     });
@@ -422,7 +338,6 @@ t.test('Minion with PostgreSQL backend', skip, async t => {
     t.equal(stats.finished_jobs, 0);
     t.equal(stats.inactive_jobs, 0);
     t.equal(stats.delayed_jobs, 0);
-    t.equal(stats.active_locks, 0);
     t.ok(stats.uptime);
 
     const worker = await minion.createWorker().register();

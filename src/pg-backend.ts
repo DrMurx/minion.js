@@ -9,11 +9,7 @@ import type {
   JobInfo,
   JobList,
   ListJobsOptions,
-  ListLocksOptions,
   ListWorkersOptions,
-  LockInfo,
-  LockList,
-  LockOptions,
   MinionArgs,
   MinionBackend,
   MinionBackoffStrategy,
@@ -50,16 +46,8 @@ interface ListJobsResult extends JobInfo {
   total: number;
 }
 
-interface ListLockResult extends LockInfo {
-  total: number;
-}
-
 interface ListWorkersResult extends WorkerInfo {
   total: number;
-}
-
-interface LockResult {
-  minion_lock: boolean;
 }
 
 interface ReceiveResult {
@@ -341,45 +329,6 @@ export class PgBackend implements MinionBackend {
 
 
   /**
-   * Try to acquire a named lock that will expire automatically after the given amount of time in milliseconds. An
-   * expiration time of `0` can be used to check if a named lock already exists without creating one.
-   */
-  async lock(name: string, duration: number, options: LockOptions = {}): Promise<boolean> {
-    const limit = options.limit ?? 1;
-    const results = await this.pool.query<LockResult>('SELECT * FROM minion_lock($1, $2, $3)', [name, duration / 1000, limit]);
-    return results.rows[0].minion_lock;
-  }
-
-  /**
-   * Release a named lock.
-   */
-  async unlock(name: string): Promise<boolean> {
-    const results = await this.pool.query(`
-      DELETE FROM minion_locks WHERE id = (
-        SELECT id FROM minion_locks WHERE expires > NOW() AND name = $1 ORDER BY expires LIMIT 1 FOR UPDATE
-      )
-    `, [name]);
-    return (results.rowCount ?? 0) > 0;
-  }
-
-  /**
-   * Returns information about locks in batches.
-   */
-  async getLocks(offset: number, limit: number, options: ListLocksOptions = {}): Promise<LockList> {
-    const results = await this.pool.query<ListLockResult>(
-      `
-        SELECT name, expires, COUNT(*) OVER() AS total FROM minion_locks
-        WHERE expires > NOW() AND (name = ANY ($1) OR $1 IS NULL)
-        ORDER BY id DESC LIMIT $2 OFFSET $3
-      `,
-      [options.names, limit, offset]
-    );
-    const total = removeTotal(results.rows);
-    return {total, locks: results.rows};
-  }
-
-
-  /**
    * Get statistics for the job queue.
    */
   async stats(): Promise<MinionStats> {
@@ -391,7 +340,6 @@ export class PgBackend implements MinionBackend {
         (SELECT COUNT(*) FROM minion_jobs WHERE state = 'failed') AS failed_jobs,
         (SELECT COUNT(*) FROM minion_jobs WHERE state = 'finished') AS finished_jobs,
         (SELECT COUNT(*) FROM minion_jobs WHERE state = 'inactive' AND delayed > NOW()) AS delayed_jobs,
-        (SELECT COUNT(*) FROM minion_locks WHERE expires > NOW()) AS active_locks,
         (SELECT COUNT(DISTINCT worker) FROM minion_jobs mj WHERE state = 'active') AS active_workers,
         (SELECT CASE WHEN is_called THEN last_value ELSE 0 END FROM minion_jobs_id_seq) AS enqueued_jobs,
         (SELECT COUNT(*) FROM minion_workers) AS workers,
@@ -458,8 +406,7 @@ export class PgBackend implements MinionBackend {
    * Reset job queue.
    */
   async reset(options: ResetOptions): Promise<void> {
-    if (options.all === true) await this.pool.query('TRUNCATE minion_jobs, minion_locks, minion_workers RESTART IDENTITY');
-    if (options.locks === true) await this.pool.query('TRUNCATE minion_locks');
+    if (options.all === true) await this.pool.query('TRUNCATE minion_jobs, minion_workers RESTART IDENTITY');
   }
 
   /**
@@ -559,12 +506,6 @@ const minionDbUpgrades: MigrationStep[] = [
         started  TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
         status   JSONB CHECK(JSONB_TYPEOF(status) = 'object') NOT NULL DEFAULT '{}'
       );
-      CREATE UNLOGGED TABLE IF NOT EXISTS minion_locks (
-        id      BIGSERIAL NOT NULL PRIMARY KEY,
-        name    TEXT NOT NULL,
-        expires TIMESTAMP WITH TIME ZONE NOT NULL
-      );
-      CREATE INDEX ON minion_locks (name, expires);
 
       CREATE OR REPLACE FUNCTION minion_jobs_notify_workers() RETURNS trigger AS $$
         BEGIN
@@ -577,22 +518,7 @@ const minionDbUpgrades: MigrationStep[] = [
       CREATE TRIGGER minion_jobs_notify_workers_trigger
         AFTER INSERT OR UPDATE OF retries ON minion_jobs
         FOR EACH ROW EXECUTE PROCEDURE minion_jobs_notify_workers();
-
-      CREATE OR REPLACE FUNCTION minion_lock(TEXT, INT, INT) RETURNS BOOL AS $$
-      DECLARE
-        new_expires TIMESTAMP WITH TIME ZONE = NOW() + (INTERVAL '1 second' * $2);
-      BEGIN
-        lock TABLE minion_locks IN exclusive mode;
-        DELETE FROM minion_locks WHERE expires < NOW();
-        IF (SELECT COUNT(*) >= $3 FROM minion_locks WHERE NAME = $1) THEN
-          RETURN false;
-        END IF;
-        IF new_expires > NOW() THEN
-          INSERT INTO minion_locks (name, expires) VALUES ($1, new_expires);
-        END IF;
-        RETURN TRUE;
-      END;
-      $$ LANGUAGE plpgsql;`,
+      `,
   },
   {
     version: 19,

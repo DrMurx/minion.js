@@ -31,21 +31,7 @@ t.test('Connection', skip, async t => {
     await pg.end();
   });
 
-  await t.test('Select (ad-hoc)', async t => {
-    const pg = new Pg(pgConfig);
-
-    const results = await pg.query('SELECT 1 AS one, 2 AS two, 3 AS three');
-    t.equal(results.count, 1);
-    t.same(results, [{one: 1, two: 2, three: 3}]);
-
-    const results2 = await pg.query('SELECT 1, 2, 3');
-    t.equal(results2.count, 1);
-    t.same(results2, [{'?column?': 3}]);
-
-    await pg.end();
-  });
-
-  await t.test('Select (with database object)', async t => {
+  await t.test('Select (with connection object)', async t => {
     const pg = new Pg(pgConfig);
     const conn = await pg.getConnection();
     const results = await conn.query('SELECT 1 AS one, 2 AS two, 3 AS three');
@@ -54,32 +40,6 @@ t.test('Connection', skip, async t => {
     const results2 = await conn.query('SELECT 1 AS one');
     t.same(results2, [{one: 1}]);
     await conn.release();
-    await pg.end();
-  });
-
-  await t.test('Exception (ad-hoc query)', async t => {
-    const pg = new Pg(pgConfig);
-
-    let result: any;
-    try {
-      await pg.query(`
-        SELECT 1 AS one,
-               2 A two,
-               3 AS three
-      `);
-    } catch (error) {
-      result = error;
-    }
-    t.match(result.message, /syntax error at or near "two".+Line 3: +2 A two,/s);
-
-    result = undefined;
-    try {
-      await pg.query('SELECT 1 A one');
-    } catch (error) {
-      result = error;
-    }
-    t.match(result.message, /syntax error at or near "one".+Line 1: SELECT 1 A one/s);
-
     await pg.end();
   });
 
@@ -113,8 +73,10 @@ t.test('Connection', skip, async t => {
 
   await t.test('Custom search path', async t => {
     const pg = new Pg(`${pgConfig}?currentSchema="$user",foo,bar`);
-    const results = await pg.query('SHOW search_path');
+    const conn = await pg.getConnection();
+    const results = await conn.query('SHOW search_path');
     t.same(results, [{search_path: '"$user",foo,bar'}]);
+    await conn.release();
     await pg.end();
   });
 
@@ -128,19 +90,7 @@ t.test('Connection', skip, async t => {
     await pg.end();
   });
 
-  await t.test('Concurrent selects (ad-hoc)', async t => {
-    const pg = new Pg(pgConfig);
-
-    const all = await Promise.all([pg.query('SELECT 1 AS one'), pg.query('SELECT 2 AS two'), pg.query('SELECT 3 AS three')]);
-    t.same(
-      all.map(results => results),
-      [[{one: 1}], [{two: 2}], [{three: 3}]]
-    );
-
-    await pg.end();
-  });
-
-  await t.test('Concurrent selects (with database objects)', async t => {
+  await t.test('Concurrent selects (with connection objects)', async t => {
     const pg = new Pg(pgConfig);
     const conn1 = await pg.getConnection();
     const conn2 = await pg.getConnection();
@@ -164,21 +114,25 @@ t.test('Connection', skip, async t => {
 
   await t.test('Placeholders', async t => {
     const pg = new Pg(pgConfig);
-    const results = await pg.query('SELECT $1 AS one', 'One');
+    const conn = await pg.getConnection();
+    const results = await conn.query('SELECT $1 AS one', 'One');
     t.same(results, [{one: 'One'}]);
-    const results2 = await pg.query('SELECT $1 AS one, $2 AS two', 'One', 2);
+    const results2 = await conn.query('SELECT $1 AS one, $2 AS two', 'One', 2);
     t.same(results2, [{one: 'One', two: 2}]);
+    await conn.release();
     await pg.end();
   });
 
   await t.test('JSON', async t => {
     const pg = new Pg(pgConfig);
-    const results = await pg.query('SELECT $1::JSON AS foo', {test: ['works']});
+    const conn = await pg.getConnection();
+    const results = await conn.query('SELECT $1::JSON AS foo', {test: ['works']});
     t.same(results, [{foo: {test: ['works']}}]);
+    await conn.release();
     await pg.end();
   });
 
-  await t.test('Notifications (two database objects)', async t => {
+  await t.test('Notifications (two connection objects)', async t => {
     const pg = new Pg(pgConfig);
 
     const conn = await pg.getConnection();

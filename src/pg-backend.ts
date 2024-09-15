@@ -1,4 +1,5 @@
 import os from 'node:os';
+import { Pool } from 'pg';
 import { Migrations } from './pg/migrations.js';
 import { Pg } from './pg/pg.js';
 import type {
@@ -89,8 +90,9 @@ export class PgBackend implements MinionBackend {
   /**
    * `pg` object used to store all data.
    */
-  private pg: Pg;
   private isExternalPg: boolean = false;
+
+  private pool: Pool
 
   private hostname = os.hostname();
 
@@ -99,14 +101,15 @@ export class PgBackend implements MinionBackend {
    */
   constructor(database: string | Pg, private calcBackoff: MinionBackoffStrategy) {
     const isExternalPg = this.isExternalPg = database instanceof Pg;
-    this.pg = isExternalPg ? database : new Pg(database);
+    const pg = isExternalPg ? database : new Pg(database);
+    this.pool = pg.pool;
   }
 
   /**
    * Enqueue a new job with `inactive` state.
    */
   async addJob(task: string, args: MinionArgs = [], options: EnqueueOptions = {}): Promise<MinionJobId> {
-    const results = await this.pg.query<EnqueueResult>(
+    const results = await this.pool.query<EnqueueResult>(
       `
         INSERT INTO minion_jobs (args, attempts, delayed, expires, lax, notes, parents, priority, queue, task)
         VALUES ($1, $2, (NOW() + (INTERVAL '1 millisecond' * $3)),
@@ -115,7 +118,7 @@ export class PgBackend implements MinionBackend {
         )
         RETURNING id
       `,
-      JSON.stringify(args),
+      [JSON.stringify(args),
       options.attempts ?? 1,
       options.delay ?? 0,
       options.expire,
@@ -124,10 +127,10 @@ export class PgBackend implements MinionBackend {
       options.parents ?? [],
       options.priority ?? 0,
       options.queue ?? 'default',
-      task
+      task]
     );
 
-    return results.first.id;
+    return results.rows[0].id;
   }
 
   /**
@@ -138,9 +141,9 @@ export class PgBackend implements MinionBackend {
     const job = await this.tryGetNextJob(id, tasks, options);
     if (job !== null) return job;
 
-    const conn = await this.pg.getConnection();
+    const conn = await this.pool.connect();
     try {
-      await conn.listen('minion.job');
+      await conn.query('LISTEN "minion.job"');
       let timer;
       await Promise.race([
         new Promise(resolve => conn.on('notification', resolve)),
@@ -148,7 +151,9 @@ export class PgBackend implements MinionBackend {
       ]);
       clearTimeout(timer);
     } finally {
-      await conn.release();
+      conn.removeAllListeners('notification');
+      await conn.query('UNLISTEN "minion.job"');
+      conn.release();
     }
 
     return await this.tryGetNextJob(id, tasks, options);
@@ -173,7 +178,7 @@ export class PgBackend implements MinionBackend {
    * Transition job back to `inactive` state, already `inactive` jobs may also be retried to change options.
    */
   async retryJob(id: MinionJobId, retries: number, options: RetryOptions = {}): Promise<boolean> {
-    const results = await this.pg.query(
+    const results = await this.pool.query(
       `
         UPDATE minion_jobs SET attempts = COALESCE($1, attempts), delayed = (NOW() + (INTERVAL '1 millisecond' * $2)),
           expires =
@@ -186,34 +191,26 @@ export class PgBackend implements MinionBackend {
           queue = COALESCE($7, queue), retried = NOW(), retries = retries + 1, state = 'inactive'
         WHERE id = $8 AND retries = $9
       `,
-      options.attempts,
-      options.delay ?? 0,
-      options.expire,
-      options.lax,
-      options.parents,
-      options.priority,
-      options.queue,
-      id,
-      retries
+      [options.attempts, options.delay ?? 0, options.expire, options.lax, options.parents, options.priority, options.queue, id, retries]
     );
 
-    return (results.count ?? 0) > 0 ? true : false;
+    return (results.rowCount ?? 0) > 0 ? true : false;
   }
 
   /**
    * Remove `failed`, `finished` or `inactive` job from queue.
    */
   async removeJob(id: MinionJobId): Promise<boolean> {
-    const results = await this.pg
-      .query("DELETE FROM minion_jobs WHERE id = $1 AND state IN ('inactive', 'failed', 'finished')", id);
-    return (results.count ?? 0) > 0 ? true : false;
+    const results = await this.pool.query(
+      "DELETE FROM minion_jobs WHERE id = $1 AND state IN ('inactive', 'failed', 'finished')", [id]);
+    return (results.rowCount ?? 0) > 0;
   }
 
   /**
    * Returns the information about jobs in batches.
    */
   async getJobInfos(offset: number, limit: number, options: ListJobsOptions = {}): Promise<JobList> {
-    const results = await this.pg.query<ListJobsResult>(
+    const results = await this.pool.query<ListJobsResult>(
       `
         SELECT id, args, attempts, ARRAY(SELECT id FROM minion_jobs WHERE parents @> ARRAY[j.id]) AS children, created,
           delayed, expires, finished, lax, notes, parents, priority, queue, result, retried, retries, started, state,
@@ -225,24 +222,17 @@ export class PgBackend implements MinionBackend {
         ORDER BY id DESC
         LIMIT $7 OFFSET $8
       `,
-      options.before,
-      options.ids,
-      options.notes,
-      options.queues,
-      options.states,
-      options.tasks,
-      limit,
-      offset
+      [options.before, options.ids, options.notes, options.queues, options.states, options.tasks, limit, offset]
     );
-
-    return {total: removeTotal(results), jobs: results};
+    const total = removeTotal(results.rows);
+    return {total, jobs: results.rows};
   }
 
   /**
    * Get history information for job queue.
    */
   async getJobHistory(): Promise<MinionHistory> {
-    const results = await this.pg.query<DailyHistory>(`
+    const results = await this.pool.query<DailyHistory>(`
       SELECT EXTRACT(EPOCH FROM ts) AS epoch, COALESCE(failed_jobs, 0) AS failed_jobs,
         COALESCE(finished_jobs, 0) AS finished_jobs
       FROM (
@@ -258,16 +248,16 @@ export class PgBackend implements MinionBackend {
       ) AS s ON EXTRACT(HOUR FROM ts) = j.hour AND EXTRACT(DAY FROM ts) = j.day
       ORDER BY epoch ASC
     `);
-    return {daily: results};
+    return {daily: results.rows};
   }
 
   /**
    * Change one or more metadata fields for a job. Setting a value to `null` will remove the field.
    */
   async addNotes(id: MinionJobId, notes: Record<string, any>): Promise<boolean> {
-    const results = await this.pg
-      .query('UPDATE minion_jobs SET notes = JSONB_STRIP_NULLS(notes || $1) WHERE id = $2', notes, id);
-    return (results.count ?? 0) > 0;
+    const results = await this.pool.query(
+      'UPDATE minion_jobs SET notes = JSONB_STRIP_NULLS(notes || $1) WHERE id = $2', [notes, id]);
+    return (results.rowCount ?? 0) > 0;
   }
 
 
@@ -276,27 +266,27 @@ export class PgBackend implements MinionBackend {
    */
   async registerWorker(id?: MinionWorkerId, options: RegisterWorkerOptions = {}): Promise<MinionWorkerId> {
     const status = options.status ?? {};
-    const results = await this.pg.query<RegisterWorkerResult>(`
+    const results = await this.pool.query<RegisterWorkerResult>(`
       INSERT INTO minion_workers (id, host, pid, status)
         VALUES (COALESCE($1, NEXTVAL('minion_workers_id_seq')), $2, $3, $4)
         ON CONFLICT(id) DO UPDATE SET notified = now(), status = $4
         RETURNING id
-    `, id, this.hostname, process.pid, status);
-    return results.first.id;
+    `, [id, this.hostname, process.pid, status]);
+    return results.rows[0].id;
   }
 
   /**
    * Unregister worker.
    */
   async unregisterWorker(id: MinionWorkerId): Promise<void> {
-    await this.pg.query('DELETE FROM minion_workers WHERE id = $1', id);
+    await this.pool.query('DELETE FROM minion_workers WHERE id = $1', [id]);
   }
 
   /**
    * Returns information about workers in batches.
    */
   async getWorkers(offset: number, limit: number, options: ListWorkersOptions = {}): Promise<WorkerList> {
-    const results = await this.pg.query<ListWorkersResult>(
+    const results = await this.pool.query<ListWorkersResult>(
       `
         SELECT id, notified, ARRAY(
             SELECT id FROM minion_jobs WHERE state = 'active' AND worker = minion_workers.id
@@ -305,41 +295,38 @@ export class PgBackend implements MinionBackend {
         WHERE (id < $1 OR $1 IS NULL) AND (id = ANY ($2) OR $2 IS NULL)
         ORDER BY id DESC LIMIT $3 OFFSET $4
       `,
-      options.before,
-      options.ids,
-      limit,
-      offset
+      [options.before, options.ids, limit, offset]
     );
-
-    return {total: removeTotal(results), workers: results};
+    const total = removeTotal(results.rows);
+    return {total, workers: results.rows};
   }
 
   /**
    * Broadcast remote control command to one or more workers.
    */
   async notifyWorkers(command: string, args: any[] = [], ids: MinionWorkerId[] = []): Promise<boolean> {
-    const results = await this.pg.query(
+    const results = await this.pool.query(
       `
         UPDATE minion_workers SET inbox = inbox || $1::JSONB
         WHERE (id = ANY ($2) OR $2 = '{}')
       `,
-      JSON.stringify([[command, ...args]]),
-      ids
+      [JSON.stringify([[command, ...args]]), ids]
     );
-    return (results.count ?? 0) > 0;
+    return (results.rowCount ?? 0) > 0;
   }
 
   /**
    * Receive remote control commands for worker.
    */
   async getWorkerNotifications(id: MinionWorkerId): Promise<Array<[string, ...any[]]>> {
-    const results = await this.pg.query<ReceiveResult>(`
+    const results = await this.pool.query<ReceiveResult>(`
       UPDATE minion_workers AS new SET inbox = '[]'
       FROM (SELECT id, inbox FROM minion_workers WHERE id = $1 FOR UPDATE) AS old
       WHERE new.id = old.id AND old.inbox != '[]'
       RETURNING old.inbox AS inbox
-    `, id);
-    return results.first?.inbox ?? [];
+    `, [id]);
+    if ((results.rowCount ?? 0) <= 0) return [];
+    return results.rows[0].inbox ?? [];
   }
 
 
@@ -349,38 +336,36 @@ export class PgBackend implements MinionBackend {
    */
   async lock(name: string, duration: number, options: LockOptions = {}): Promise<boolean> {
     const limit = options.limit ?? 1;
-    const results = await this.pg.query<LockResult>('SELECT * FROM minion_lock($1, $2, $3)', name, duration / 1000, limit);
-    return results.first.minion_lock;
+    const results = await this.pool.query<LockResult>('SELECT * FROM minion_lock($1, $2, $3)', [name, duration / 1000, limit]);
+    return results.rows[0].minion_lock;
   }
 
   /**
    * Release a named lock.
    */
   async unlock(name: string): Promise<boolean> {
-    const results = await this.pg.query(`
+    const results = await this.pool.query(`
       DELETE FROM minion_locks WHERE id = (
         SELECT id FROM minion_locks WHERE expires > NOW() AND name = $1 ORDER BY expires LIMIT 1 FOR UPDATE
       )
-    `, name);
-    return (results.count ?? 0) > 0 ? true : false;
+    `, [name]);
+    return (results.rowCount ?? 0) > 0;
   }
 
   /**
    * Returns information about locks in batches.
    */
   async getLocks(offset: number, limit: number, options: ListLocksOptions = {}): Promise<LockList> {
-    const results = await this.pg.query<ListLockResult>(
+    const results = await this.pool.query<ListLockResult>(
       `
         SELECT name, expires, COUNT(*) OVER() AS total FROM minion_locks
         WHERE expires > NOW() AND (name = ANY ($1) OR $1 IS NULL)
         ORDER BY id DESC LIMIT $2 OFFSET $3
       `,
-      options.names,
-      limit,
-      offset
+      [options.names, limit, offset]
     );
-
-    return {total: removeTotal(results), locks: results};
+    const total = removeTotal(results.rows);
+    return {total, locks: results.rows};
   }
 
 
@@ -388,7 +373,7 @@ export class PgBackend implements MinionBackend {
    * Get statistics for the job queue.
    */
   async stats(): Promise<MinionStats> {
-    const results = await this.pg.query<MinionStats>(`
+    const results = await this.pool.query<MinionStats>(`
       SELECT
         (SELECT COUNT(*) FROM minion_jobs WHERE state = 'inactive' AND (expires IS NULL OR expires > NOW()))
           AS inactive_jobs,
@@ -403,7 +388,7 @@ export class PgBackend implements MinionBackend {
         EXTRACT(EPOCH FROM NOW() - PG_POSTMASTER_START_TIME()) AS uptime
     `);
 
-    const stats = results.first;
+    const stats = results.rows[0];
     stats.inactive_workers = stats.workers - stats.active_workers;
     return stats;
   }
@@ -413,61 +398,66 @@ export class PgBackend implements MinionBackend {
    */
   async repair(options: RepairOptions): Promise<void> {
     // Workers without heartbeat
-    await this.pg.query(`
+    await this.pool.query(`
       DELETE FROM minion_workers WHERE notified < NOW() - INTERVAL '1 millisecond' * $1
-    `, options.missingAfter);
+    `, [options.missingAfter]);
 
     // Old jobs
-    await this.pg.query(`
+    await this.pool.query(`
       DELETE FROM minion_jobs
       WHERE state = 'finished' AND finished <= NOW() - INTERVAL '1 millisecond' * $1
-    `, options.removeAfter);
+    `, [options.removeAfter]);
 
     // Expired jobs
-    await this.pg.query("DELETE FROM minion_jobs WHERE state = 'inactive' AND expires <= NOW()");
+    await this.pool.query("DELETE FROM minion_jobs WHERE state = 'inactive' AND expires <= NOW()");
 
     // Jobs with missing worker (can be retried)
-    const jobs = await this.pg.query<JobWithMissingWorkerResult>(`
+    const jobs = await this.pool.query<JobWithMissingWorkerResult>(`
       SELECT id, retries FROM minion_jobs AS j
       WHERE state = 'active' AND queue != 'minion_foreground'
         AND NOT EXISTS (SELECT 1 FROM minion_workers WHERE id = j.worker)
     `);
-    for (const job of jobs) {
+    for (const job of jobs.rows) {
       await this.markJobFailed(job.id, job.retries, 'Worker went away');
     }
 
     // Jobs in queue without workers or not enough workers (cannot be retried and requires admin attention)
-    await this.pg.query(`
+    await this.pool.query(`
       UPDATE minion_jobs SET state = 'failed', result = '"Job appears stuck in queue"'
           WHERE state = 'inactive' AND delayed + $1 * INTERVAL '1 millisecond' < NOW()
-    `, options.stuckAfter);
+    `, [options.stuckAfter]);
   }
 
   /**
    * Update database schema to latest version.
    */
   async updateSchema(): Promise<void> {
-    const version = (await this.pg.query<ServerVersionResult>('SHOW server_version_num')).first.server_version_num;
+    const version = (await this.pool.query<ServerVersionResult>('SHOW server_version_num')).rows[0].server_version_num;
     if (version < 90500) throw new Error('PostgreSQL 9.5 or later is required');
 
-    const migrations = new Migrations(this.pg);
-    await migrations.loadFromFile('migrations/minion.sql', {name: 'minion'});
-    await migrations.migrateTo();
+    const client = await this.pool.connect();
+    try {
+      const migrations = new Migrations(client);
+      await migrations.loadFromFile('migrations/minion.sql', {name: 'minion'});
+      await migrations.migrateTo();
+    } finally {
+      client.release();
+    }
   }
 
   /**
    * Reset job queue.
    */
   async reset(options: ResetOptions): Promise<void> {
-    if (options.all === true) await this.pg.query('TRUNCATE minion_jobs, minion_locks, minion_workers RESTART IDENTITY');
-    if (options.locks === true) await this.pg.query('TRUNCATE minion_locks');
+    if (options.all === true) await this.pool.query('TRUNCATE minion_jobs, minion_locks, minion_workers RESTART IDENTITY');
+    if (options.locks === true) await this.pool.query('TRUNCATE minion_locks');
   }
 
   /**
    * Stop using the queue.
    */
   async end(): Promise<void> {
-    if (!this.isExternalPg) await this.pg.end();
+    if (!this.isExternalPg) await this.pool.end();
   }
 
 
@@ -476,7 +466,7 @@ export class PgBackend implements MinionBackend {
     const minPriority = options.minPriority;
     const queues = options.queues ?? ['default'];
 
-    const results = await this.pg.query<DequeueResult>(`
+    const results = await this.pool.query<DequeueResult>(`
       UPDATE minion_jobs SET started = NOW(), state = 'active', worker = ${id}
       WHERE id = (
         SELECT id FROM minion_jobs AS j
@@ -491,21 +481,22 @@ export class PgBackend implements MinionBackend {
         FOR UPDATE SKIP LOCKED
       )
       RETURNING id, args, retries, task
-    `, jobId, minPriority, queues, tasks);
+    `, [jobId, minPriority, queues, tasks]);
+    if ((results.rowCount ?? 0) <= 0) return null;
 
-    return results.first ?? null;
+    return results.rows[0] ?? null;
   }
 
   protected async updateJobAfterRun(state: 'finished' | 'failed', id: MinionJobId, retries: number, result?: any): Promise<boolean> {
     const jsonResult = JSON.stringify(result);
-    const results = await this.pg.query<UpdateResult>(`
+    const results = await this.pool.query<UpdateResult>(`
       UPDATE minion_jobs SET finished = NOW(), result = $1, state = $2
       WHERE id = $3 AND retries = $4 AND state = 'active'
       RETURNING attempts
-    `, jsonResult, state, id, retries);
+    `, [jsonResult, state, id, retries]);
 
-    if (results.length <= 0) return false;
-    return state === 'failed' ? this.autoRetryJob(id, retries, results.first.attempts) : true;
+    if ((results.rowCount ?? 0) <= 0) return false;
+    return state === 'failed' ? this.autoRetryJob(id, retries, results.rows[0].attempts) : true;
   }
 
   protected async autoRetryJob(id: number, retries: number, attempts: number): Promise<boolean> {
@@ -513,6 +504,7 @@ export class PgBackend implements MinionBackend {
     const delay = this.calcBackoff(retries);
     return this.retryJob(id, retries, {attempts: attempts > 1 ? attempts - 1 : 1, delay});
   }
+
 }
 
 function removeTotal<T extends Array<{total?: number}>>(results: T): number {

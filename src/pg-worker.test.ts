@@ -9,8 +9,8 @@ const pgConfig = process.env.TEST_ONLINE!;
 t.test('Worker', skip, async t => {
   // Isolate tests
   const pg = new Pg(`${pgConfig}?currentSchema=minion_worker_test`);
-  await pg.query('DROP SCHEMA IF EXISTS minion_worker_test CASCADE');
-  await pg.query('CREATE SCHEMA minion_worker_test');
+  await pg.pool.query('DROP SCHEMA IF EXISTS minion_worker_test CASCADE');
+  await pg.pool.query('CREATE SCHEMA minion_worker_test');
 
   const minion = new Minion(pg, {backendClass: PgBackend});
   await minion.updateSchema();
@@ -34,7 +34,7 @@ t.test('Worker', skip, async t => {
   t.equal(worker.isRunning, false);
 
   // Clean up once we are done
-  await pg.query('DROP SCHEMA minion_worker_test CASCADE');
+  await pg.pool.query('DROP SCHEMA minion_worker_test CASCADE');
 
   await pg.end();
 });

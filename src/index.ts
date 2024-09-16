@@ -1,12 +1,12 @@
-import {Minion, AbortError} from './minion.js';
+import { AbortError, Minion } from './minion.js';
 import type {
   MinionBackend,
   MinionJob,
-  MinionWorker,
-  MinionOptions
+  MinionOptions,
+  MinionWorker
 } from './types.js';
-import {version} from './version.js';
+import { version } from './version.js';
 
 export default Minion;
-export type {MinionBackend, MinionJob, MinionOptions, MinionWorker};
-export {Minion, AbortError, version};
+export { AbortError, Minion, version };
+export type { MinionBackend, MinionJob, MinionOptions, MinionWorker };

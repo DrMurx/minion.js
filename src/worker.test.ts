@@ -1,12 +1,13 @@
 import t from 'tap';
+import { PgBackend } from './backends/pg/backend.js';
+import { createPool } from './backends/pg/factory.js';
 import { Minion } from './index.js';
-import { PgBackend } from './pg-backend.js';
 
 const skip = process.env.TEST_ONLINE === undefined ? {skip: 'set TEST_ONLINE to enable this test'} : {};
 const pgConfig = process.env.TEST_ONLINE!;
 
 t.test('Worker', skip, async t => {
-  const pool = PgBackend.connect(`${pgConfig}?currentSchema=minion_worker_test`)
+  const pool = createPool(`${pgConfig}?currentSchema=minion_worker_test`)
 
   // Isolate tests
   await pool.query('DROP SCHEMA IF EXISTS minion_worker_test CASCADE');

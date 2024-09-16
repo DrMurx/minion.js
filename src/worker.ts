@@ -1,6 +1,6 @@
-import type {Minion} from './minion.js';
-import type {DequeueOptions, MinionCommand, MinionStatus, WorkerInfo, WorkerOptions} from './types.js';
-import {Job} from './job.js';
+import { Job } from './job.js';
+import type { Minion } from './minion.js';
+import type { DequeueOptions, MinionCommand, MinionStatus, WorkerInfo, WorkerOptions } from './types.js';
 
 interface JobStatus {
   job: Job;

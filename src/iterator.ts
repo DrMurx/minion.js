@@ -1,5 +1,5 @@
-import {Minion} from "./minion.js";
-import {ListJobsOptions, ListWorkersOptions} from "./types.js";
+import { Minion } from "./minion.js";
+import { ListJobsOptions, ListWorkersOptions } from "./types.js";
 
 /**
  * Iterator object.

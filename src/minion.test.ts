@@ -1,13 +1,14 @@
 import os from 'node:os';
 import t from 'tap';
+import { PgBackend } from './backends/pg/backend.js';
+import { createPool } from './backends/pg/factory.js';
 import { Minion } from './index.js';
 import { defaultBackoffStrategy } from './minion.js';
-import { PgBackend } from './pg-backend.js';
 
 const skip = process.env.TEST_ONLINE === undefined ? {skip: 'set TEST_ONLINE to enable this test'} : {};
 
 t.test('Minion with PostgreSQL backend', skip, async t => {
-  const pool = PgBackend.connect(`${process.env.TEST_ONLINE!}?currentSchema=minion_backend_test`)
+  const pool = createPool(`${process.env.TEST_ONLINE!}?currentSchema=minion_backend_test`)
 
   // Isolate tests
   await pool.query('DROP SCHEMA IF EXISTS minion_backend_test CASCADE');

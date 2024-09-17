@@ -1,5 +1,5 @@
-import type {Job} from './job.js';
-import type {Worker} from './worker.js';
+import type { Job } from './job.js';
+import type { Worker } from './worker.js';
 
 export interface MinionOptions extends Partial<RepairOptions> {
 }
@@ -12,7 +12,7 @@ export interface RepairOptions {
   missingAfter: number;
 
   /**
-   * Amount of time in milliseconds after which jobs that have reached the state `finished` and have no unresolved
+   * Amount of time in milliseconds after which jobs that have reached the state `succeeded` and have no unresolved
    * dependencies will be removed automatically by `minion.repair()`, defaults to `172800000` (2 days). It is not
    * recommended to set this value below 2 days.
    */
@@ -31,10 +31,10 @@ export type MinionBackoffStrategy = (retries: number) => number;
 export interface MinionBackend {
   name: string;
 
-  addJob: (task: string, args?: MinionArgs, options?: EnqueueOptions) => Promise<MinionJobId>;
-  getNextJob: (id: MinionWorkerId, tasks: string[], wait: number, options: DequeueOptions) => Promise<DequeuedJob | null>;
+  addJob: (taskName: string, args?: MinionArgs, options?: EnqueueOptions) => Promise<MinionJobId>;
+  getNextJob: (id: MinionWorkerId, taskNames: string[], wait: number, options: DequeueOptions) => Promise<DequeuedJob | null>;
   markJobFailed: (id: MinionJobId, retries: number, result?: any) => Promise<boolean>;
-  markJobFinished: (id: MinionJobId, retries: number, result?: any) => Promise<boolean>;
+  markJobSucceeded: (id: MinionJobId, retries: number, result?: any) => Promise<boolean>;
   retryJob: (id: MinionJobId, retries: number, options: RetryOptions) => Promise<boolean>;
   removeJob: (id: MinionJobId) => Promise<boolean>;
   getJobInfos: (offset: number, limit: number, options?: ListJobsOptions) => Promise<JobList>;
@@ -58,7 +58,7 @@ export interface MinionBackend {
 
 export type MinionArgs = any[];
 export type MinionCommand = (worker: MinionWorker, ...args: any[]) => Promise<void>;
-export type MinionStates = 'inactive' | 'active' | 'failed' | 'finished';
+export type MinionStates = 'pending' | 'running' | 'failed' | 'succeeded';
 export type MinionJob = Job;
 export type MinionJobId = number;
 export type MinionWorkerId = number;
@@ -70,16 +70,18 @@ export interface MinionHistory {
 }
 
 export interface MinionStats {
-  active_jobs: number;
-  active_workers: number;
-  delayed_jobs: number;
-  enqueued_jobs: number;
-  failed_jobs: number;
-  finished_jobs: number;
-  inactive_jobs: number;
-  inactive_workers: number;
-  uptime: number;
+  enqueuedJobs: number;
+  pendingJobs: number;
+  delayedJobs: number;
+  runningJobs: number;
+  succeededJobs: number;
+  failedJobs: number;
+
   workers: number;
+  busyWorkers: number;
+  idleWorkers: number;
+
+  uptime: number;
 }
 
 export interface MinionStatus {
@@ -98,31 +100,31 @@ export interface MinionStatus {
 export interface DequeueOptions {
   id?: MinionJobId;
   minPriority?: number;
-  queues?: string[];
+  queueNames?: string[];
 }
 
 export interface EnqueueOptions {
   attempts?: number;
-  delay?: number;
-  expire?: number;
-  lax?: boolean;
+  delayUntil?: number;
+  expiresAt?: number;
+  laxDependency?: boolean;
   notes?: Record<string, any>;
-  parents?: MinionJobId[];
+  parentJobIds?: MinionJobId[];
   priority?: number;
-  queue?: string;
+  queueName?: string;
 }
 
 export interface ListJobsOptions {
-  before?: number;
+  beforeId?: number;
   ids?: MinionJobId[];
   notes?: string[];
-  queues?: string[];
+  queueNames?: string[];
   states?: MinionStates[];
-  tasks?: string[];
+  taskNames?: string[];
 }
 
 export interface ListWorkersOptions {
-  before?: number;
+  beforeId?: number;
   ids?: MinionWorkerId[];
 }
 
@@ -136,12 +138,12 @@ export interface ResetOptions {
 
 export interface RetryOptions {
   attempts?: number;
-  delay?: number;
-  expire?: number;
-  lax?: boolean;
-  parents?: MinionJobId[];
+  delayUntil?: number;
+  expireAt?: number;
+  laxDependency?: boolean;
+  parentJobIds?: MinionJobId[];
   priority?: number;
-  queue?: string;
+  queueName?: string;
 }
 
 export interface WorkerOptions {
@@ -151,39 +153,46 @@ export interface WorkerOptions {
 
 export interface DailyHistory {
   epoch: number;
-  failed_jobs: number;
-  finished_jobs: number;
+  failedJobs: number;
+  succeededJobs: number;
 }
 
 export interface DequeuedJob {
   id: MinionJobId;
   args: MinionArgs;
   retries: number;
-  task: string;
+  taskName: string;
 }
 
 export interface JobInfo {
-  args: MinionArgs;
-  attempts: number;
-  children: MinionJobId[];
-  created: Date;
-  delayed: Date;
-  expires: Date;
-  finished: Date;
   id: MinionJobId;
-  lax: boolean;
-  notes: Record<string, any>;
-  parents: MinionJobId[];
-  priority: number;
-  queue: string;
+
+  queueName: string;
+  taskName: string;
+  args: MinionArgs;
   result: any;
-  retried: Date;
-  retries: number;
-  started: Date;
+
   state: MinionStates;
-  task: string;
+  priority: number;
+  attempts: number;
+  retries: number;
+
+  parentJobIds: MinionJobId[];
+  childJobIds: MinionJobId[];
+  laxDependency: boolean;
+
+  workerId: MinionWorkerId;
+  notes: Record<string, any>;
+
+  delayUntil: Date;
+  startedAt: Date;
+  retriedAt: Date;
+  finishedAt: Date;
+
+  createdAt: Date;
+  expiresAt: Date;
+
   time: Date;
-  worker: MinionWorkerId;
 }
 
 export interface JobList {
@@ -198,12 +207,15 @@ export interface ResultOptions {
 
 export interface WorkerInfo {
   id: MinionWorkerId;
+
   host: string;
-  jobs: MinionJobId[];
-  notified?: Date;
   pid: number;
-  started: Date;
+
   status: Record<string, any>;
+  jobs: MinionJobId[];
+
+  startedAt: Date;
+  lastSeenAt?: Date;
 }
 
 export interface WorkerList {

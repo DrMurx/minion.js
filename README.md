@@ -88,19 +88,19 @@ to perform regular maintenance tasks.
 
 ### Consistency
 
-Every new job starts out as `inactive`, then progresses to `active` when it is dequeued by a worker, and finally ends
-up as `finished` or `failed`, depending on its result. Every `failed` job can then be retried to progress back to the
-`inactive` state and start all over again.
+Every new job starts out as `pending`, then progresses to `running` when it is dequeued by a worker, and finally ends
+up as `succeeded` or `failed`, depending on its result. Every `failed` job can then be retried to progress back to the
+`pending` state and start all over again.
 
 ```
-                                                   +----------+
-                                                   |          |
-                                          +----->  | finished |
-+----------+            +--------+        |        |          |
-|          |            |        |        |        +----------+
-| inactive |  ------->  | active |  ------+
-|          |            |        |        |        +----------+
-+----------+            +--------+        |        |          |
+                                                   +-----------+
+                                                   |           |
+                                          +----->  | succeeded |
++---------+            +---------+        |        |           |
+|         |            |         |        |        +-----------+
+| pending |  ------->  | running |  ------+
+|         |            |         |        |        +----------+
++---------+            +---------+        |        |          |
                                           +----->  |  failed  |  -----+
      ^                                             |          |       |
      |                                             +----------+       |
@@ -130,7 +130,7 @@ const minion = new Minion('postgres://user:password@localhost:5432/database', {
   // the registry, defaults to 30 minutes
   missingAfter: 1800000,
 
-  // Amount of time in seconds after which jobs that have reached the state finished and have no unresolved
+  // Amount of time in seconds after which jobs that have reached the state succeeded and have no unresolved
   // dependencies will be removed automatically by "repair", defaults to 2 days (it is not recommended to set this
   // value below 2 days)
   removeAfter: 172800000,
@@ -168,7 +168,7 @@ const jobId = await minion.enqueue('task', ['arg1', 'arg2', 'arg3'], {
   // Object with arbitrary metadata for this job that gets serialized as JSON
   notes: {foo: 'bar'},
 
-  // One or more existing jobs this job depends on, and that need to have transitioned to the state "finished" before
+  // One or more existing jobs this job depends on, and that need to have transitioned to the state "succeeded" before
   // it can be processed
   parents: [23, 24, 25],
 
@@ -221,11 +221,11 @@ const attempts = info.attempts;
 const children = info.children;
 const created  = info.created;
 const delayed  = info.delayed;
-const expires  = info.expires;
-const finished = info.finished;
-const lax      = info.lax;
+const expires  = info.expiresAt;
+const finished = info.finishedAt;
+const lax      = info.lax_dependencies;
 const notes    = info.notes;
-const parents  = info.parents;
+const parents  = info.parentJobIds;
 const priority = info.priority;
 const queue    = info.queue;
 const result   = info.result;
@@ -233,7 +233,7 @@ const retried  = info.retried;
 const started  = info.started;
 const state    = info.state;
 const time     = info.time;
-const worker   = info.worker;
+const worker   = info.workerId;
 
 // Merge notes (remove a note by setting it to "null")
 const success = await job.note({just: 'a note', another: ['note'], foo: null});
@@ -265,7 +265,7 @@ const success = await job.retry({
   // Existing jobs this job depends on may also have transitioned to the "failed" state to allow for it to be processed
   lax: false,
 
-  // One or more existing jobs this job depends on, and that need to have transitioned to the state "finished" before
+  // One or more existing jobs this job depends on, and that need to have transitioned to the state "succeeded" before
   // it can be processed
   parents: [23, 25],
 
@@ -293,7 +293,7 @@ const jobs = minion.jobs({
   queues: ['important', 'unimportant'],
 
   // List only jobs in these states
-  states: ['inactive', 'active'],
+  states: ['pending', 'running'],
 
   // List only jobs for these tasks
   tasks: ['foo', 'bar']
@@ -336,7 +336,7 @@ The most common use for named locks is limiting access to shared resources.
 // Only one job should run at a time (unique job)
 minion.addTask('do_unique_stuff', async job => {
   if (await minion.lock('fragile_web_service', 7200000) !== true) {
-    await minion.finish('Previous job still active')
+    await minion.finish('Previous job still running')
     return;
   }
   ...

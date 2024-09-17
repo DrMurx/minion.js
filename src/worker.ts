@@ -21,7 +21,7 @@ export class Worker {
    */
   private commands: Record<string, MinionCommand>;
 
-  private activeJobs: JobStatus[] = [];
+  private runningJobs: JobStatus[] = [];
   private lastCommandAt = 0;
   private lastHeartbeatAt = 0;
   private lastRepairAt = 0;
@@ -59,15 +59,15 @@ export class Worker {
   }
 
   /**
-   * Wait a given amount of time in milliseconds for a job, dequeue job object and transition from `inactive` to
-   * `active` state, or return `null` if queues were empty.
+   * Wait a given amount of time in milliseconds for a job, dequeue job object and transition from `pending` to
+   * `running` state, or return `null` if queues were empty.
    */
   async dequeue(wait = 0, options: DequeueOptions = {}): Promise<Job | null> {
     const id = this._id;
     if (id === undefined) return null;
 
     const job = await this.minion.backend.getNextJob(id, Object.keys(this.minion.tasks), wait, options);
-    return job === null ? null : new Job(this.minion, job.id, job.args, job.retries, job.task);
+    return job === null ? null : new Job(this.minion, job.id, job.args, job.retries, job.taskName);
   }
 
   /**
@@ -152,20 +152,20 @@ export class Worker {
     const status = this.status;
     const stop = this.stopPromises;
 
-    while (stop.length === 0 || this.activeJobs.length > 0) {
-      const options: DequeueOptions = {queues: status.queues};
+    while (stop.length === 0 || this.runningJobs.length > 0) {
+      const options: DequeueOptions = {queueNames: status.queues};
 
       await this.maintenance(status);
 
       // Check if jobs are finished
-      const before = this.activeJobs.length;
-      const activeJobs = (this.activeJobs = this.activeJobs.filter(jobStatus => jobStatus.job.isFinished === false));
-      status.performed += before - activeJobs.length;
+      const before = this.runningJobs.length;
+      const runningJobs = (this.runningJobs = this.runningJobs.filter(jobStatus => jobStatus.job.isFinished === false));
+      status.performed += before - runningJobs.length;
 
       // Job limit has been reached
       const {jobs, spare} = status;
-      if (activeJobs.length >= jobs + spare) await Promise.race(activeJobs.map(jobStatus => jobStatus.promise));
-      if (activeJobs.length >= jobs) options.minPriority = status.spareMinPriority;
+      if (runningJobs.length >= jobs + spare) await Promise.race(runningJobs.map(jobStatus => jobStatus.promise));
+      if (runningJobs.length >= jobs) options.minPriority = status.spareMinPriority;
 
       // Worker is stopped
       if (stop.length > 0) continue;
@@ -173,7 +173,7 @@ export class Worker {
       // Try to get more jobs
       const job = await this.dequeue(status.dequeueTimeout, options);
       if (job === null) continue;
-      activeJobs.push({job, promise: job.perform()});
+      runningJobs.push({job, promise: job.perform()});
     }
 
     await this.unregister();

@@ -43,7 +43,7 @@ export class Job {
   async perform(): Promise<void> {
     try {
       await this.execute();
-      await this.markFinished();
+      await this.markSucceeded();
     } catch (error: any) {
       await this.markFailed(error);
     }
@@ -63,8 +63,8 @@ export class Job {
   }
 
   /**
-   * Transition from `active` to `failed` state with or without a result, and if there are attempts remaining,
-   * transition back to `inactive` with a delay based on `minion.backoff()`.
+   * Transition from `running` to `failed` state with or without a result, and if there are attempts remaining,
+   * transition back to `pending` with a delay based on `minion.backoff()`.
    */
   async markFailed(result: any = 'Unknown error'): Promise<boolean> {
     if (result instanceof Error) result = {name: result.name, message: result.message, stack: result.stack};
@@ -72,10 +72,10 @@ export class Job {
   }
 
   /**
-   * Transition from `active` to `finished` state with or without a result.
+   * Transition from `running` to `succeeded` state with or without a result.
    */
-  async markFinished(result?: any): Promise<boolean> {
-    return await this.minion.backend.markJobFinished(this._id, this.retries, result);
+  async markSucceeded(result?: any): Promise<boolean> {
+    return await this.minion.backend.markJobSucceeded(this._id, this.retries, result);
   }
 
   /**
@@ -86,14 +86,14 @@ export class Job {
   }
 
   /**
-   * Transition job back to `inactive` state, already `inactive` jobs may also be retried to change options.
+   * Transition job back to `pending` state, already `pending` jobs may also be retried to change options.
    */
   async retry(options: RetryOptions = {}) {
     return await this.minion.backend.retryJob(this._id, this.retries, options);
   }
 
   /**
-   * Remove `failed`, `finished` or `inactive` job from queue.
+   * Remove `failed`, `succeeded` or `pending` job from queue.
    */
   async remove(): Promise<boolean> {
     return await this.minion.backend.removeJob(this._id);
@@ -125,7 +125,7 @@ export class Job {
     if (info === null) return results;
 
     const minion = this.minion;
-    for (const parent of info.parents) {
+    for (const parent of info.parentJobIds) {
       const job = await minion.getJob(parent);
       if (job !== null) results.push(job);
     }

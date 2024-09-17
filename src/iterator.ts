@@ -64,7 +64,7 @@ export class BackendIterator<T> {
       this.total = results.total + this.count;
       this.count += len;
       this.cache.push(...batch);
-      this.options.before = batch[batch.length - 1].id;
+      this.options.beforeId = batch[batch.length - 1].id;
     }
   }
 }

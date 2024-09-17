@@ -63,7 +63,7 @@ export class Minion {
   }
 
   /**
-   * Enqueue a new job with `inactive` state. Arguments get serialized by the backend as JSON, so you shouldn't send
+   * Enqueue a new job with `pending` state. Arguments get serialized by the backend as JSON, so you shouldn't send
    * objects that cannot be serialized, nested data structures are fine though.
    * @param options.attempts - Number of times performing this job will be attempted, with a delay based on
    *                           `minion.backoff()` after the first attempt, defaults to `1`.
@@ -73,18 +73,18 @@ export class Minion {
    *                      for it to be processed, defaults to `false`.
    * @param options.notes - Object with arbitrary metadata for this job that gets serialized as JSON.
    * @param options.parents - One or more existing jobs this job depends on, and that need to have transitioned to the
-   *                          state `finished` before it can be processed.
+   *                          state `succeeded` before it can be processed.
    * @param options.priority - Job priority, defaults to `0`. Jobs with a higher priority get performed first.
    *                           Priorities can be positive or negative, but should be in the range between `100` and
    *                           `-100`.
    * @param options.queue - Queue to put job in, defaults to `default`.
    */
-  async addJob(task: string, args?: MinionArgs, options?: EnqueueOptions): Promise<MinionJobId> {
-    return await this.backend.addJob(task, args, options);
+  async addJob(taskName: string, args?: MinionArgs, options?: EnqueueOptions): Promise<MinionJobId> {
+    return await this.backend.addJob(taskName, args, options);
   }
 
   /**
-   * Return a promise for the future result of a job. The state `finished` will result in the promise being
+   * Return a promise for the future result of a job. The state `succeeded` will result in the promise being
    * `fullfilled`, and the state `failed` in the promise being `rejected`.
    */
   async getJobResult(id: MinionJobId, options: ResultOptions = {}): Promise<JobInfo | null> {
@@ -98,7 +98,7 @@ export class Minion {
    */
   async getJob(id: MinionJobId): Promise<MinionJob | null> {
     const info = (await this.backend.getJobInfos(0, 1, {ids: [id]})).jobs[0];
-    return info === undefined ? null : new Job(this, info.id, info.args, info.retries, info.task);
+    return info === undefined ? null : new Job(this, info.id, info.args, info.retries, info.taskName);
   }
 
   /**
@@ -123,15 +123,15 @@ export class Minion {
   async runJob(id: number): Promise<boolean> {
     let job = await this.getJob(id);
     if (job === null) return false;
-    if ((await job.retry({attempts: 1, queue: 'minion_foreground'})) !== true) return false;
+    if ((await job.retry({attempts: 1, queueName: 'minion_foreground'})) !== true) return false;
 
     const worker = await this.createWorker().register();
     try {
-      job = await worker.dequeue(0, {id, queues: ['minion_foreground']});
+      job = await worker.dequeue(0, {id, queueNames: ['minion_foreground']});
       if (job === null) return false;
       try {
         await job.execute();
-        await job.markFinished();
+        await job.markSucceeded();
         return true;
       } catch (error: any) {
         await job.markFailed(error);
@@ -161,8 +161,8 @@ export class Minion {
   /**
    * Register a task.
    */
-  addTask(name: string, fn: MinionTask): void {
-    this.tasks[name] = fn;
+  addTask(taskName: string, fn: MinionTask): void {
+    this.tasks[taskName] = fn;
   }
 
 
@@ -240,7 +240,7 @@ export class Minion {
       const info = (await this.backend.getJobInfos(0, 1, {ids: [id]})).jobs[0];
       if (info === undefined) {
         resolve(null);
-      } else if (info.state === 'finished') {
+      } else if (info.state === 'succeeded') {
         resolve(info);
       } else if (info.state === 'failed') {
         reject(info);

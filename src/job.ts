@@ -1,135 +1,184 @@
-import type { Minion } from './minion.js';
-import type { JobInfo, MinionArgs, MinionJob, MinionJobId, RetryOptions } from './types.js';
+import { type JobBackend } from './types/backend.js';
+import {
+  JobState,
+  type Job,
+  type JobArgs,
+  type JobDescriptor,
+  type JobId,
+  type JobInfo,
+  type JobResult,
+  type JobRetryOptions,
+} from './types/job.js';
+import { type JobManager } from './types/queue.js';
+import { type TaskReader } from './types/task.js';
+import { type Worker } from './types/worker.js';
 
 /**
- * Minion job class.
+ * Default job class.
  */
-export class Job {
+export class DefaultJob implements Job {
+  private _state?: JobState = JobState.Pending;
+  private _progress: number = 0.0;
 
-  private _id: MinionJobId;
-  private _args: MinionArgs;
-  private _isFinished = false;
+  private _worker: Worker | null = null;
+  private _abortController: AbortController = new AbortController();
 
   /**
-   *
-   * @param minion Minion instance the job belongs to
-   * @param id Job id
-   * @param args Arguments passed to task
-   * @param retries Number of times job has been retried
-   * @param taskName Task name
+   * @param jobManager Accessing additional job services
+   * @param taskReader For access to the task vault
+   * @param backend Queue backend
+   * @param jobInfo Simplified JobInfo object
    */
   constructor(
-    private minion: Minion,
-    id: MinionJobId,
-    args: MinionArgs,
-    public retries: number,
-    public taskName: string
+    protected jobManager: JobManager,
+    private taskReader: TaskReader,
+    private backend: JobBackend,
+    private readonly jobInfo: JobDescriptor | JobInfo,
   ) {
-    this._id = id;
-    this._args = args;
+    if ('state' in jobInfo) {
+      this._state = jobInfo.state;
+    }
   }
 
-  get id(): MinionJobId {
-    return this._id;
+  get id(): JobId {
+    return this.jobInfo.id;
   }
 
-  get args(): MinionArgs {
-    return this._args;
+  get taskName(): string {
+    return this.jobInfo.taskName;
   }
 
-  /**
-   * Perform job and wait for it to finish. Note that this method should only be used to implement custom workers.
-   */
-  async perform(): Promise<void> {
+  get args(): JobArgs {
+    return this.jobInfo.args;
+  }
+
+  get state(): JobState | undefined {
+    return this._state;
+  }
+
+  get progress(): number {
+    return this._progress;
+  }
+
+  get maxAttempts(): number {
+    return this.jobInfo.maxAttempts;
+  }
+
+  get attempt(): number {
+    return this.jobInfo.attempt;
+  }
+
+  get abortSignal(): AbortSignal {
+    return this._abortController.signal;
+  }
+
+  async perform(worker: Worker, throwOnError: boolean = false): Promise<void> {
+    if (this._state !== JobState.Pending && this._state !== JobState.Scheduled && this._state !== JobState.Running) {
+      throw new Error(`Try to perform job with state ${this._state}: ${this.id}`);
+    }
+
+    const abortEventHandler = (event: Event) => {
+      if (event.type === 'abort') {
+        this._abortController.abort(worker.abortSignal.reason);
+      }
+    };
+
+    this._state = JobState.Running;
+    this._progress = 0.0;
+    this._worker = worker;
+
     try {
-      await this.execute();
-      await this.markSucceeded();
+      worker.abortSignal.throwIfAborted();
+
+      worker.abortSignal.addEventListener('abort', abortEventHandler);
+      const task = this.taskReader.getTask(this.taskName);
+      const result = await task(this);
+      await this.markSucceeded(result);
     } catch (error: any) {
       await this.markFailed(error);
-    }
-  }
-
-  /**
-   * Execute the appropriate task for job in this process. Note that this method should only be used to implement
-   * custom workers.
-   */
-  async execute(): Promise<void> {
-    try {
-      const task = this.minion.tasks[this.taskName];
-      await task(this, ...this._args);
+      if (throwOnError) throw error;
     } finally {
-      this._isFinished = true;
+      worker.abortSignal.removeEventListener('abort', abortEventHandler);
+      this._worker = null;
     }
   }
 
-  /**
-   * Transition from `running` to `failed` state with or without a result, and if there are attempts remaining,
-   * transition back to `pending` with a delay based on `minion.backoff()`.
-   */
+  async updateProgress(progress: number): Promise<boolean> {
+    const isUpdated = await this.backend.updateJobProgress(this.id, this.attempt, progress);
+    if (isUpdated) {
+      this._progress = progress;
+      await this._worker?.heartbeat();
+    }
+    return isUpdated;
+  }
+
+  async amendMetadata(records: Record<string, any>): Promise<boolean> {
+    return await this.backend.amendJobMetadata(this.id, records);
+  }
+
+  async markSucceeded(result?: JobResult): Promise<boolean> {
+    const isUpdated = await this.backend.markJobFinished(JobState.Succeeded, this.id, this.attempt, result);
+    if (isUpdated) {
+      this._state = JobState.Succeeded;
+      this._progress = 1.0;
+    }
+    return isUpdated;
+  }
+
   async markFailed(result: any = 'Unknown error'): Promise<boolean> {
-    if (result instanceof Error) result = {name: result.name, message: result.message, stack: result.stack};
-    return await this.minion.backend.markJobFailed(this._id, this.retries, result);
-  }
-
-  /**
-   * Transition from `running` to `succeeded` state with or without a result.
-   */
-  async markSucceeded(result?: any): Promise<boolean> {
-    return await this.minion.backend.markJobSucceeded(this._id, this.retries, result);
-  }
-
-  /**
-   * Check if job has been executed in this process.
-   */
-  get isFinished(): boolean {
-    return this._isFinished;
-  }
-
-  /**
-   * Transition job back to `pending` state, already `pending` jobs may also be retried to change options.
-   */
-  async retry(options: RetryOptions = {}) {
-    return await this.minion.backend.retryJob(this._id, this.retries, options);
-  }
-
-  /**
-   * Remove `failed`, `succeeded` or `pending` job from queue.
-   */
-  async remove(): Promise<boolean> {
-    return await this.minion.backend.removeJob(this._id);
-  }
-
-  /**
-   * Change one or more metadata fields for this job. Setting a value to `null` will remove the field. The new values
-   * will get serialized as JSON.
-   */
-  async addNotes(notes: Record<string, any>): Promise<boolean> {
-    return await this.minion.backend.addNotes(this._id, notes);
-  }
-
-  /**
-   * Get job information.
-   */
-  async getInfo(): Promise<JobInfo | null> {
-    const info = (await this.minion.backend.getJobInfos(0, 1, {ids: [this._id]})).jobs[0];
-    return info === null ? null : info;
-  }
-
-  /**
-   * Return all jobs this job depends on.
-   */
-  async getParentJobs(): Promise<MinionJob[]> {
-    const results: MinionJob[] = [];
-
-    const info = await this.getInfo();
-    if (info === null) return results;
-
-    const minion = this.minion;
-    for (const parent of info.parentJobIds) {
-      const job = await minion.getJob(parent);
-      if (job !== null) results.push(job);
+    if (result instanceof Error) result = { name: result.name, message: result.message, stack: result.stack };
+    const isUpdated = await this.backend.markJobFinished(JobState.Failed, this.id, this.attempt, result);
+    if (isUpdated) {
+      this._state = JobState.Failed;
+      await this.retryFailed();
     }
+    return isUpdated;
+  }
 
-    return results;
+  async retry(options: JobRetryOptions = {}): Promise<boolean> {
+    return await this.backend.retryJob(this.id, this.attempt, options);
+  }
+
+  async retryFailed(): Promise<boolean> {
+    if (this.attempt >= this.maxAttempts) return false;
+    const options = {
+      maxAttempts: this.maxAttempts,
+      delayFor: await this.getBackoffDelay(),
+    };
+    return await this.retry(options);
+  }
+
+  async cancel(): Promise<boolean> {
+    const isUpdated = await this.backend.cancelJob(this.id);
+    if (isUpdated) {
+      this._state = JobState.Canceled;
+    }
+    return isUpdated;
+  }
+
+  async remove(): Promise<boolean> {
+    const isUpdated = await this.backend.removeJob(this.id);
+    if (isUpdated) {
+      this._state = undefined;
+    }
+    return isUpdated;
+  }
+
+  async getInfo(): Promise<JobInfo | undefined> {
+    const jobInfo = await this.jobManager.getJobInfo(this.id);
+    if (jobInfo && jobInfo.attempt === this.attempt) {
+      this._state = jobInfo.state;
+    }
+    return jobInfo;
+  }
+
+  async getParentJobs(): Promise<Job[]> {
+    const info = await this.getInfo();
+    if (info === undefined) return [];
+    return await this.jobManager.getJobs({ ids: info.parentJobIds });
+  }
+
+  async getBackoffDelay(): Promise<number> {
+    return this.attempt ** 4 + 15;
   }
 }

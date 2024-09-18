@@ -1,9 +1,8 @@
 import pg from 'pg';
 
-
 export function createPool(config: string): pg.Pool {
   pg.types.setTypeParser(20, parseInt);
-  return new pg.Pool({allowExitOnIdle: true, ...parseConfig(config)})
+  return new pg.Pool({ allowExitOnIdle: true, ...parseConfig(config) });
 }
 
 /**

@@ -1,210 +1,213 @@
-import { Job } from './job.js';
-import type { Minion } from './minion.js';
-import type { DequeueOptions, MinionCommand, MinionStatus, WorkerInfo, WorkerOptions } from './types.js';
-
-interface JobStatus {
-  job: Job;
-  promise: Promise<void>;
-}
+import { type WorkerBackend, type WorkerInboxOptions, type WorkerRegistrationOptions } from './types/backend.js';
+import { type QueueReader } from './types/queue.js';
+import {
+  type Worker,
+  type WorkerCommandHandler,
+  type WorkerConfig,
+  type WorkerId,
+  type WorkerInfo,
+  type WorkerOptions,
+  WorkerState,
+} from './types/worker.js';
+import { WorkerCommandManager } from './worker/command-manager.js';
+import { WorkerTerminationError } from './worker/errors.js';
+import { WorkerLoop } from './worker/loop.js';
 
 /**
- * Minion worker class.
+ * Default worker class.
  */
-export class Worker {
-  /**
-   * Worker status.
-   */
-  public status: MinionStatus;
+export class DefaultWorker implements Worker {
+  public static readonly FOREGROUND_QUEUE = '_foreground_queue';
+
+  public static readonly DEFAULT_CONFIG: Readonly<WorkerConfig> = Object.freeze({
+    queues: ['default'],
+    concurrency: 1,
+    prefetchJobs: 0,
+    prefetchMinPriority: 1,
+    heartbeatInterval: 10 * 1000,
+    inboxCheckInterval: 60 * 1000,
+    dequeueTimeout: 5 * 1000,
+  });
 
   /**
-   * Registered commands.
+   * Worker config.
    */
-  private commands: Record<string, MinionCommand>;
+  private _config: WorkerConfig;
 
-  private runningJobs: JobStatus[] = [];
-  private lastCommandAt = 0;
+  /**
+   * Additional metadata
+   */
+  private metadata: Record<string, any> = {};
+
+  private finishedJobCount = 0;
+
+  private lastInboxCheck = 0;
   private lastHeartbeatAt = 0;
-  private lastRepairAt = 0;
-  private _isRunning = false;
-  private stopPromises: Array<() => void> = [];
+
+  private _state: WorkerState = WorkerState.Offline;
+  private workerLoop: WorkerLoop | null = null;
+  private abortController = new AbortController();
+
+  private commandManager: WorkerCommandManager;
 
   private _id: number | undefined = undefined;
-  private minion: Minion;
 
-  constructor(minion: Minion, options: WorkerOptions = {}) {
-    this.commands = {jobs: jobsCommand, ...options.commands};
-    const status = (this.status = {
-      commandInterval: 10000,
-      dequeueTimeout: 5000,
-      heartbeatInterval: 300000,
-      jobs: 4,
-      performed: 0,
-      queues: ['default'],
-      repairInterval: 21600000,
-      spare: 1,
-      spareMinPriority: 1,
-      type: 'Node.js',
-      ...options.status
-    });
-    status.repairInterval -= Math.ceil(Math.random() * (status.repairInterval / 2));
-
-    this.minion = minion;
+  constructor(
+    private queueReader: QueueReader,
+    private backend: WorkerBackend,
+    options: WorkerOptions,
+  ) {
+    this._config = { ...DefaultWorker.DEFAULT_CONFIG, ...options.config };
+    this.metadata = { ...options.metadata };
+    this.commandManager = new WorkerCommandManager(this, options.commands ?? {});
   }
 
-  /**
-   * Register a worker remote control command.
-   */
-  addCommand(name: string, fn: MinionCommand): void {
-    this.commands[name] = fn;
+  get id(): WorkerId | undefined {
+    return this._id;
   }
 
-  /**
-   * Wait a given amount of time in milliseconds for a job, dequeue job object and transition from `pending` to
-   * `running` state, or return `null` if queues were empty.
-   */
-  async dequeue(wait = 0, options: DequeueOptions = {}): Promise<Job | null> {
-    const id = this._id;
-    if (id === undefined) return null;
-
-    const job = await this.minion.backend.getNextJob(id, Object.keys(this.minion.tasks), wait, options);
-    return job === null ? null : new Job(this.minion, job.id, job.args, job.retries, job.taskName);
+  protected get isRegistered(): boolean {
+    return this._id !== undefined;
   }
 
-  /**
-   * Worker id.
-   */
-  get id(): number | null {
-    return this._id ?? null;
+  async getInfo(): Promise<WorkerInfo | undefined> {
+    if (this._id === undefined) return undefined;
+    return await this.backend.getWorkerInfo(this._id);
   }
 
-  /**
-   * Get worker information.
-   */
-  async getInfo(): Promise<WorkerInfo | null> {
-    const id = this._id;
-    if (id === undefined) return null;
-    const list = await this.minion.backend.getWorkers(0, 1, {ids: [id]});
-    return list.workers[0];
+  get config(): Readonly<WorkerConfig> {
+    return this._config;
   }
 
-  /**
-   * Register worker or send heartbeat to show that this worker is still alive.
-   */
-  async register(): Promise<this> {
-    const id = await this.minion.backend.registerWorker(this._id, {status: this.status});
-    if (this._id === undefined) this._id = id;
-    return this;
+  async setConfig(config: Partial<WorkerConfig>): Promise<void> {
+    this._config = { ...this._config, ...config };
+    await this.heartbeat(true);
   }
 
-  /**
-   * Unregister worker.
-   */
-  async unregister(): Promise<this> {
-    if (this._id === undefined) return this;
-    await this.minion.backend.unregisterWorker(this._id);
-    this._id = undefined;
-    return this;
+  async setMetadata(key: string, value: any): Promise<void> {
+    if (value !== null) {
+      this.metadata[key] = value;
+    } else {
+      delete this.metadata[key];
+    }
+    await this.heartbeat(true);
   }
 
-  /**
-   * Start worker.
-   */
-  async start(): Promise<this> {
-    if (this.isRunning === true) return this;
-
-    this.mainLoop().catch(error => console.error(error));
-    this._isRunning = true;
-
-    return this;
+  get needsInboxCheck(): boolean {
+    return this.lastInboxCheck + this._config.inboxCheckInterval < Date.now();
   }
 
-  /**
-   * Stop worker.
-   */
-  async stop(): Promise<void> {
-    if (this.isRunning === false) return;
-    return new Promise(resolve => this.stopPromises.push(resolve));
+  get needsHeartbeat(): boolean {
+    return this.lastHeartbeatAt + this._config.heartbeatInterval < Date.now();
   }
 
-  /**
-   * Check if worker is currently running.
-   */
+  get state(): WorkerState {
+    if (this.workerLoop) {
+      // Update `this._state`
+      this._state = this.workerLoop.hasRunningJobs ? WorkerState.Busy : WorkerState.Idle;
+    }
+    return this._state;
+  }
+
   get isRunning(): boolean {
-    return this._isRunning;
+    return !!this.workerLoop;
   }
 
-  /**
-   * Process worker remote control commands.
-   */
-  async processCommands(): Promise<void> {
-    const id = this._id;
-    if (id === undefined) return;
+  async start(): Promise<this> {
+    if (!this.workerLoop) {
+      this.abortController = new AbortController();
+      this.workerLoop = new WorkerLoop(this, this.queueReader);
+      this.workerLoop.on('finished', (finished) => (this.finishedJobCount += finished));
 
-    const commands = await this.minion.backend.getWorkerNotifications(id);
-    for (const [command, ...args] of commands) {
-      const fn = this.commands[command];
-      if (fn !== undefined) await fn(this, ...args);
-    }
-  }
-
-
-  protected async mainLoop(): Promise<void> {
-    const status = this.status;
-    const stop = this.stopPromises;
-
-    while (stop.length === 0 || this.runningJobs.length > 0) {
-      const options: DequeueOptions = {queueNames: status.queues};
-
-      await this.maintenance(status);
-
-      // Check if jobs are finished
-      const before = this.runningJobs.length;
-      const runningJobs = (this.runningJobs = this.runningJobs.filter(jobStatus => jobStatus.job.isFinished === false));
-      status.performed += before - runningJobs.length;
-
-      // Job limit has been reached
-      const {jobs, spare} = status;
-      if (runningJobs.length >= jobs + spare) await Promise.race(runningJobs.map(jobStatus => jobStatus.promise));
-      if (runningJobs.length >= jobs) options.minPriority = status.spareMinPriority;
-
-      // Worker is stopped
-      if (stop.length > 0) continue;
-
-      // Try to get more jobs
-      const job = await this.dequeue(status.dequeueTimeout, options);
-      if (job === null) continue;
-      runningJobs.push({job, promise: job.perform()});
-    }
-
-    await this.unregister();
-    this.stopPromises = [];
-    stop.forEach(resolve => resolve());
-    this._isRunning = false;
-  }
-
-  protected async maintenance(status: MinionStatus): Promise<void> {
-    // Send heartbeats in regular intervals
-    if (this.lastHeartbeatAt + status.heartbeatInterval < Date.now()) {
       await this.register();
+      (async () => {
+        try {
+          this._state = WorkerState.Idle;
+          await this.workerLoop!.run();
+        } catch (e) {
+          console.log(e);
+        } finally {
+          this.workerLoop = null;
+          this._state = WorkerState.Online;
+          await this.unregister();
+        }
+      })();
+    }
+    return this;
+  }
+
+  async stop(): Promise<void> {
+    if (this.workerLoop) {
+      await this.workerLoop.stop();
+    }
+  }
+
+  async terminate(reason?: string): Promise<void> {
+    if (this.workerLoop) {
+      this.abortController.abort(new WorkerTerminationError(reason));
+      await this.workerLoop.stop();
+    }
+  }
+
+  get abortSignal(): AbortSignal {
+    return this.abortController.signal;
+  }
+
+  async register(): Promise<this> {
+    if (!this.isRegistered) {
+      const options: WorkerRegistrationOptions = {
+        config: this._config,
+        state: WorkerState.Online,
+        finishedJobCount: this.finishedJobCount,
+        metadata: this.metadata,
+      };
+      this._id = await this.backend.registerWorker(options);
+      this._state = WorkerState.Online;
+      this.lastHeartbeatAt = Date.now();
+    } else {
+      await this.heartbeat(true);
+    }
+
+    return this;
+  }
+
+  async heartbeat(force: boolean = false): Promise<this> {
+    if ((force || this.needsHeartbeat) && this.isRegistered) {
+      const options: WorkerRegistrationOptions = {
+        config: this._config,
+        state: this.state,
+        finishedJobCount: this.finishedJobCount,
+        metadata: this.metadata,
+      };
+      await this.backend.updateWorker(this._id!, options);
       this.lastHeartbeatAt = Date.now();
     }
-
-    // Process worker remote control commands in regular intervals
-    if (this.lastCommandAt + status.commandInterval < Date.now()) {
-      await this.processCommands();
-      this.lastCommandAt = Date.now();
-    }
-
-    // Repair in regular intervals (randomize to avoid congestion)
-    if (this.lastRepairAt + status.repairInterval < Date.now()) {
-      await this.minion.repair();
-      this.lastRepairAt = Date.now();
-    }
+    return this;
   }
-}
 
-// Remote control commands need to validate arguments carefully
-async function jobsCommand(worker: Worker, num: any) {
-  const jobs = parseInt(num);
-  if (isNaN(jobs) === false) worker.status.jobs = jobs;
+  async processInbox(force: boolean = false): Promise<this> {
+    if ((force || this.needsInboxCheck || this.needsHeartbeat) && this.isRegistered) {
+      const options: WorkerInboxOptions = {
+        state: this.state,
+        finishedJobCount: this.finishedJobCount,
+      };
+      const commands = await this.backend.checkWorkerInbox(this._id!, options);
+      this.lastInboxCheck = this.lastHeartbeatAt = Date.now();
+      await this.commandManager.runCommands(commands);
+    }
+    return this;
+  }
+
+  async unregister(): Promise<this> {
+    if (this._id !== undefined) {
+      await this.backend.unregisterWorker(this._id);
+      this._state = WorkerState.Offline;
+      this._id = undefined;
+    }
+    return this;
+  }
+
+  addCommand(name: string, fn: WorkerCommandHandler): void {
+    this.commandManager.addHandler(name, fn);
+  }
 }

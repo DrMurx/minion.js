@@ -1,37 +1,50 @@
-import os from 'node:os';
+import EventEmitter from 'events';
+import os from 'os';
 import pg from 'pg';
-import { Migration, MigrationStep } from './migration.js';
-import { defaultBackoffStrategy } from '../../minion.js';
-import type {
-  DailyHistory,
-  DequeueOptions,
-  DequeuedJob,
-  EnqueueOptions,
-  JobInfo,
-  JobList,
-  ListJobsOptions,
-  ListWorkersOptions,
-  MinionArgs,
-  MinionBackend,
-  MinionBackoffStrategy,
-  MinionHistory,
-  MinionJobId,
-  MinionStats,
-  MinionWorkerId,
-  RegisterWorkerOptions,
-  RepairOptions,
-  ResetOptions,
-  RetryOptions,
-  WorkerInfo,
-  WorkerList
-} from '../../types.js';
+import {
+  type Backend,
+  type JobInfoList,
+  type JobPruneResult,
+  type WorkerInboxOptions,
+  type WorkerInfoList,
+  type WorkerPruneResult,
+  type WorkerRegistrationOptions,
+} from '../../types/backend.js';
+import {
+  type DailyJobHistory,
+  type JobArgs,
+  type JobDequeueOptions,
+  type JobDescriptor,
+  type JobEnqueueOptions,
+  type JobId,
+  type JobInfo,
+  type JobRetryOptions,
+  JobState,
+  type ListJobsOptions,
+  type QueueJobStatistics,
+} from '../../types/job.js';
+import { type QueueStats } from '../../types/queue.js';
+import {
+  type ListWorkersOptions,
+  type WorkerCommandArg,
+  type WorkerCommandDescriptor,
+  type WorkerId,
+  type WorkerInfo,
+  WorkerState,
+} from '../../types/worker.js';
 import { createPool } from './factory.js';
+import { Migration, type MigrationStep } from './migration.js';
 
+export const JOB_TABLE = 'queue_jobs';
+export const WORKER_TABLE = 'queue_workers';
+const JOB_NOTIFICATION_CHANNEL = 'queue_job';
+const JOB_NOTIFICATION_FUNCTION = 'queue_jobs_notify_workers';
+const JOB_NOTIFICATION_TRIGGER = 'queue_jobs_notify_workers_trigger';
 
 /**
- * Minion PostgreSQL backend class.
+ * PostgreSQL backend class for the Queue.
  */
-export class PgBackend implements MinionBackend {
+export class PgBackend extends EventEmitter implements Backend {
   /**
    * Backend name.
    */
@@ -40,9 +53,11 @@ export class PgBackend implements MinionBackend {
   private hostname = os.hostname();
 
   private _pool: pg.Pool;
+  private _schema: string | undefined;
   private autoclosePool = false;
 
-  constructor(config: string | pg.Pool, private calcBackoff: MinionBackoffStrategy = defaultBackoffStrategy) {
+  constructor(config: string | pg.Pool) {
+    super();
     if (config instanceof pg.Pool) {
       pg.types.setTypeParser(20, parseInt);
       this._pool = config;
@@ -56,474 +71,608 @@ export class PgBackend implements MinionBackend {
     return this._pool;
   }
 
+  protected async getSchema(): Promise<string> {
+    if (this._schema) return this._schema;
+    const results = await this._pool.query<{ current_schema: string }>(`SELECT current_schema`);
+    return (this._schema = results.rows[0].current_schema);
+  }
 
-  /**
-   * Enqueue a new job with `pending` state.
-   */
-  async addJob(taskName: string, args: MinionArgs = [], options: EnqueueOptions = {}): Promise<MinionJobId> {
+  async addJob(taskName: string, args: JobArgs, options: JobEnqueueOptions): Promise<JobId> {
+    const delayFor = options.delayFor ?? 0;
     const results = await this._pool.query<EnqueueResult>(
-      `
-        INSERT INTO minion_jobs (
-          queue_name,
-          task_name,
-          args,
+      `INSERT INTO ${JOB_TABLE} (
+        queue_name,
+        task_name,
+        args,
 
-          priority,
-          attempts,
+        state,
+        priority,
+        max_attempts,
+        attempt,
 
-          parent_job_ids,
-          lax_dependency,
+        parent_job_ids,
+        lax_dependency,
 
-          notes,
+        metadata,
 
-          delay_until,
-          expires_at
-        )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8,
-          (NOW() + (INTERVAL '1 millisecond' * $10)),
-          CASE WHEN $9::BIGINT IS NOT NULL THEN NOW() + (INTERVAL '1 millisecond' * $9::BIGINT) END
-        )
-        RETURNING id
-      `,
+        delay_until,
+        expires_at
+      )
+      VALUES (
+        $1, $2, $3,
+        $4, $5, $6, $7,
+        $8, $9,
+        $10,
+        NOW() + $11 * INTERVAL '1 millisecond',
+        CASE WHEN $12::BIGINT IS NOT NULL THEN NOW() + $12::BIGINT * INTERVAL '1 millisecond' END
+      )
+      RETURNING id`,
       [
         options.queueName ?? 'default',
         taskName,
         JSON.stringify(args),
+        delayFor <= 0 ? JobState.Pending : JobState.Scheduled,
         options.priority ?? 0,
-        options.attempts ?? 1,
+        options.maxAttempts ?? 1,
+        1,
         options.parentJobIds ?? [],
         options.laxDependency ?? false,
-        options.notes ?? {},
-        options.expiresAt,
-        options.delayUntil ?? 0
-      ]
+        options.metadata ?? {},
+        delayFor,
+        options.expireIn,
+      ],
     );
 
     return results.rows[0].id;
   }
 
-  /**
-   * Wait a given amount of time in milliseconds for a job, dequeue it and transition from `pending` to `running`
-   * state, or return `null` if queues were empty.
-   */
-  async getNextJob(id: MinionWorkerId, taskNames: string[], wait: number, options: DequeueOptions): Promise<DequeuedJob | null> {
-    const job = await this.tryGetNextJob(id, taskNames, options);
-    if (job !== null) return job;
-
-    const conn = await this._pool.connect();
-    try {
-      await conn.query('LISTEN "minion.job"');
-      let timer;
-      await Promise.race([
-        new Promise(resolve => conn.on('notification', resolve)),
-        new Promise(resolve => (timer = setTimeout(resolve, wait)))
-      ]);
-      clearTimeout(timer);
-    } finally {
-      conn.removeAllListeners('notification');
-      await conn.query('UNLISTEN "minion.job"');
-      conn.release();
-    }
-
-    return await this.tryGetNextJob(id, taskNames, options);
-  }
-
-  /**
-   * Transition from `running` to `failed` state with or without a result, and if there are attempts remaining,
-   * transition back to `pending` with a delay.
-   */
-  async markJobFailed(id: MinionJobId, retries: number, result?: any): Promise<boolean> {
-    return await this.updateJobAfterRun('failed', id, retries, result);
-  }
-
-  /**
-   * Transition from `running` to `succeeded` state with or without a result.
-   */
-  async markJobSucceeded(id: MinionJobId, retries: number, result?: any): Promise<boolean> {
-    return await this.updateJobAfterRun('succeeded', id, retries, result);
-  }
-
-  /**
-   * Transition job back to `pending` state, already `pending` jobs may also be retried to change options.
-   */
-  async retryJob(id: MinionJobId, retries: number, options: RetryOptions = {}): Promise<boolean> {
+  async retryJob(id: JobId, attempt: number, options: JobRetryOptions): Promise<boolean> {
+    const delayFor = options.delayFor ?? 0;
     const results = await this._pool.query(
-      `
-        UPDATE minion_jobs SET
-          attempts = COALESCE($1, attempts),
-          delay_until = (NOW() + (INTERVAL '1 millisecond' * $2)),
-          expires_at = CASE WHEN $3::BIGINT IS NOT NULL THEN
-              NOW() + (INTERVAL '1 millisecond' * $3::BIGINT)
-            ELSE
-              expires_at
-            END,
-          lax_dependency = COALESCE($4, lax_dependency),
-          parent_job_ids = COALESCE($5, parent_job_ids),
-          priority = COALESCE($6, priority),
-          queue_name = COALESCE($7, queue_name),
-          retried_at = NOW(),
-          retries = retries + 1,
-          state = 'pending'
-        WHERE id = $8 AND retries = $9
-      `,
-      [options.attempts, options.delayUntil ?? 0, options.expireAt, options.laxDependency, options.parentJobIds, options.priority, options.queueName, id, retries]
+      `UPDATE ${JOB_TABLE} SET
+        queue_name = COALESCE($1, queue_name),
+        state = $2,
+        priority = COALESCE($3, priority),
+        progress = 0.0,
+        max_attempts = COALESCE($4, max_attempts + 1),
+        attempt = attempt + 1,
+        parent_job_ids = COALESCE($5, parent_job_ids),
+        lax_dependency = COALESCE($6, lax_dependency),
+        delay_until = NOW() + $7 * INTERVAL '1 millisecond',
+        retried_at = NOW(),
+        expires_at = CASE WHEN $8::BIGINT IS NULL THEN expires_at ELSE NOW() + $8::BIGINT * INTERVAL '1 millisecond' END
+      WHERE id = $9
+        AND attempt = $10
+      RETURNING id, task_name AS "taskName", args, max_attempts AS "maxAttempts", attempt`,
+      [
+        options.queueName,
+        delayFor <= 0 ? JobState.Pending : JobState.Scheduled,
+        options.priority,
+        options.maxAttempts,
+        options.parentJobIds,
+        options.laxDependency,
+        delayFor,
+        options.expireIn,
+        id,
+        attempt,
+      ],
     );
 
     return (results.rowCount ?? 0) > 0 ? true : false;
   }
 
-  /**
-   * Remove `failed`, `succeeded` or `pending` job from queue.
-   */
-  async removeJob(id: MinionJobId): Promise<boolean> {
+  async cancelJob(id: JobId): Promise<boolean> {
     const results = await this._pool.query(
-      "DELETE FROM minion_jobs WHERE id = $1 AND state IN ('pending', 'failed', 'succeeded')",
-      [id]
+      `UPDATE ${JOB_TABLE} SET
+        state = '${JobState.Canceled}'
+      WHERE id = $1
+        AND state IN (
+          '${JobState.Pending}',
+          '${JobState.Scheduled}'
+        )`,
+      [id],
     );
     return (results.rowCount ?? 0) > 0;
   }
 
-  /**
-   * Returns the information about jobs in batches.
-   */
-  async getJobInfos(offset: number, limit: number, options: ListJobsOptions = {}): Promise<JobList> {
-    const results = await this._pool.query<ListJobsResult>(
-      `
-        SELECT
-          id,
-
-          task_name AS "taskName",
-          queue_name AS "queueName",
-          args,
-          result,
-
-          state,
-          priority,
-          attempts,
-          retries,
-
-          parent_job_ids AS "parentJobIds",
-          ARRAY(SELECT id FROM minion_jobs WHERE parent_job_ids @> ARRAY[j.id]) AS "childJobIds",
-          lax_dependency AS "laxDependency",
-
-          worker_id AS "workerId",
-          notes,
-
-          delay_until AS "delayUntil",
-          started_at AS "startedAt",
-          retried_at AS "retriedAt",
-          finished_at AS "finishedAt",
-
-          created_at AS "createdAt",
-          expires_at AS "expiresAt",
-
-          NOW() AS "time",
-          COUNT(*) OVER() AS "total"
-        FROM minion_jobs AS j
-        WHERE (id < $1 OR $1 IS NULL)
-          AND (id = ANY ($2) OR $2 IS NULL)
-          AND (queue_name = ANY ($3) OR $3 IS NULL)
-          AND (task_name = ANY ($4) OR $4 IS NULL)
-          AND (state = ANY ($5) OR $5 IS NULL)
-          AND (notes ? ANY ($6) OR $6 IS NULL)
-          AND (state != 'pending' OR expires_at IS NULL OR expires_at > NOW())
-        ORDER BY id DESC
-        LIMIT $7 OFFSET $8
-      `,
-      [
-        options.beforeId,
-        options.ids,
-        options.queueNames,
-        options.taskNames,
-        options.states,
-        options.notes,
-        limit,
-        offset
-      ]
-    );
-    const total = removeTotal(results.rows);
-    return {total, jobs: results.rows};
-  }
-
-  /**
-   * Get history information for job queue.
-   */
-  async getJobHistory(): Promise<MinionHistory> {
-    const results = await this._pool.query<DailyHistory>(`
-      SELECT
-        EXTRACT(EPOCH FROM ts) AS epoch,
-        COALESCE(failed_jobs, 0) AS "failedJobs",
-        COALESCE(succeeded_jobs, 0) AS "succeededJobs"
-      FROM (
-        SELECT
-          EXTRACT(DAY FROM finished_at) AS day,
-          EXTRACT(HOUR FROM finished_at) AS hour,
-          COUNT(*) FILTER (WHERE state = 'failed') AS failed_jobs,
-          COUNT(*) FILTER (WHERE state = 'succeeded') AS succeeded_jobs
-        FROM minion_jobs
-        WHERE finished_at > NOW() - INTERVAL '23 hours'
-        GROUP BY day, hour
-      ) AS j RIGHT OUTER JOIN (
-        SELECT *
-        FROM GENERATE_SERIES(NOW() - INTERVAL '23 hour', NOW(), '1 hour') AS ts
-      ) AS s ON EXTRACT(HOUR FROM ts) = j.hour AND EXTRACT(DAY FROM ts) = j.day
-      ORDER BY epoch ASC
-    `);
-    return {daily: results.rows};
-  }
-
-  /**
-   * Change one or more metadata fields for a job. Setting a value to `null` will remove the field.
-   */
-  async addNotes(id: MinionJobId, notes: Record<string, any>): Promise<boolean> {
+  async amendJobMetadata(id: JobId, records: Record<string, any>): Promise<boolean> {
     const results = await this._pool.query(
-      'UPDATE minion_jobs SET notes = JSONB_STRIP_NULLS(notes || $1) WHERE id = $2', [notes, id]);
-    return (results.rowCount ?? 0) > 0;
-  }
-
-
-  /**
-   * Register worker or send heartbeat to show that this worker is still alive.
-   */
-  async registerWorker(id?: MinionWorkerId, options: RegisterWorkerOptions = {}): Promise<MinionWorkerId> {
-    const status = options.status ?? {};
-    const results = await this._pool.query<RegisterWorkerResult>(`
-      INSERT INTO minion_workers (id, host, pid, status)
-        VALUES (COALESCE($1, NEXTVAL('minion_workers_id_seq')), $2, $3, $4)
-        ON CONFLICT(id) DO UPDATE SET last_seen_at = NOW(), status = $4
-        RETURNING id
-    `, [id, this.hostname, process.pid, status]);
-    return results.rows[0].id;
-  }
-
-  /**
-   * Unregister worker.
-   */
-  async unregisterWorker(id: MinionWorkerId): Promise<void> {
-    await this._pool.query('DELETE FROM minion_workers WHERE id = $1', [id]);
-  }
-
-  /**
-   * Returns information about workers in batches.
-   */
-  async getWorkers(offset: number, limit: number, options: ListWorkersOptions = {}): Promise<WorkerList> {
-    const results = await this._pool.query<ListWorkersResult>(
-      `
-        SELECT
-          id,
-
-          host,
-          pid,
-
-          status,
-          ARRAY(
-            SELECT id FROM minion_jobs WHERE state = 'running' AND worker_id = minion_workers.id
-          ) AS "jobs",
-
-          started_at AS "startedAt",
-          last_seen_at AS "lastSeenAt",
-
-          COUNT(*) OVER() AS "total"
-        FROM minion_workers
-        WHERE (id < $1 OR $1 IS NULL) AND (id = ANY ($2) OR $2 IS NULL)
-        ORDER BY id DESC
-        LIMIT $3 OFFSET $4
-      `,
-      [
-        options.beforeId,
-        options.ids,
-        limit,
-        offset
-      ]
-    );
-    const total = removeTotal(results.rows);
-    return {total, workers: results.rows};
-  }
-
-  /**
-   * Broadcast remote control command to one or more workers.
-   */
-  async notifyWorkers(command: string, args: any[] = [], ids: MinionWorkerId[] = []): Promise<boolean> {
-    const results = await this._pool.query(
-      `
-        UPDATE minion_workers SET inbox = inbox || $1::JSONB
-        WHERE (id = ANY ($2) OR $2 = '{}')
-      `,
-      [JSON.stringify([[command, ...args]]), ids]
+      `UPDATE ${JOB_TABLE}
+      SET metadata = JSONB_STRIP_NULLS(metadata || $1)
+      WHERE id = $2`,
+      [records, id],
     );
     return (results.rowCount ?? 0) > 0;
   }
 
-  /**
-   * Receive remote control commands for worker.
-   */
-  async getWorkerNotifications(id: MinionWorkerId): Promise<Array<[string, ...any[]]>> {
-    const results = await this._pool.query<ReceiveResult>(`
-      UPDATE minion_workers AS new SET inbox = '[]'
-      FROM (SELECT id, inbox FROM minion_workers WHERE id = $1 FOR UPDATE) AS old
-      WHERE new.id = old.id AND old.inbox != '[]'
-      RETURNING old.inbox AS inbox
-    `, [id]);
-    if ((results.rowCount ?? 0) <= 0) return [];
-    return results.rows[0].inbox ?? [];
+  async updateJobProgress(id: JobId, attempt: number, progress: number): Promise<boolean> {
+    const results = await this._pool.query(
+      `UPDATE ${JOB_TABLE}
+      SET progress = $1
+      WHERE id = $2
+        AND attempt = $3`,
+      [progress, id, attempt],
+    );
+    return (results.rowCount ?? 0) > 0;
   }
 
+  async markJobFinished(
+    state: JobState.Succeeded | JobState.Failed | JobState.Aborted,
+    jobId: JobId,
+    attempt: number,
+    result: any,
+  ): Promise<boolean> {
+    const results = await this._pool.query<UpdateResult>(
+      `UPDATE ${JOB_TABLE}
+        SET result = $1,
+            state = $2,
+            progress = COALESCE($3, progress),
+            finished_at = NOW()
+      WHERE id = $4
+        AND state = '${JobState.Running}'
+        AND attempt = $5
+      RETURNING max_attempts AS "maxAttempts"`,
+      [JSON.stringify(result), state, state === JobState.Succeeded ? 1.0 : null, jobId, attempt],
+    );
 
-  /**
-   * Get statistics for the job queue.
-   */
-  async stats(): Promise<MinionStats> {
-    const results = await this._pool.query<MinionStats>(`
-      SELECT
-        (SELECT CASE WHEN is_called THEN last_value ELSE 0 END FROM minion_jobs_id_seq) AS "enqueuedJobs",
-        (SELECT COUNT(*) FROM minion_jobs WHERE state = 'pending' AND (expires_at IS NULL OR expires_at > NOW())) AS "pendingJobs",
-        (SELECT COUNT(*) FROM minion_jobs WHERE state = 'pending' AND delay_until > NOW()) AS "delayedJobs",
-        (SELECT COUNT(*) FROM minion_jobs WHERE state = 'running') AS "runningJobs",
-        (SELECT COUNT(*) FROM minion_jobs WHERE state = 'succeeded') AS "succeededJobs",
-        (SELECT COUNT(*) FROM minion_jobs WHERE state = 'failed') AS "failedJobs",
-
-        (SELECT COUNT(*) FROM minion_workers) AS "workers",
-        (SELECT COUNT(DISTINCT worker_id) FROM minion_jobs mj WHERE state = 'running') AS "busyWorkers",
-
-        EXTRACT(EPOCH FROM NOW() - PG_POSTMASTER_START_TIME()) AS "uptime"
-    `);
-
-    const stats = results.rows[0];
-    stats.idleWorkers = stats.workers - stats.busyWorkers;
-    return stats;
+    // Unable to update row? (reasons: job has already been marked as finished, retried by a different worker, or record is gone)
+    return (results.rowCount ?? 0) > 0;
   }
 
-  /**
-   * Repair worker registry and job queue if necessary.
-   */
-  async repair(options: RepairOptions): Promise<void> {
-    // Workers without heartbeat
-    await this._pool.query(`
-      DELETE FROM minion_workers WHERE last_seen_at < NOW() - INTERVAL '1 millisecond' * $1
-    `, [options.missingAfter]);
-
-    // Old jobs
-    await this._pool.query(`
-      DELETE FROM minion_jobs
-      WHERE state = 'succeeded' AND finished_at <= NOW() - INTERVAL '1 millisecond' * $1
-    `, [options.removeAfter]);
-
-    // Expired jobs
-    await this._pool.query("DELETE FROM minion_jobs WHERE state = 'pending' AND expires_at <= NOW()");
-
-    // Jobs with missing worker (can be retried)
-    const jobs = await this._pool.query<JobWithMissingWorkerResult>(`
-      SELECT id, retries
-      FROM minion_jobs AS j
-      WHERE state = 'running'
-        AND queue_name != 'minion_foreground'
-        AND NOT EXISTS (SELECT 1 FROM minion_workers WHERE id = j.worker_id)
-    `);
-    for (const job of jobs.rows) {
-      await this.markJobFailed(job.id, job.retries, 'Worker went away');
-    }
-
-    // Jobs in queue without workers or not enough workers (cannot be retried and requires admin attention)
-    await this._pool.query(`
-      UPDATE minion_jobs SET
-        state = 'failed',
-        result = '"Job appears stuck in queue"'
-      WHERE state = 'pending' AND delay_until + $1 * INTERVAL '1 millisecond' < NOW()
-    `, [options.stuckAfter]);
-  }
-
-  /**
-   * Update database schema to latest version.
-   */
-  async updateSchema(): Promise<void> {
-    const version = (await this._pool.query<ServerVersionResult>('SHOW server_version_num')).rows[0].server_version_num;
-    if (version < 90500) throw new Error('PostgreSQL 9.5 or later is required');
-
-    const conn = await this._pool.connect();
-    try {
-      const migration = new Migration('minion', minionDbUpgrades, conn);
-      await migration.migrate();
-    } finally {
-      conn.release();
-    }
-  }
-
-  /**
-   * Reset job queue.
-   */
-  async reset(options: ResetOptions): Promise<void> {
-    if (options.all === true) await this._pool.query('TRUNCATE minion_jobs, minion_workers RESTART IDENTITY');
-  }
-
-  /**
-   * Stop using the backend.
-   */
-  async end(): Promise<void> {
-    if (this.autoclosePool) await this._pool.end();
-  }
-
-
-  protected async tryGetNextJob(workerId: MinionWorkerId, taskNames: string[], options: DequeueOptions): Promise<DequeuedJob | null> {
+  async assignNextJob(
+    workerId: WorkerId,
+    taskNames: string[],
+    options: JobDequeueOptions,
+  ): Promise<JobDescriptor | null> {
     const jobId = options.id;
     const minPriority = options.minPriority;
     const queueNames = options.queueNames ?? ['default'];
 
-    const results = await this._pool.query<DequeueResult>(`
-      UPDATE minion_jobs SET started_at = NOW(), state = 'running', worker_id = $1
+    const results = await this._pool.query<JobDescriptor>(
+      `UPDATE ${JOB_TABLE}
+      SET state = '${JobState.Running}',
+          progress = 0.0,
+          worker_id = $1,
+          started_at = NOW()
       WHERE id = (
-        SELECT id FROM minion_jobs AS j
-        WHERE delay_until <= NOW()
-          AND id = COALESCE($2, id)
+        SELECT id FROM ${JOB_TABLE} AS j
+        WHERE id = COALESCE($2, id)
+          AND queue_name = ANY ($3)
+          AND task_name = ANY ($4)
+          AND state IN ('${JobState.Pending}', '${JobState.Scheduled}')
+          AND priority >= COALESCE($5, priority)
           AND (
             parent_job_ids = '{}'
             OR NOT EXISTS (
-              SELECT 1 FROM minion_jobs
+              SELECT 1 FROM ${JOB_TABLE}
               WHERE id = ANY (j.parent_job_ids)
                 AND (
-                  state = 'running'
-                  OR (state = 'failed' AND NOT j.lax_dependency)
-                  OR (state = 'pending' AND (expires_at IS NULL OR expires_at > NOW()))
+                  (state IN ('${JobState.Pending}',
+                             '${JobState.Scheduled}') AND (expires_at IS NULL OR expires_at > NOW()))
+                  OR state = '${JobState.Running}'
+                  OR (state IN ('${JobState.Failed}',
+                                '${JobState.Aborted}',
+                                '${JobState.Abandoned}',
+                                '${JobState.Stuck}',
+                                '${JobState.Canceled}') AND NOT j.lax_dependency)
                 )
             )
           )
-          AND priority >= COALESCE($3, priority)
-          AND queue_name = ANY ($4)
-          AND state = 'pending'
-          AND task_name = ANY ($5)
+          AND delay_until <= NOW()
           AND (expires_at IS NULL OR expires_at > NOW()
         )
         ORDER BY priority DESC, id
         LIMIT 1
         FOR UPDATE SKIP LOCKED
       )
-      RETURNING id, args, retries, task_name AS "taskName"
-    `, [workerId, jobId, minPriority, queueNames, taskNames]);
+      RETURNING id, task_name AS "taskName", args, max_attempts AS "maxAttempts", attempt`,
+      [workerId, jobId, queueNames, taskNames, minPriority],
+    );
     if ((results.rowCount ?? 0) <= 0) return null;
 
     return results.rows[0] ?? null;
   }
 
-  protected async updateJobAfterRun(state: 'succeeded' | 'failed', id: MinionJobId, retries: number, result?: any): Promise<boolean> {
-    const jsonResult = JSON.stringify(result);
-    const results = await this._pool.query<UpdateResult>(`
-      UPDATE minion_jobs SET finished_at = NOW(), result = $1, state = $2
-      WHERE id = $3 AND retries = $4 AND state = 'running'
-      RETURNING attempts
-    `, [jsonResult, state, id, retries]);
+  async awaitNewJobs(timeout: number): Promise<boolean> {
+    const schema = await this.getSchema();
 
-    if ((results.rowCount ?? 0) <= 0) return false;
-    return state === 'failed' ? this.autoRetryJob(id, retries, results.rows[0].attempts) : true;
+    const conn = await this._pool.connect();
+    try {
+      await conn.query(`LISTEN "${JOB_NOTIFICATION_CHANNEL}"`);
+      await waitForPostgresNotification(conn, JOB_NOTIFICATION_CHANNEL, schema, timeout);
+      return true;
+    } catch (_: any) {
+      return false;
+    } finally {
+      await conn.query(`UNLISTEN "${JOB_NOTIFICATION_CHANNEL}"`);
+      conn.release();
+    }
   }
 
-  protected async autoRetryJob(id: number, retries: number, attempts: number): Promise<boolean> {
-    if (attempts <= 1) return true;
-    const delay = this.calcBackoff(retries);
-    return this.retryJob(id, retries, {attempts: attempts > 1 ? attempts - 1 : 1, delayUntil: delay});
+  async removeJob(id: JobId): Promise<boolean> {
+    const results = await this._pool.query(
+      `DELETE FROM ${JOB_TABLE}
+      WHERE id = $1
+        AND state != '${JobState.Running}'
+      `,
+      [id],
+    );
+    return (results.rowCount ?? 0) > 0;
   }
 
+  async pruneJobs(stuckTimeout: number, retentionTimeout: number, excludeQueues: string[]): Promise<JobPruneResult> {
+    // Delete `pending`/`scheduled` jobs past expiration date
+    const deletePendingJobsResult = await this._pool.query<JobDescriptor>(
+      `DELETE FROM ${JOB_TABLE}
+      WHERE state IN ('${JobState.Pending}', '${JobState.Scheduled}')
+        AND expires_at <= NOW()
+      RETURNING id, task_name AS "taskName", args, max_attempts AS "maxAttempts", attempt`,
+    );
+
+    // Delete `succeeded` jobs after the retention period
+    const deleteSucceededJobsResult = await this._pool.query<JobDescriptor>(
+      `DELETE FROM ${JOB_TABLE}
+      WHERE state = '${JobState.Succeeded}'
+        AND finished_at <= NOW() - $1 * INTERVAL '1 millisecond'
+      RETURNING id, task_name AS "taskName", args, max_attempts AS "maxAttempts", attempt`,
+      [retentionTimeout],
+    );
+
+    // Mark `pending`/`scheduled` jobs as `stuck` if they linger in the queue past `stuckTimeout`.
+    const stuckJobsResult = await this._pool.query<JobDescriptor>(
+      `UPDATE ${JOB_TABLE} SET
+        state = '${JobState.Stuck}',
+        result = '"Job appears stuck in queue"'
+      WHERE state IN ('${JobState.Pending}', '${JobState.Scheduled}')
+        AND delay_until < NOW() - $1 * INTERVAL '1 millisecond'
+      RETURNING id, task_name AS "taskName", args, max_attempts AS "maxAttempts", attempt`,
+      [stuckTimeout],
+    );
+
+    // Mark `running` jobs that are assigned to a `missing` or non-existing worker as `abandoned`
+    const abandonedJobsResult = await this._pool.query<JobDescriptor & { workerId: WorkerId }>(
+      `UPDATE ${JOB_TABLE} AS j
+      SET result = $1,
+          state = '${JobState.Abandoned}',
+          finished_at = NOW()
+      WHERE state = '${JobState.Running}'
+        AND (queue_name != ANY ($2) OR $2 IS NULL)
+        AND NOT EXISTS (
+          SELECT 1
+          FROM ${WORKER_TABLE}
+          WHERE id = j.worker_id
+            AND state IN ('${WorkerState.Online}', '${WorkerState.Busy}', '${WorkerState.Idle}')
+        )
+      RETURNING id, task_name AS "taskName", args, max_attempts AS "maxAttempts", attempt, worker_id AS "workerId"`,
+      [JSON.stringify('Worker went away'), excludeQueues],
+    );
+
+    return {
+      deletedPendingJobs: deletePendingJobsResult.rows,
+      deletedSucceededJobs: deleteSucceededJobsResult.rows,
+      abandonedJobs: abandonedJobsResult.rows,
+      stuckJobs: stuckJobsResult.rows,
+    };
+  }
+
+  /**
+   * Returns the information about jobs in batches.
+   */
+  async getJobInfos(offset: number, limit: number, options: ListJobsOptions): Promise<JobInfoList> {
+    const results = await this._pool.query<JobInfoRow>(
+      `SELECT
+        id,
+
+        task_name AS "taskName",
+        queue_name AS "queueName",
+        args,
+        result,
+
+        state,
+        priority,
+        progress,
+        max_attempts AS "maxAttempts",
+        attempt,
+
+        parent_job_ids AS "parentJobIds",
+        ARRAY(SELECT id FROM ${JOB_TABLE} WHERE parent_job_ids @> ARRAY[j.id]) AS "childJobIds",
+        lax_dependency AS "laxDependency",
+
+        worker_id AS "workerId",
+        metadata,
+
+        delay_until AS "delayUntil",
+        started_at AS "startedAt",
+        retried_at AS "retriedAt",
+        finished_at AS "finishedAt",
+
+        created_at AS "createdAt",
+        expires_at AS "expiresAt",
+
+        NOW() AS "time",
+        COUNT(*) OVER() AS "total"
+      FROM ${JOB_TABLE} AS j
+      WHERE (id > $1 OR $1 IS NULL)
+        AND (id = ANY ($2) OR $2 IS NULL)
+        AND (queue_name = ANY ($3) OR $3 IS NULL)
+        AND (task_name = ANY ($4) OR $4 IS NULL)
+        AND (state = ANY ($5) OR $5 IS NULL)
+        AND (metadata ? ANY ($6) OR $6 IS NULL)
+        AND (state NOT IN ('${JobState.Pending}', '${JobState.Scheduled}') OR expires_at IS NULL OR expires_at > NOW())
+      ORDER BY id ASC
+      LIMIT $7 OFFSET $8`,
+      [
+        options.afterId,
+        options.ids,
+        options.queueNames,
+        options.taskNames,
+        options.states,
+        options.metadata,
+        limit,
+        offset,
+      ],
+    );
+    const total = removeTotal(results.rows);
+    return { total, jobs: results.rows };
+  }
+
+  async getJobHistory(): Promise<QueueJobStatistics> {
+    const results = await this._pool.query<DailyJobHistory>(
+      `SELECT
+        EXTRACT(EPOCH FROM ts) AS "epoch",
+        COALESCE(succeeded_jobs, 0) AS "succeededJobs",
+        COALESCE(failed_jobs, 0) AS "failedJobs",
+        COALESCE(aborted_jobs, 0) AS "abortedJobs",
+        COALESCE(abandoned_jobs, 0) AS "abandonedJobs",
+        COALESCE(stuck_jobs, 0) AS "stuckJobs"
+      FROM
+      (
+        SELECT
+          EXTRACT(DAY FROM ts) AS day,
+          EXTRACT(HOUR FROM ts) AS hour,
+          ts
+        FROM GENERATE_SERIES(NOW() - INTERVAL '23 hour', NOW(), '1 hour') AS ts
+      ) AS s
+      LEFT JOIN
+      (
+        SELECT
+          EXTRACT(DAY FROM finished_at) AS day,
+          EXTRACT(HOUR FROM finished_at) AS hour,
+          COUNT(*) FILTER (WHERE state = '${JobState.Succeeded}') AS succeeded_jobs,
+          COUNT(*) FILTER (WHERE state = '${JobState.Failed}') AS failed_jobs,
+          COUNT(*) FILTER (WHERE state = '${JobState.Aborted}') AS aborted_jobs,
+          COUNT(*) FILTER (WHERE state = '${JobState.Abandoned}') AS abandoned_jobs,
+          COUNT(*) FILTER (WHERE state = '${JobState.Stuck}') AS stuck_jobs
+        FROM ${JOB_TABLE}
+        WHERE finished_at > NOW() - INTERVAL '23 hours'
+        GROUP BY day, hour
+      ) AS j
+      ON s.day = j.day AND s.hour = j.hour
+      ORDER BY epoch ASC`,
+    );
+    return { daily: results.rows };
+  }
+
+  async registerWorker(options: WorkerRegistrationOptions): Promise<WorkerId> {
+    const results = await this._pool.query<RegisterWorkerResult>(
+      `INSERT INTO ${WORKER_TABLE} (
+        config,
+        state,
+        host,
+        pid,
+        finished_job_count,
+        metadata
+      )
+      VALUES (
+        $1, $2, $3, $4, $5, $6
+      )
+      RETURNING id`,
+      [options.config, options.state, this.hostname, process.pid, options.finishedJobCount, options.metadata],
+    );
+    return results.rows[0].id;
+  }
+
+  async updateWorker(workerId: WorkerId, options: WorkerRegistrationOptions): Promise<boolean> {
+    const results = await this._pool.query<ReceiveResult>(
+      `UPDATE ${WORKER_TABLE} AS new
+      SET
+        config = $1,
+        state = $2,
+        finished_job_count = $3,
+        metadata = $4,
+        last_seen_at = NOW()
+      WHERE id = $5`,
+      [options.config, options.state, options.finishedJobCount, options.metadata, workerId],
+    );
+    return (results.rowCount ?? 0) <= 0;
+  }
+
+  async checkWorkerInbox(workerId: WorkerId, options: WorkerInboxOptions): Promise<WorkerCommandDescriptor[]> {
+    const results = await this._pool.query<ReceiveResult>(
+      `UPDATE ${WORKER_TABLE} AS new
+      SET
+        state = $1,
+        finished_job_count = $2,
+        inbox = '[]',
+        last_seen_at = NOW()
+      FROM (
+        SELECT id, inbox
+        FROM ${WORKER_TABLE}
+        WHERE id = $3
+        FOR UPDATE
+      ) AS old
+      WHERE new.id = old.id
+      RETURNING old.inbox AS "inbox"`,
+      [options.state, options.finishedJobCount, workerId],
+    );
+    if ((results.rowCount ?? 0) <= 0) return [];
+    return results.rows[0].inbox ?? [];
+  }
+
+  async unregisterWorker(id: WorkerId): Promise<boolean> {
+    const results = await this._pool.query(
+      `UPDATE ${WORKER_TABLE} SET state = '${WorkerState.Offline}' WHERE id = $1`,
+      [id],
+    );
+    return (results.rowCount ?? 0) > 0;
+  }
+
+  async pruneWorkers(missingTimeout: number): Promise<WorkerPruneResult> {
+    const deleteStaleWorkerResult = await this._pool.query<WorkerInfo>(
+      `UPDATE ${WORKER_TABLE}
+      SET state = '${WorkerState.Missing}'
+      WHERE state IN ('${WorkerState.Online}', '${WorkerState.Idle}', '${WorkerState.Busy}')
+        AND last_seen_at < NOW() - INTERVAL '1 millisecond' * $1
+      RETURNING
+        id,
+        config,
+        state,
+        host,
+        pid,
+        finished_job_count AS "finishedJobCount",
+        metadata,
+        started_at AS "startedAt",
+        last_seen_at AS "lastSeenAt",
+        '[]'::JSONB AS "jobs"`,
+      [missingTimeout],
+    );
+
+    return {
+      deletedStaleWorkers: deleteStaleWorkerResult.rows,
+    };
+  }
+
+  async getWorkerInfo(workerId: WorkerId): Promise<WorkerInfo | undefined> {
+    const results = await this._pool.query<WorkerInfoRow>(
+      `SELECT
+        id,
+
+        config,
+        state,
+        host,
+        pid,
+
+        finished_job_count AS "finishedJobCount",
+        metadata,
+
+        started_at AS "startedAt",
+        last_seen_at AS "lastSeenAt",
+
+        ARRAY(
+          SELECT id
+          FROM ${JOB_TABLE}
+          WHERE state = '${JobState.Running}'
+            AND worker_id = w.id
+        ) AS "jobs"
+      FROM ${WORKER_TABLE} w
+      WHERE id = $1`,
+      [workerId],
+    );
+    return results.rows[0];
+  }
+
+  async getWorkerInfos(offset: number, limit: number, options: ListWorkersOptions): Promise<WorkerInfoList> {
+    const results = await this._pool.query<WorkerInfoRow>(
+      `SELECT
+        id,
+
+        config,
+        state,
+        host,
+        pid,
+
+        finished_job_count AS "finishedJobCount",
+        metadata,
+
+        started_at AS "startedAt",
+        last_seen_at AS "lastSeenAt",
+
+        ARRAY(
+          SELECT id
+          FROM ${JOB_TABLE}
+          WHERE state = '${JobState.Running}'
+            AND worker_id = w.id
+        ) AS "jobs",
+        COUNT(*) OVER() AS "total"
+      FROM ${WORKER_TABLE} w
+      WHERE (id > $1 OR $1 IS NULL)
+        AND (id = ANY ($2) OR $2 IS NULL)
+        AND (state = ANY ($3) OR $3 IS NULL)
+        AND (metadata ? ANY ($4) OR $4 IS NULL)
+      ORDER BY id ASC
+      LIMIT $5 OFFSET $6`,
+      [options.afterId, options.ids, options.state, options.metadata, limit, offset],
+    );
+    const total = removeTotal(results.rows);
+    return { total, workers: results.rows };
+  }
+
+  async sendWorkerCommand(command: string, arg: WorkerCommandArg, options: ListWorkersOptions): Promise<boolean> {
+    const descriptor: WorkerCommandDescriptor = { command, arg };
+    const results = await this._pool.query(
+      `UPDATE ${WORKER_TABLE} SET inbox = inbox || $1::JSONB
+      WHERE (id > $2 OR $2 IS NULL)
+        AND (id = ANY ($3) OR $3 IS NULL)
+        AND (state = ANY ($4) OR $4 IS NULL)
+        AND (metadata ? ANY ($5) OR $5 IS NULL)`,
+      [JSON.stringify([descriptor]), options.afterId, options.ids, options.state, options.metadata],
+    );
+    return (results.rowCount ?? 0) > 0;
+  }
+
+  async getStats(): Promise<QueueStats> {
+    const results = await this._pool.query<QueueStats>(
+      `SELECT
+        (SELECT CASE WHEN is_called THEN last_value ELSE 0 END FROM ${JOB_TABLE}_id_seq) AS "enqueuedJobs",
+        (SELECT COUNT(*) FROM ${JOB_TABLE} WHERE state IN ('${JobState.Pending}', '${JobState.Scheduled}') AND (expires_at IS NULL OR expires_at > NOW())) AS "pendingJobs",
+        (SELECT COUNT(*) FROM ${JOB_TABLE} WHERE state = '${JobState.Scheduled}' AND delay_until > NOW()) AS "scheduledJobs",
+        (SELECT COUNT(*) FROM ${JOB_TABLE} WHERE state = '${JobState.Running}')   AS "runningJobs",
+        (SELECT COUNT(*) FROM ${JOB_TABLE} WHERE state = '${JobState.Succeeded}') AS "succeededJobs",
+        (SELECT COUNT(*) FROM ${JOB_TABLE} WHERE state = '${JobState.Failed}')    AS "failedJobs",
+        (SELECT COUNT(*) FROM ${JOB_TABLE} WHERE state = '${JobState.Aborted}')   AS "abortedJobs",
+        (SELECT COUNT(*) FROM ${JOB_TABLE} WHERE state = '${JobState.Abandoned}') AS "abandonedJobs",
+        (SELECT COUNT(*) FROM ${JOB_TABLE} WHERE state = '${JobState.Stuck}')     AS "stuckJobs",
+        (SELECT COUNT(*) FROM ${JOB_TABLE} WHERE state = '${JobState.Canceled}')  AS "canceledJobs",
+
+        (SELECT COUNT(*) FROM ${WORKER_TABLE} WHERE state = '${WorkerState.Offline}') AS "offlineWorkers",
+        (SELECT COUNT(*) FROM ${WORKER_TABLE} WHERE state IN ('${WorkerState.Online}', '${WorkerState.Idle}', '${WorkerState.Busy}')) AS "onlineWorkers",
+        (SELECT COUNT(DISTINCT worker_id) FROM ${JOB_TABLE} mj WHERE state = '${JobState.Running}') AS "busyWorkers",
+        (SELECT COUNT(*) FROM ${WORKER_TABLE} WHERE state = '${WorkerState.Missing}') AS "missingWorkers",
+
+        CURRENT_SETTING('server_version_num') AS "backendVersion",
+        EXTRACT(EPOCH FROM NOW() - PG_POSTMASTER_START_TIME()) AS "backendUptime"`,
+    );
+    const stats = results.rows[0];
+
+    stats.idleWorkers = stats.onlineWorkers - stats.busyWorkers;
+    stats.backendVersion = stats.backendVersion.replace(/(^\d+)(?:0(\d)|([1-9]\d))(?:0(\d)|([1-9]\d))/, '$1.$2$3.$4$5');
+
+    return stats;
+  }
+
+  async updateSchema(): Promise<void> {
+    const version = (await this._pool.query<ServerVersionResult>('SHOW server_version_num')).rows[0].server_version_num;
+    if (version < 90500) throw new Error('PostgreSQL 9.5 or later is required');
+
+    const conn = await this._pool.connect();
+    try {
+      const migration = new Migration('queue', queueDatabaseUpgrades, conn);
+      await migration.migrate();
+    } finally {
+      conn.release();
+    }
+  }
+
+  async reset(): Promise<void> {
+    await this._pool.query(`TRUNCATE ${JOB_TABLE}, ${WORKER_TABLE} RESTART IDENTITY`);
+  }
+
+  async end(): Promise<void> {
+    if (this.autoclosePool) await this._pool.end();
+  }
 }
 
-function removeTotal<T extends Array<{total?: number}>>(results: T): number {
+function removeTotal<T extends Array<{ total?: number }>>(results: T): number {
   let total = 0;
   for (const result of results) {
     if (result.total !== undefined) total = result.total;
@@ -532,103 +681,145 @@ function removeTotal<T extends Array<{total?: number}>>(results: T): number {
   return total;
 }
 
-const minionDbUpgrades: MigrationStep[] = [
+/**
+ * Waits for a PostgreSQL notification on the given channel, while expecting a specific payload. Returns
+ * normally if notification was received, throws on timeout.
+ */
+async function waitForPostgresNotification(
+  conn: pg.ClientBase,
+  channel: string,
+  expectedPayload: string,
+  timeout: number,
+): Promise<void> {
+  let resolveFn = () => {};
+  const handler = (notification: pg.Notification) => {
+    if (notification.channel === channel && notification.payload === expectedPayload) resolveFn();
+  };
+  conn.on('notification', handler);
+
+  try {
+    let timer;
+    const timeoutPromise = new Promise((_, rej) => (timer = setTimeout(rej, timeout)));
+
+    const notifyPromise = new Promise<void>((res) => {
+      resolveFn = res;
+    });
+
+    await Promise.race([notifyPromise, timeoutPromise]);
+    clearTimeout(timer);
+  } finally {
+    conn.removeListener('notification', handler);
+  }
+}
+
+const queueDatabaseUpgrades: MigrationStep[] = [
   {
     version: 1,
     sql: `
-      CREATE TYPE minion_state AS ENUM ('pending', 'running', 'succeeded', 'failed');
+      CREATE TYPE ${JOB_TABLE}_state AS ENUM (
+        '${JobState.Pending}',
+        '${JobState.Scheduled}',
+        '${JobState.Running}',
+        '${JobState.Succeeded}',
+        '${JobState.Failed}',
+        '${JobState.Aborted}',
+        '${JobState.Abandoned}',
+        '${JobState.Stuck}',
+        '${JobState.Canceled}'
+      );
 
-      CREATE TABLE minion_jobs (
+      CREATE TABLE ${JOB_TABLE} (
         id             BIGSERIAL NOT NULL PRIMARY KEY,
 
         queue_name     TEXT NOT NULL DEFAULT 'default',
         task_name      TEXT NOT NULL,
-        args           JSONB NOT NULL CHECK(JSONB_TYPEOF(args) = 'array'),
+        args           JSONB NOT NULL CHECK(JSONB_TYPEOF(args) = 'object'),
         result         JSONB,
 
-        state          minion_state NOT NULL DEFAULT 'pending'::MINION_STATE,
+        state          ${JOB_TABLE}_state NOT NULL,
         priority       INT NOT NULL,
-        attempts       INT NOT NULL DEFAULT 1,
-        retries        INT NOT NULL DEFAULT 0,
+        progress       REAL,
+        max_attempts   INT NOT NULL,
+        attempt        INT NOT NULL,
 
         parent_job_ids BIGINT[] NOT NULL DEFAULT '{}',
         lax_dependency BOOL NOT NULL DEFAULT FALSE,
 
         worker_id      BIGINT,
-        notes          JSONB CHECK(JSONB_TYPEOF(notes) = 'object') NOT NULL DEFAULT '{}',
+        metadata       JSONB CHECK(JSONB_TYPEOF(metadata) = 'object') NOT NULL DEFAULT '{}',
 
         delay_until    TIMESTAMP WITH TIME ZONE NOT NULL,
         started_at     TIMESTAMP WITH TIME ZONE,
         retried_at     TIMESTAMP WITH TIME ZONE,
-        finished_at   TIMESTAMP WITH TIME ZONE,
+        finished_at    TIMESTAMP WITH TIME ZONE,
 
         created_at     TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
-        expires_at     TIMESTAMP WITH TIME ZONE
+        expires_at     TIMESTAMP WITH TIME ZONE,
+        CONSTRAINT state_pending_scheduled CHECK (
+          NOT (state = 'pending' AND delay_until > NOW())
+        )
       );
-      CREATE INDEX ON minion_jobs (state, priority DESC, id);
-      CREATE INDEX ON minion_jobs USING GIN (parent_job_ids);
-      CREATE INDEX ON minion_jobs USING GIN (notes);
-      CREATE INDEX ON minion_jobs (expires_at);
-      CREATE INDEX ON minion_jobs (finished_at, state);
-      CREATE FUNCTION minion_jobs_notify_workers() RETURNS trigger AS $$
+      CREATE INDEX ON ${JOB_TABLE} (state, priority DESC, id);
+      CREATE INDEX ON ${JOB_TABLE} USING GIN (parent_job_ids);
+      CREATE INDEX ON ${JOB_TABLE} USING GIN (metadata);
+      CREATE INDEX ON ${JOB_TABLE} (expires_at);
+      CREATE INDEX ON ${JOB_TABLE} (finished_at, state);
+      CREATE FUNCTION ${JOB_NOTIFICATION_FUNCTION}() RETURNS trigger AS $$
         BEGIN
           IF new.delay_until <= NOW() THEN
-            NOTIFY "minion.job";
+            PERFORM pg_notify('${JOB_NOTIFICATION_CHANNEL}', current_schema);
           END IF;
           RETURN NULL;
         END;
         $$ LANGUAGE plpgsql;
-      CREATE TRIGGER minion_jobs_notify_workers_trigger
-        AFTER INSERT OR UPDATE OF retries ON minion_jobs
-        FOR EACH ROW EXECUTE PROCEDURE minion_jobs_notify_workers();
+      CREATE TRIGGER ${JOB_NOTIFICATION_TRIGGER}
+        AFTER INSERT OR UPDATE OF attempt ON ${JOB_TABLE}
+        FOR EACH ROW EXECUTE PROCEDURE ${JOB_NOTIFICATION_FUNCTION}();
 
-      CREATE UNLOGGED TABLE minion_workers (
-        id           BIGSERIAL NOT NULL PRIMARY KEY,
+      CREATE TYPE ${WORKER_TABLE}_state AS ENUM (
+        '${WorkerState.Offline}',
+        '${WorkerState.Online}',
+        '${WorkerState.Idle}',
+        '${WorkerState.Busy}',
+        '${WorkerState.Missing}'
+      );
+      CREATE UNLOGGED TABLE ${WORKER_TABLE} (
+        id                 BIGSERIAL NOT NULL PRIMARY KEY,
 
-        host         TEXT NOT NULL,
-        pid          INT NOT NULL,
+        config             JSONB CHECK(JSONB_TYPEOF(config) = 'object') NOT NULL DEFAULT '{}',
+        state              ${WORKER_TABLE}_state NOT NULL,
+        host               TEXT NOT NULL,
+        pid                INT NOT NULL,
 
-        status       JSONB CHECK(JSONB_TYPEOF(status) = 'object') NOT NULL DEFAULT '{}',
+        finished_job_count BIGINT NOT NULL DEFAULT 0,
+        metadata           JSONB CHECK(JSONB_TYPEOF(metadata) = 'object') NOT NULL DEFAULT '{}',
+        inbox              JSONB CHECK(JSONB_TYPEOF(inbox) = 'array') NOT NULL DEFAULT '[]',
 
-        inbox        JSONB CHECK(JSONB_TYPEOF(inbox) = 'array') NOT NULL DEFAULT '[]',
-
-        started_at   TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
-        last_seen_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+        started_at         TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+        last_seen_at       TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
       );
       `,
-  }
+  },
 ];
 
-interface DequeueResult {
-  id: MinionJobId;
-  args: MinionArgs;
-  retries: number;
-  taskName: string;
-}
-
 interface EnqueueResult {
-  id: MinionJobId;
+  id: JobId;
 }
 
-interface JobWithMissingWorkerResult {
-  id: MinionJobId;
-  retries: number;
-}
-
-interface ListJobsResult extends JobInfo {
+interface JobInfoRow extends JobInfo {
   total: number;
 }
 
-interface ListWorkersResult extends WorkerInfo {
+interface WorkerInfoRow extends WorkerInfo {
   total: number;
 }
 
 interface ReceiveResult {
-  inbox: Array<[string, ...any[]]>;
+  inbox: WorkerCommandDescriptor[];
 }
 
 interface RegisterWorkerResult {
-  id: MinionWorkerId;
+  id: WorkerId;
 }
 
 interface ServerVersionResult {
@@ -636,5 +827,5 @@ interface ServerVersionResult {
 }
 
 interface UpdateResult {
-  attempts: number;
+  maxAttempts: number;
 }

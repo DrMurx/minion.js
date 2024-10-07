@@ -16,7 +16,7 @@ import {
   type QueueJobStatistics,
 } from './types/job.js';
 import { type PruneOptions, type Queue, type QueueOptions, type QueueReader, type QueueStats } from './types/queue.js';
-import { type Task, type TaskManager } from './types/task.js';
+import { type Task, type TaskHandlerFunction, type TaskManager } from './types/task.js';
 import {
   type ListWorkersOptions,
   type Worker,
@@ -147,8 +147,17 @@ export class DefaultQueue implements DefaultQueueInterface {
     }
   }
 
-  registerTask(taskName: string, fn: Task): void {
-    this.taskManager.registerTask(taskName, fn);
+  registerTask(task: Task | string, taskFn?: TaskHandlerFunction): void {
+    if (typeof task === 'string') {
+      const taskName = task;
+      const t = new (class implements Task {
+        name = taskName;
+        handle = taskFn!;
+      })();
+      this.taskManager.registerTask(t);
+    } else {
+      this.taskManager.registerTask(task);
+    }
   }
 
   getNewWorker(options?: WorkerOptions): Worker {

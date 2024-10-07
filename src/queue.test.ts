@@ -3,7 +3,8 @@ import { JOB_TABLE, PgBackend, WORKER_TABLE } from './backends/pg/backend.js';
 import { createPool } from './backends/pg/factory.js';
 import { DefaultQueue, type DefaultQueueInterface } from './queue.js';
 import { type Backend } from './types/backend.js';
-import { JobState } from './types/job.js';
+import { type JobResult, JobState } from './types/job.js';
+import { type Task } from './types/task.js';
 import { WorkerState } from './types/worker.js';
 import { DefaultWorker } from './worker.js';
 
@@ -21,9 +22,12 @@ t.test('Queue with PostgreSQL backend', skip, async (t) => {
   await queue.updateSchema();
 
   // Register at some simple tasks for further tests
-  queue.registerTask('test', async () => {
-    return;
-  });
+  queue.registerTask(
+    new (class implements Task {
+      readonly name = 'test';
+      async handle(): Promise<JobResult> {}
+    })(),
+  );
   queue.registerTask('fail', async () => {
     throw new Error('Intentional failure!');
   });

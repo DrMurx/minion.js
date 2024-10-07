@@ -1,9 +1,9 @@
 import { type Worker, type WorkerId } from './worker.js';
 
-export interface Job {
+export interface Job<A extends JobArgs = JobArgs> {
   get id(): JobId;
   get taskName(): string;
-  get args(): JobArgs;
+  get args(): A;
   get state(): JobState | undefined;
   get progress(): number;
   get attempt(): number;

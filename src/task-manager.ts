@@ -1,20 +1,20 @@
 import { type Task, type TaskManager } from './types/task.js';
 
 export class DefaultTaskManager implements TaskManager {
-  private tasks: TaskList = {};
+  private tasks: TaskList = new Map();
 
-  registerTask(taskName: string, fn: Task): void {
-    this.tasks[taskName] = fn;
+  registerTask(task: Task): void {
+    this.tasks.set(task.name, task);
   }
 
   getTaskNames(): string[] {
-    return Object.keys(this.tasks);
+    return Array.from(this.tasks.keys());
   }
 
   getTask(taskName: string): Task {
-    if (!this.tasks[taskName]) throw new Error(`Unknown task ${taskName}`);
-    return this.tasks[taskName];
+    if (!this.tasks.has(taskName)) throw new Error(`Unknown task ${taskName}`);
+    return this.tasks.get(taskName)!;
   }
 }
 
-type TaskList = Record<string, Task>;
+type TaskList = Map<string, Task>;

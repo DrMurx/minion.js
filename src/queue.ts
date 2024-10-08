@@ -104,18 +104,9 @@ export class DefaultQueue implements DefaultQueueInterface {
   }
 
   async assignNextJob(worker: Worker, wait = 0, options: JobDequeueOptions = {}): Promise<Job | null> {
-    const workerId = worker.id;
-    if (workerId === undefined) return null;
-
+    if (worker.id === undefined) return null;
     const taskNames = this.taskManager.getTaskNames();
-
-    let dequeueJobInfo;
-    for (let repeat = 1; ; repeat--) {
-      dequeueJobInfo = await this.backend.assignNextJob(workerId, taskNames, options);
-      if (wait === 0 || dequeueJobInfo !== null || repeat <= 0) break;
-      await this.backend.awaitNewJobs(wait);
-    }
-
+    const dequeueJobInfo = await this.backend.assignNextJob(worker.id, taskNames, wait, options);
     return dequeueJobInfo === null ? null : this.createJobObject(dequeueJobInfo);
   }
 

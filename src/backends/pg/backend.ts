@@ -222,6 +222,20 @@ export class PgBackend extends EventEmitter implements Backend {
   async assignNextJob(
     workerId: WorkerId,
     taskNames: string[],
+    timeout: number,
+    options: JobDequeueOptions,
+  ): Promise<JobDescriptor | null> {
+    for (let repeat = 1; ; repeat--) {
+      const dequeueJobInfo = await this.tryAssignNextJob(workerId, taskNames, options);
+      if (dequeueJobInfo !== null) return dequeueJobInfo;
+      if (timeout === 0 || repeat <= 0) return null;
+      await this.waitForNewJobs(timeout);
+    }
+  }
+
+  protected async tryAssignNextJob(
+    workerId: WorkerId,
+    taskNames: string[],
     options: JobDequeueOptions,
   ): Promise<JobDescriptor | null> {
     const jobId = options.id;
@@ -273,7 +287,10 @@ export class PgBackend extends EventEmitter implements Backend {
     return results.rows[0] ?? null;
   }
 
-  async awaitNewJobs(timeout: number): Promise<boolean> {
+  /**
+   * Wait a given amount of time for a new job to become available.
+   */
+  protected async waitForNewJobs(timeout: number): Promise<boolean> {
     const schema = await this.getSchema();
 
     const conn = await this._pool.connect();

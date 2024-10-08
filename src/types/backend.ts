@@ -100,12 +100,12 @@ export interface QueueBackend {
    * Looks for a new job in the queues. If a job is found, dequeue it and transition from `pending` to `running`
    * state. Return `null` if queues were empty.
    */
-  assignNextJob(id: WorkerId, taskNames: string[], options: JobDequeueOptions): Promise<JobDescriptor | null>;
-
-  /**
-   * Wait a given amount of time for a new job to become available.
-   */
-  awaitNewJobs(timeout: number): Promise<boolean>;
+  assignNextJob(
+    id: WorkerId,
+    taskNames: string[],
+    timeout: number,
+    options: JobDequeueOptions,
+  ): Promise<JobDescriptor | null>;
 
   /**
    * Prune jobs:

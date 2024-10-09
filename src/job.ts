@@ -16,7 +16,7 @@ import { type Worker } from './types/worker.js';
 /**
  * Default job class.
  */
-export class DefaultJob implements Job {
+export class DefaultJob<A extends JobArgs = JobArgs> implements Job<A> {
   private _state?: JobState = JobState.Pending;
   private _progress: number = 0.0;
 
@@ -33,7 +33,7 @@ export class DefaultJob implements Job {
     protected jobManager: JobManager,
     private taskReader: TaskReader,
     private backend: JobBackend,
-    private readonly jobInfo: JobDescriptor | JobInfo,
+    private readonly jobInfo: JobDescriptor<A> | JobInfo<A>,
   ) {
     if ('state' in jobInfo) {
       this._state = jobInfo.state;
@@ -48,7 +48,7 @@ export class DefaultJob implements Job {
     return this.jobInfo.taskName;
   }
 
-  get args(): JobArgs {
+  get args(): A {
     return this.jobInfo.args;
   }
 
@@ -172,7 +172,7 @@ export class DefaultJob implements Job {
     return jobInfo;
   }
 
-  async getParentJobs(): Promise<Job[]> {
+  async getParentJobs(): Promise<Job<JobArgs>[]> {
     const info = await this.getInfo();
     if (info === undefined) return [];
     return await this.jobManager.getJobs({ ids: info.parentJobIds });

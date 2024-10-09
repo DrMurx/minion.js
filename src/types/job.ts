@@ -1,11 +1,12 @@
 import { type Worker, type WorkerId } from './worker.js';
 
-export interface Job<A extends JobArgs = JobArgs> {
+export interface Job<A extends JobArgs> {
   get id(): JobId;
   get taskName(): string;
   get args(): A;
   get state(): JobState | undefined;
   get progress(): number;
+  get maxAttempts(): number;
   get attempt(): number;
   get abortSignal(): AbortSignal;
 
@@ -64,7 +65,7 @@ export interface Job<A extends JobArgs = JobArgs> {
   /**
    * Return all jobs this job depends on.
    */
-  getParentJobs(): Promise<Job[]>;
+  getParentJobs(): Promise<Job<JobArgs>[]>;
 
   /**
    * Return the backoff delay in ms.
@@ -126,22 +127,22 @@ export interface ListJobsOptions {
   metadata?: string[];
 }
 
-export interface JobDescriptor {
+export interface JobDescriptor<A extends JobArgs = JobArgs> {
   id: JobId;
 
   taskName: string;
-  args: JobArgs;
+  args: A;
 
   maxAttempts: number;
   attempt: number;
 }
 
-export interface JobInfo extends JobDescriptor {
+export interface JobInfo<A extends JobArgs = JobArgs> extends JobDescriptor<A> {
   id: JobId;
 
   queueName: string;
   taskName: string;
-  args: JobArgs;
+  args: A;
   result: any;
 
   state: JobState;

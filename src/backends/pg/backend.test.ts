@@ -82,27 +82,27 @@ t.test('PostgreSQL backend', skip, async (t) => {
     const worker1 = await queue.getNewWorker().register();
 
     t.equal((await backend.getJobInfos(1, 1, {})).total, 0);
-    const id1 = await queue.addJob('add');
-    const id2 = await queue.addJob('fail', {}, { maxAttempts: 5 });
-    const id3 = await queue.addJob('test', {}, { queueName: 'another_queue' });
+    const addedJob1 = await queue.addJob('add');
+    const addedJob2 = await queue.addJob('fail', {}, { maxAttempts: 5 });
+    const addedJob3 = await queue.addJob('test', {}, { queueName: 'another_queue' });
     await queue.assignNextJob(worker1);
 
     const results1 = await backend.getJobInfos(0, 10, {});
     const batch1 = results1.jobs;
     t.equal(results1.total, 3);
-    t.equal(batch1[0].id, id1);
+    t.equal(batch1[0].id, addedJob1.id);
     t.equal(batch1[0].queueName, 'default');
     t.equal(batch1[0].taskName, 'add');
     t.equal(batch1[0].state, JobState.Running);
     t.equal(batch1[0].maxAttempts, 1);
     t.equal(batch1[0].attempt, 1);
-    t.equal(batch1[1].id, id2);
+    t.equal(batch1[1].id, addedJob2.id);
     t.equal(batch1[1].queueName, 'default');
     t.equal(batch1[1].taskName, 'fail');
     t.equal(batch1[1].state, JobState.Pending);
     t.equal(batch1[1].maxAttempts, 5);
     t.equal(batch1[1].attempt, 1);
-    t.equal(batch1[1].id, id2);
+    t.equal(batch1[1].id, addedJob2.id);
     t.equal(batch1[2].queueName, 'another_queue');
     t.equal(batch1[2].taskName, 'test');
     t.equal(batch1[2].state, JobState.Pending);
@@ -111,40 +111,40 @@ t.test('PostgreSQL backend', skip, async (t) => {
     t.notOk(batch1[3]);
 
     const batch2 = (await backend.getJobInfos(0, 10, { states: [JobState.Pending] })).jobs;
-    t.equal(batch2[0].id, id2);
+    t.equal(batch2[0].id, addedJob2.id);
     t.equal(batch2[0].state, JobState.Pending);
-    t.equal(batch2[1].id, id3);
+    t.equal(batch2[1].id, addedJob3.id);
     t.equal(batch2[1].state, JobState.Pending);
     t.notOk(batch2[2]);
 
     const batch3 = (await backend.getJobInfos(0, 10, { taskNames: ['add'] })).jobs;
-    t.equal(batch3[0].id, id1);
+    t.equal(batch3[0].id, addedJob1.id);
     t.equal(batch3[0].taskName, 'add');
     t.equal(batch3[0].maxAttempts, 1);
     t.equal(batch3[0].attempt, 1);
     t.notOk(batch3[1]);
 
     const batch4 = (await backend.getJobInfos(0, 10, { taskNames: ['add', 'test'] })).jobs;
-    t.equal(batch4[0].id, id1);
+    t.equal(batch4[0].id, addedJob1.id);
     t.equal(batch4[0].taskName, 'add');
-    t.equal(batch4[1].id, id3);
+    t.equal(batch4[1].id, addedJob3.id);
     t.equal(batch4[1].taskName, 'test');
     t.notOk(batch4[2]);
 
     const batch5 = (await backend.getJobInfos(0, 10, { queueNames: ['default'] })).jobs;
-    t.equal(batch5[0].id, id1);
+    t.equal(batch5[0].id, addedJob1.id);
     t.equal(batch5[0].queueName, 'default');
-    t.equal(batch5[1].id, id2);
+    t.equal(batch5[1].id, addedJob2.id);
     t.equal(batch5[1].queueName, 'default');
     t.notOk(batch5[2]);
 
-    const id4 = await queue.addJob('test', {}, { metadata: { isTest: true } });
+    const addedJob4 = await queue.addJob('test', {}, { metadata: { isTest: true } });
     const batch6 = (await backend.getJobInfos(0, 10, { metadata: ['isTest'] })).jobs;
-    t.equal(batch6[0].id, id4);
+    t.equal(batch6[0].id, addedJob4.id);
     t.equal(batch6[0].taskName, 'test');
     t.same(batch6[0].metadata, { isTest: true });
     t.notOk(batch6[1]);
-    await (await queue.getJob(id4))!.remove();
+    await (await queue.getJob(addedJob4.id))!.remove();
 
     const batch7 = (await backend.getJobInfos(0, 10, { queueNames: ['does_not_exist'] })).jobs;
     t.notOk(batch7[0]);
@@ -152,7 +152,7 @@ t.test('PostgreSQL backend', skip, async (t) => {
     const results4 = await backend.getJobInfos(2, 1, {});
     const batch8 = results4.jobs;
     t.equal(results4.total, 3);
-    t.equal(batch8[0].id, id3);
+    t.equal(batch8[0].id, addedJob3.id);
     t.notOk(batch8[1]);
   });
 

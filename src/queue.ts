@@ -59,8 +59,16 @@ export class DefaultQueue implements DefaultQueueInterface {
     this.scheduleNextPrune();
   }
 
-  async addJob(taskName: string, args?: JobArgs, options?: JobEnqueueOptions): Promise<JobId> {
-    return await this.backend.addJob(taskName, args ?? {}, options ?? {});
+  async addJob<A extends JobArgs>(taskName: string, args?: A, options?: JobEnqueueOptions): Promise<Job<A>> {
+    const id = await this.backend.addJob(taskName, args ?? {}, options ?? {});
+    const job: Job<A> = this.createJobObject<A>({
+      id,
+      taskName,
+      args: args ?? ({} as A),
+      maxAttempts: options?.maxAttempts ?? 1,
+      attempt: 1,
+    });
+    return job;
   }
 
   async getJobResult(id: JobId, options: JobResultOptions = {}): Promise<JobInfo | null> {
@@ -73,37 +81,40 @@ export class DefaultQueue implements DefaultQueueInterface {
     this.backend.cancelJob(id);
   }
 
-  async getJob(id: JobId): Promise<Job | null> {
-    const info = await this.getJobInfo(id);
+  async getJob<A extends JobArgs>(id: JobId): Promise<Job<A> | null> {
+    const info = await this.getJobInfo<A>(id);
     if (info === undefined) return null;
-    return this.createJobObject(info);
+    return this.createJobObject<A>(info);
   }
 
-  async getJobs(options: ListJobsOptions): Promise<Job[]> {
-    const results: Job[] = [];
-    for await (const jobInfo of this.listJobInfos(options)) {
-      results.push(this.createJobObject(jobInfo));
+  async getJobs<A extends JobArgs = JobArgs>(options: ListJobsOptions): Promise<Job<A>[]> {
+    const results: Job<A>[] = [];
+    for await (const jobInfo of this.listJobInfos<A>(options)) {
+      results.push(this.createJobObject<A>(jobInfo));
     }
     return results;
   }
 
-  protected createJobObject(jobInfo: JobDescriptor | JobInfo): Job {
+  protected createJobObject<A extends JobArgs>(jobInfo: JobDescriptor<A> | JobInfo<A>): Job<A> {
     return new DefaultJob(this, this.taskManager, this.backend, jobInfo);
   }
 
-  async getJobInfo(jobId: JobId): Promise<JobInfo | undefined> {
-    return (await this.backend.getJobInfos(0, 1, { ids: [jobId] })).jobs[0];
+  async getJobInfo<A extends JobArgs>(jobId: JobId): Promise<JobInfo<A> | undefined> {
+    return (await this.backend.getJobInfos(0, 1, { ids: [jobId] })).jobs[0] as JobInfo<A>;
   }
 
-  listJobInfos(options: ListJobsOptions = {}, chunkSize: number = 10): BackendIterator<JobInfo> {
-    return new BackendIterator<JobInfo>(this.backend, 'jobs', options, { chunkSize });
+  listJobInfos<A extends JobArgs = JobArgs>(
+    options: ListJobsOptions = {},
+    chunkSize: number = 10,
+  ): BackendIterator<JobInfo<A>> {
+    return new BackendIterator<JobInfo<A>>(this.backend, 'jobs', options, { chunkSize });
   }
 
   async getJobStatistics(): Promise<QueueJobStatistics> {
     return await this.backend.getJobHistory();
   }
 
-  async assignNextJob(worker: Worker, wait = 0, options: JobDequeueOptions = {}): Promise<Job | null> {
+  async assignNextJob(worker: Worker, wait = 0, options: JobDequeueOptions = {}): Promise<Job<JobArgs> | null> {
     if (worker.id === undefined) return null;
     const taskNames = this.taskManager.getTaskNames();
     const dequeueJobInfo = await this.backend.assignNextJob(worker.id, taskNames, wait, options);
@@ -113,7 +124,8 @@ export class DefaultQueue implements DefaultQueueInterface {
   async runJob(jobId: number): Promise<boolean> {
     let job = await this.getJob(jobId);
     if (job === null) return false;
-    if ((await job.retry({ queueName: DefaultWorker.FOREGROUND_QUEUE })) !== true) return false;
+    if ((await job.retry({ queueName: DefaultWorker.FOREGROUND_QUEUE, maxAttempts: job.maxAttempts + 1 })) !== true)
+      return false;
 
     const worker = await this.getNewWorker().register();
     try {
@@ -129,7 +141,7 @@ export class DefaultQueue implements DefaultQueueInterface {
   async runJobs(options?: JobDequeueOptions): Promise<void> {
     const worker = await this.getNewWorker().register();
     try {
-      let job: Job | null;
+      let job: Job<JobArgs> | null;
       while ((job = await worker.heartbeat().then((worker) => this.assignNextJob(worker, 0, options)))) {
         await job.perform(worker);
       }

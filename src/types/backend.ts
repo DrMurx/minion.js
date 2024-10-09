@@ -20,8 +20,8 @@ import {
   WorkerState,
 } from './worker.js';
 
-export type JobInfoList = {
-  jobs: JobInfo[];
+export type JobInfoList<A extends JobArgs> = {
+  jobs: JobInfo<A>[];
   total: number;
 };
 
@@ -119,7 +119,7 @@ export interface QueueBackend {
    */
   getJobHistory(): Promise<any>;
 
-  getJobInfos(offset: number, limit: number, options: ListJobsOptions): Promise<JobInfoList>;
+  getJobInfos<A extends JobArgs>(offset: number, limit: number, options: ListJobsOptions): Promise<JobInfoList<A>>;
 }
 
 /**

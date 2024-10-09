@@ -37,7 +37,7 @@ export interface Queue extends JobManager, JobExecutor, WorkerManager, StatsRead
    * @param options.delayUntil    - Delay job for this many milliseconds (from now), defaults to `0`.
    * @param options.expireAt      - Job is valid for this many milliseconds (from now) before it expires.
    */
-  addJob(taskName: string, args?: JobArgs, options?: JobEnqueueOptions): Promise<JobId>;
+  addJob<A extends JobArgs>(taskName: string, args?: A, options?: JobEnqueueOptions): Promise<Job<A>>;
 
   /**
    * Register a task.
@@ -77,12 +77,12 @@ export interface JobManager {
   /**
    * Retrieve a Job object (without making any changes to the actual job), or return `null` if job does not exist.
    */
-  getJob(id: JobId): Promise<Job | null>;
+  getJob<A extends JobArgs>(id: JobId): Promise<Job<A> | null>;
 
   /**
    * Get an array ob Job objects according to the specified options.
    */
-  getJobs(options: ListJobsOptions): Promise<Job[]>;
+  getJobs<A extends JobArgs = JobArgs>(options: ListJobsOptions): Promise<Job<A>[]>;
 
   /**
    * Return a promise for the future result of a job. The state `succeeded` will result in the promise being
@@ -98,7 +98,7 @@ export interface JobManager {
   /**
    * Return iterator object to safely iterate through job information as returned by the backend.
    */
-  listJobInfos(options?: ListJobsOptions, chunkSize?: number): BackendIterator<JobInfo>;
+  listJobInfos<A extends JobArgs = JobArgs>(options?: ListJobsOptions, chunkSize?: number): BackendIterator<JobInfo<A>>;
 }
 
 export interface JobExecutor {
@@ -119,7 +119,7 @@ export interface QueueReader {
    * Wait a given amount of time in milliseconds for a job, dequeue job object and transition from `pending` to
    * `running` state for the given worker, or return `null` if queues were empty.
    */
-  assignNextJob(worker: Worker, wait?: number, options?: JobDequeueOptions): Promise<Job | null>;
+  assignNextJob(worker: Worker, wait?: number, options?: JobDequeueOptions): Promise<Job<JobArgs> | null>;
 }
 
 export interface WorkerManager {

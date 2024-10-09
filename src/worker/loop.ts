@@ -1,5 +1,5 @@
 import EventEmitter from 'events';
-import { type Job, type JobDequeueOptions } from '../types/job.js';
+import { JobArgs, type Job, type JobDequeueOptions } from '../types/job.js';
 import { type QueueReader } from '../types/queue.js';
 import { type Worker } from '../types/worker.js';
 
@@ -118,7 +118,7 @@ export class WorkerLoop extends EventEmitter {
 }
 
 interface JobStatus {
-  job: Job;
+  job: Job<JobArgs>;
   isRunning: boolean;
   promise: Promise<void>;
 }

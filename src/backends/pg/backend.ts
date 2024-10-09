@@ -375,8 +375,12 @@ export class PgBackend extends EventEmitter implements Backend {
   /**
    * Returns the information about jobs in batches.
    */
-  async getJobInfos(offset: number, limit: number, options: ListJobsOptions): Promise<JobInfoList> {
-    const results = await this._pool.query<JobInfoRow>(
+  async getJobInfos<A extends JobArgs>(
+    offset: number,
+    limit: number,
+    options: ListJobsOptions,
+  ): Promise<JobInfoList<A>> {
+    const results = await this._pool.query<JobInfoRow<A>>(
       `SELECT
         id,
 
@@ -823,7 +827,7 @@ interface EnqueueResult {
   id: JobId;
 }
 
-interface JobInfoRow extends JobInfo {
+interface JobInfoRow<A extends JobArgs> extends JobInfo<A> {
   total: number;
 }
 

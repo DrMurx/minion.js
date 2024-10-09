@@ -74,7 +74,7 @@ export type WorkerCommandHandler = (worker: Worker, arg: WorkerCommandArg) => Pr
 export type WorkerCommandDescriptor = { command: string; arg: WorkerCommandArg };
 
 export interface WorkerOptions {
-  config?: WorkerConfig;
+  config?: Partial<WorkerConfig>;
   metadata?: Record<string, any>;
   commands?: Record<string, WorkerCommandHandler>;
 }

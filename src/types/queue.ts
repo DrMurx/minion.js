@@ -39,6 +39,19 @@ export interface Queue extends JobManager, JobExecutor, WorkerManager, StatsRead
    */
   addJob<A extends JobArgs>(taskName: string, args?: A, options?: JobEnqueueOptions): Promise<Job<A>>;
 
+  addJobWithAck<A extends JobArgs>(
+    taskName: string,
+    args?: A,
+    enqueueOptions?: JobEnqueueOptions,
+    resultOptions?: JobResultOptions,
+  ): Promise<any | null>;
+
+  /**
+   * Return a promise for the future result of a job. The state `succeeded` will result in the promise being
+   * `fullfilled`, and the state `failed` in the promise being `rejected`.
+   */
+  getJobResult(jobId: JobId, options: JobResultOptions): Promise<any | null>;
+
   /**
    * Register a task.
    */
@@ -83,12 +96,6 @@ export interface JobManager {
    * Get an array ob Job objects according to the specified options.
    */
   getJobs<A extends JobArgs = JobArgs>(options: ListJobsOptions): Promise<Job<A>[]>;
-
-  /**
-   * Return a promise for the future result of a job. The state `succeeded` will result in the promise being
-   * `fullfilled`, and the state `failed` in the promise being `rejected`.
-   */
-  getJobResult(jobId: JobId, options: JobResultOptions): Promise<JobInfo | null>;
 
   /**
    * Get job data or return `null` if job does not exist.

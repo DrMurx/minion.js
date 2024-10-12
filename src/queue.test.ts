@@ -45,15 +45,16 @@ t.test('Queue with PostgreSQL backend', skip, async (t) => {
     await worker.register();
 
     const addedJob1 = await queue.addJob('test');
-    const promise1 = queue.getJobResult(addedJob1.id, { interval: 0 });
+    const resultPromise1 = queue.getJobResult(addedJob1.id, { interval: 0 });
     const job1 = (await queue.assignNextJob(worker, 0))!;
     t.equal(job1.id, addedJob1.id);
     t.same(job1.progress, 0.0);
     t.same(await job1.amendMetadata({ foo: 'bar' }), true);
     t.same(await job1.markSucceeded({ just: 'works' }), true);
     t.same(job1.progress, 1.0);
-    const info1 = (await promise1)!;
-    t.same(info1.result, { just: 'works' });
+    const result1 = (await resultPromise1)!;
+    t.same(result1, { just: 'works' });
+    const info1 = (await job1.getInfo())!;
     t.same(info1.progress, 1.0);
     t.same(info1.metadata, { foo: 'bar' });
 
@@ -68,9 +69,9 @@ t.test('Queue with PostgreSQL backend', skip, async (t) => {
     await promise2;
     t.same(failed!.result, { just: 'works too' });
 
-    const promise3 = queue.getJobResult(addedJob1.id, { interval: 0 });
-    const info2 = (await promise3)!;
-    t.same(info2.result, { just: 'works' });
+    const result2 = (await queue.getJobResult(addedJob1.id, { interval: 0 }))!;
+    t.same(result2, { just: 'works' });
+    const info2 = (await job1.getInfo())!;
     t.same(info2.metadata, { foo: 'bar' });
 
     let succeeded;

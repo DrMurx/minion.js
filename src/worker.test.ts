@@ -22,6 +22,7 @@ t.test('Worker', skip, async (t) => {
   // Register at least a simple task for further tests
   queue.registerTask('test', async (job) => {
     await job.amendMetadata({ test: 'pass' });
+    return { success: true };
   });
 
   await t.test('Register and unregister worker', async (t) => {
@@ -50,8 +51,10 @@ t.test('Worker', skip, async (t) => {
     const job = await queue.addJob('test');
 
     const result = (await queue.getJobResult(job.id, { interval: 500 }))!;
-    t.equal(result.state, JobState.Succeeded);
-    t.same(result.metadata, { test: 'pass' });
+    t.same(result, { success: true });
+    const info = (await queue.getJobInfo(job.id))!;
+    t.equal(info.state, JobState.Succeeded);
+    t.same(info.metadata, { test: 'pass' });
 
     t.equal(worker.isRunning, true);
     await worker.stop();

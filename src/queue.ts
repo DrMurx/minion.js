@@ -71,7 +71,17 @@ export class DefaultQueue implements DefaultQueueInterface {
     return job;
   }
 
-  async getJobResult(id: JobId, options: JobResultOptions = {}): Promise<JobInfo | null> {
+  async addJobWithAck<A extends JobArgs>(
+    taskName: string,
+    args?: A,
+    enqueueOptions?: JobEnqueueOptions,
+    resultOptions?: JobResultOptions,
+  ): Promise<any | null> {
+    const job = await this.addJob(taskName, args, enqueueOptions);
+    return await this.getJobResult(job.id, resultOptions ?? {});
+  }
+
+  async getJobResult(id: JobId, options: JobResultOptions = {}): Promise<any | null> {
     const interval = options.interval ?? 3000;
     const signal = options.signal ?? null;
     return new Promise((resolve, reject) => this.waitForResult(id, interval, signal, resolve, reject));
@@ -269,7 +279,7 @@ export class DefaultQueue implements DefaultQueueInterface {
       if (info === undefined) {
         resolve(null);
       } else if (info.state === JobState.Succeeded) {
-        resolve(info);
+        resolve(info.result);
       } else if (
         info.state === JobState.Failed ||
         info.state === JobState.Aborted ||

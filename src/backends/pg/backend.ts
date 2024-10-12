@@ -330,7 +330,7 @@ export class PgBackend extends EventEmitter implements Backend {
     const deleteSucceededJobsResult = await this._pool.query<JobDescriptor>(
       `DELETE FROM ${JOB_TABLE}
       WHERE state = '${JobState.Succeeded}'
-        AND finished_at <= NOW() - $1 * INTERVAL '1 millisecond'
+        AND NOW() - finished_at >= $1 * INTERVAL '1 millisecond'
       RETURNING id, task_name AS "taskName", args, max_attempts AS "maxAttempts", attempt`,
       [retentionTimeout],
     );
@@ -341,7 +341,7 @@ export class PgBackend extends EventEmitter implements Backend {
         state = '${JobState.Stuck}',
         result = '"Job appears stuck in queue"'
       WHERE state IN ('${JobState.Pending}', '${JobState.Scheduled}')
-        AND delay_until < NOW() - $1 * INTERVAL '1 millisecond'
+        AND NOW() - delay_until > $1 * INTERVAL '1 millisecond'
       RETURNING id, task_name AS "taskName", args, max_attempts AS "maxAttempts", attempt`,
       [stuckTimeout],
     );
@@ -543,7 +543,7 @@ export class PgBackend extends EventEmitter implements Backend {
       `UPDATE ${WORKER_TABLE}
       SET state = '${WorkerState.Missing}'
       WHERE state IN ('${WorkerState.Online}', '${WorkerState.Idle}', '${WorkerState.Busy}')
-        AND last_seen_at < NOW() - INTERVAL '1 millisecond' * $1
+        AND NOW() - last_seen_at > $1 * INTERVAL '1 millisecond'
       RETURNING
         id,
         config,

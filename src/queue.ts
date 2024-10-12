@@ -10,6 +10,7 @@ import {
   type JobEnqueueOptions,
   type JobId,
   type JobInfo,
+  type JobResult,
   type JobResultOptions,
   JobState,
   type ListJobsOptions,
@@ -76,12 +77,12 @@ export class DefaultQueue implements DefaultQueueInterface {
     args?: A,
     enqueueOptions?: JobEnqueueOptions,
     resultOptions?: JobResultOptions,
-  ): Promise<any | null> {
+  ): Promise<JobResult> {
     const job = await this.addJob(taskName, args, enqueueOptions);
     return await this.getJobResult(job.id, resultOptions ?? {});
   }
 
-  async getJobResult(id: JobId, options: JobResultOptions = {}): Promise<any | null> {
+  async getJobResult(id: JobId, options: JobResultOptions = {}): Promise<JobResult> {
     const interval = options.interval ?? 3000;
     const signal = options.signal ?? null;
     return new Promise((resolve, reject) => this.waitForResult(id, interval, signal, resolve, reject));
@@ -98,11 +99,11 @@ export class DefaultQueue implements DefaultQueueInterface {
   }
 
   async getJobs<A extends JobArgs = JobArgs>(options: ListJobsOptions): Promise<Job<A>[]> {
-    const results: Job<A>[] = [];
+    const jobs: Job<A>[] = [];
     for await (const jobInfo of this.listJobInfos<A>(options)) {
-      results.push(this.createJobObject<A>(jobInfo));
+      jobs.push(this.createJobObject<A>(jobInfo));
     }
-    return results;
+    return jobs;
   }
 
   protected createJobObject<A extends JobArgs>(jobInfo: JobDescriptor<A> | JobInfo<A>): Job<A> {

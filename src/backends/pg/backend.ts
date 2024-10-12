@@ -18,6 +18,7 @@ import {
   type JobEnqueueOptions,
   type JobId,
   type JobInfo,
+  type JobResult,
   type JobRetryOptions,
   JobState,
   type ListJobsOptions,
@@ -200,7 +201,7 @@ export class PgBackend extends EventEmitter implements Backend {
     state: JobState.Succeeded | JobState.Failed | JobState.Aborted,
     jobId: JobId,
     attempt: number,
-    result: any,
+    result: JobResult,
   ): Promise<boolean> {
     const results = await this._pool.query<UpdateResult>(
       `UPDATE ${JOB_TABLE}

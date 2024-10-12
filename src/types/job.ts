@@ -35,7 +35,7 @@ export interface Job<A extends JobArgs> {
    * Transition from `running` to `failed` state with or without a result, and if there are attempts remaining,
    * transition back to `pending` with a delay based on the backoff policy.
    */
-  markFailed(result?: any): Promise<boolean>;
+  markFailed(result?: JobResult | Error): Promise<boolean>;
 
   /**
    * Transition job back to `pending` or `scheduled` state. Already `pending` jobs may also be retried to change options.
@@ -77,7 +77,8 @@ export type JobId = number;
 
 export type JobArgs = Record<string, any> & { [Symbol.iterator]?: never };
 
-export type JobResult = any;
+export type JobResult = Record<string, any>;
+export type JobError = Record<string, any> | Error;
 
 export enum JobState {
   /**
@@ -143,7 +144,7 @@ export interface JobInfo<A extends JobArgs = JobArgs> extends JobDescriptor<A> {
   queueName: string;
   taskName: string;
   args: A;
-  result: any;
+  result: JobResult;
 
   state: JobState;
   priority: number;

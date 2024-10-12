@@ -6,6 +6,7 @@ import {
   type JobEnqueueOptions,
   type JobId,
   type JobInfo,
+  type JobResult,
   type JobResultOptions,
   type ListJobsOptions,
   type QueueJobStatistics,
@@ -44,13 +45,13 @@ export interface Queue extends JobManager, JobExecutor, WorkerManager, StatsRead
     args?: A,
     enqueueOptions?: JobEnqueueOptions,
     resultOptions?: JobResultOptions,
-  ): Promise<any | null>;
+  ): Promise<JobResult>;
 
   /**
    * Return a promise for the future result of a job. The state `succeeded` will result in the promise being
    * `fullfilled`, and the state `failed` in the promise being `rejected`.
    */
-  getJobResult(jobId: JobId, options: JobResultOptions): Promise<any | null>;
+  getJobResult(jobId: JobId, options: JobResultOptions): Promise<JobResult>;
 
   /**
    * Register a task.

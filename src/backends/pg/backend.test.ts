@@ -28,7 +28,7 @@ t.test('PostgreSQL backend', skip, async (t) => {
     throw new Error('Intentional failure!');
   });
   queue.registerTask('add', async (job) => {
-    const { first, second } = job.args;
+    const { first, second } = job.args as any;
     return { added: first + second };
   });
 

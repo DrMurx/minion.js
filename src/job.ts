@@ -93,7 +93,7 @@ export class DefaultJob<A extends JobArgs = JobArgs> implements Job<A> {
 
       const task = this.taskReader.getTask(this.taskName);
       const result = await task.handle(this);
-      await this.markSucceeded(result);
+      await this.markSucceeded(result ?? {});
     } catch (error: any) {
       await this.markFailed(error);
       if (throwOnError) throw error;
@@ -117,7 +117,7 @@ export class DefaultJob<A extends JobArgs = JobArgs> implements Job<A> {
   }
 
   async markSucceeded(result?: JobResult): Promise<boolean> {
-    const isUpdated = await this.backend.markJobFinished(JobState.Succeeded, this.id, this.attempt, result);
+    const isUpdated = await this.backend.markJobFinished(JobState.Succeeded, this.id, this.attempt, result ?? {});
     if (isUpdated) {
       this._state = JobState.Succeeded;
       this._progress = 1.0;
@@ -125,8 +125,10 @@ export class DefaultJob<A extends JobArgs = JobArgs> implements Job<A> {
     return isUpdated;
   }
 
-  async markFailed(result: any = 'Unknown error'): Promise<boolean> {
-    if (result instanceof Error) result = { name: result.name, message: result.message, stack: result.stack };
+  async markFailed(result: JobResult | Error = new Error('Unknown error')): Promise<boolean> {
+    if (result instanceof Error) {
+      result = { name: result.name, message: result.message, stack: result.stack };
+    }
     const isUpdated = await this.backend.markJobFinished(JobState.Failed, this.id, this.attempt, result);
     if (isUpdated) {
       this._state = JobState.Failed;

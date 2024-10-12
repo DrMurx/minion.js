@@ -1,10 +1,10 @@
 import { JobArgs, type Job, type JobResult } from './job.js';
 
-export type TaskHandlerFunction<A extends JobArgs = JobArgs> = (job: Job<A>) => Promise<JobResult>;
+export type TaskHandlerFunction<A extends JobArgs = JobArgs> = (job: Job<A>) => Promise<JobResult | void>;
 
 export interface Task<A extends JobArgs = JobArgs> {
   readonly name: string;
-  handle(job: Job<A>): Promise<JobResult>;
+  handle(job: Job<A>): Promise<JobResult | void>;
 }
 
 export interface TaskManager extends TaskReader {

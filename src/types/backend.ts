@@ -6,6 +6,7 @@ import {
   type JobEnqueueOptions,
   type JobId,
   type JobInfo,
+  type JobResult,
   type JobRetryOptions,
   JobState,
   type ListJobsOptions,
@@ -144,7 +145,7 @@ export interface JobBackend {
     state: JobState.Succeeded | JobState.Failed | JobState.Aborted,
     jobId: JobId,
     attempt: number,
-    result: any,
+    result: JobResult,
   ): Promise<boolean>;
 
   /**

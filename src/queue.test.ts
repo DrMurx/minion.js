@@ -3,7 +3,7 @@ import { JOB_TABLE, PgBackend, WORKER_TABLE } from './backends/pg/backend.js';
 import { createPool } from './backends/pg/factory.js';
 import { DefaultQueue, type DefaultQueueInterface } from './queue.js';
 import { type Backend } from './types/backend.js';
-import { type JobResult, JobState } from './types/job.js';
+import { JobState } from './types/job.js';
 import { type Task } from './types/task.js';
 import { WorkerState } from './types/worker.js';
 import { DefaultWorker } from './worker.js';
@@ -25,14 +25,14 @@ t.test('Queue with PostgreSQL backend', skip, async (t) => {
   queue.registerTask(
     new (class implements Task {
       readonly name = 'test';
-      async handle(): Promise<JobResult> {}
+      async handle() {}
     })(),
   );
   queue.registerTask('fail', async () => {
     throw new Error('Intentional failure!');
   });
   queue.registerTask('add', async (job) => {
-    const { first, second } = job.args;
+    const { first, second } = job.args as any;
     return { added: first + second };
   });
 
@@ -234,7 +234,7 @@ t.test('Queue with PostgreSQL backend', skip, async (t) => {
     ]);
 
     const job1 = (await queue.assignNextJob(worker, 0, { id: addedJob4.id }))!;
-    await job1.markSucceeded('Works!');
+    await job1.markSucceeded({ i_say: 'Works!' });
     const job2 = (await queue.assignNextJob(worker, 0, { id: addedJob2.id }))!;
     await queue.prune();
 
@@ -254,7 +254,7 @@ t.test('Queue with PostgreSQL backend', skip, async (t) => {
     const job5 = (await queue.getJob(addedJob4.id))!;
     const info3 = (await job5.getInfo())!;
     t.equal(info3.state, JobState.Succeeded);
-    t.equal(info3.result, 'Works!');
+    t.same(info3.result, { i_say: 'Works!' });
 
     await worker.unregister();
   });
@@ -565,7 +565,7 @@ t.test('Queue with PostgreSQL backend', skip, async (t) => {
 
     const job6 = (await queue.assignNextJob(worker))!;
     t.equal(job6.id, addedJob2.id);
-    t.ok(await job6.markFailed('Fail and remove immediately'));
+    t.ok(await job6.markFailed({ oopsie: 'Fail and remove immediately' }));
     t.ok(await job6.remove());
     t.notOk(await job6.getInfo());
 
@@ -701,28 +701,34 @@ t.test('Queue with PostgreSQL backend', skip, async (t) => {
     t.equal(job1.progress, 0.0);
     t.equal(await job1.updateProgress(0.5), true);
     t.equal(job1.progress, 0.5);
-    t.notOk((await job1.getInfo())!.result);
-    t.equal((await job1.getInfo())!.progress, 0.5);
+    const info1 = (await job1.getInfo())!;
+    t.notOk(info1.result);
+    t.equal(info1.progress, 0.5);
     t.ok(await job1.markFailed());
     t.notOk(await job1.markSucceeded());
-    t.equal((await job1.getInfo())!.result, 'Unknown error');
-    t.equal((await job1.getInfo())!.state, JobState.Failed);
-    t.equal((await job1.getInfo())!.progress, 0.5);
+    const info2 = (await job1.getInfo())!;
+    t.equal(info2.result.name, 'Error');
+    t.equal(info2.result.message, 'Unknown error');
+    t.match(info2.result.stack, /at DefaultJob\.markFailed/);
+    t.equal(info2.state, JobState.Failed);
+    t.equal(info2.progress, 0.5);
     t.equal(job1.progress, 0.5);
 
     const addedJob2 = await queue.addJob('add', { first: 6, second: 7 });
     const job2 = (await queue.assignNextJob(worker))!;
     t.equal(job2.id, addedJob2.id);
-    t.ok(await job2.markFailed('Something bad happened'));
-    t.equal((await job2.getInfo())!.state, JobState.Failed);
-    t.equal((await job2.getInfo())!.result, 'Something bad happened');
+    t.ok(await job2.markFailed({ oops: 'Something bad happened' }));
+    const info3 = (await job2.getInfo())!;
+    t.equal(info3.state, JobState.Failed);
+    t.same(info3.result, { oops: 'Something bad happened' });
 
     const addedJob3 = await queue.addJob('fail');
     const job3 = (await queue.assignNextJob(worker))!;
     t.equal(job3.id, addedJob3.id);
     await job3.perform(worker);
-    t.equal((await job3.getInfo())!.state, JobState.Failed);
-    t.match((await job3.getInfo())!.result, {
+    const info4 = (await job3.getInfo())!;
+    t.equal(info4.state, JobState.Failed);
+    t.match(info4.result, {
       name: 'Error',
       message: /Intentional failure/,
       stack: /Intentional failure/,
@@ -732,7 +738,7 @@ t.test('Queue with PostgreSQL backend', skip, async (t) => {
 
   await t.test('Nested data structures', async (t) => {
     queue.registerTask('nested', async (job) => {
-      const { object, array } = job.args;
+      const { object, array } = job.args as any;
       await job.amendMetadata({ bar: { baz: [1, 2, 3] } });
       await job.amendMetadata({ baz: 'yada' });
       return [{ 23: object.first[0].second + array[0][0] }];

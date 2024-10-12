@@ -46,15 +46,15 @@ export class DefaultWorker implements Worker {
 
   private _state: WorkerState = WorkerState.Offline;
   private workerLoop: WorkerLoop | null = null;
-  private abortController = new AbortController();
+  protected abortController = new AbortController();
 
-  private commandManager: WorkerCommandManager;
+  protected commandManager: WorkerCommandManager;
 
   private _id: number | undefined = undefined;
 
   constructor(
-    private queueReader: QueueReader,
-    private backend: WorkerBackend,
+    protected queueReader: QueueReader,
+    protected backend: WorkerBackend,
     options: WorkerOptions,
   ) {
     this._config = { ...DefaultWorker.DEFAULT_CONFIG, ...options.config };

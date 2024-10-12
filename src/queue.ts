@@ -43,7 +43,7 @@ export class DefaultQueue implements DefaultQueueInterface {
 
   private options: QueueOptions;
 
-  private taskManager: TaskManager = new DefaultTaskManager();
+  protected taskManager: TaskManager = new DefaultTaskManager();
   private pruneScheduler: NodeJS.Timeout | undefined;
   private lastPruneAt: number = 0;
 
@@ -52,7 +52,7 @@ export class DefaultQueue implements DefaultQueueInterface {
    * @param options
    */
   constructor(
-    private backend: Backend,
+    protected backend: Backend,
     options: Partial<QueueOptions> = {},
   ) {
     this.options = { ...DefaultQueue.DEFAULT_OPTIONS, ...options };

@@ -33,7 +33,7 @@ export class DefaultJob<A extends JobArgs = JobArgs> implements Job<A> {
     protected jobManager: JobManager,
     private taskReader: TaskReader,
     private backend: JobBackend,
-    private readonly jobInfo: JobDescriptor<A> | JobInfo<A>,
+    protected readonly jobInfo: JobDescriptor<A> | JobInfo<A>,
   ) {
     if ('state' in jobInfo) {
       this._state = jobInfo.state;

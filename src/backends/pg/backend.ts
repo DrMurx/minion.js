@@ -3,6 +3,8 @@ import os from 'os';
 import pg from 'pg';
 import {
   type Backend,
+  type JobEnqueueOptions,
+  type JobDequeueOptions,
   type JobInfoList,
   type JobPruneResult,
   type WorkerInboxOptions,
@@ -13,9 +15,7 @@ import {
 import {
   type DailyJobHistory,
   type JobArgs,
-  type JobDequeueOptions,
   type JobDescriptor,
-  type JobEnqueueOptions,
   type JobId,
   type JobInfo,
   type JobResult,
@@ -79,7 +79,7 @@ export class PgBackend extends EventEmitter implements Backend {
   }
 
   async addJob(taskName: string, args: JobArgs, options: JobEnqueueOptions): Promise<JobId> {
-    const delayFor = options.delayFor ?? 0;
+    const delayFor = options.delayFor;
     const results = await this._pool.query<EnqueueResult>(
       `INSERT INTO ${JOB_TABLE} (
         queue_name,
@@ -109,16 +109,16 @@ export class PgBackend extends EventEmitter implements Backend {
       )
       RETURNING id`,
       [
-        options.queueName ?? 'default',
+        options.queueName,
         taskName,
         JSON.stringify(args),
         delayFor <= 0 ? JobState.Pending : JobState.Scheduled,
-        options.priority ?? 0,
-        options.maxAttempts ?? 1,
+        options.priority,
+        options.maxAttempts,
         1,
-        options.parentJobIds ?? [],
-        options.laxDependency ?? false,
-        options.metadata ?? {},
+        options.parentJobIds,
+        options.laxDependency,
+        options.metadata,
         delayFor,
         options.expireIn,
       ],
@@ -241,7 +241,7 @@ export class PgBackend extends EventEmitter implements Backend {
   ): Promise<JobDescriptor | null> {
     const jobId = options.id;
     const minPriority = options.minPriority;
-    const queueNames = options.queueNames ?? ['default'];
+    const queueNames = options.queueNames;
 
     const results = await this._pool.query<JobDescriptor>(
       `UPDATE ${JOB_TABLE}
@@ -753,7 +753,7 @@ const queueDatabaseUpgrades: MigrationStep[] = [
       CREATE TABLE ${JOB_TABLE} (
         id             BIGSERIAL NOT NULL PRIMARY KEY,
 
-        queue_name     TEXT NOT NULL DEFAULT 'default',
+        queue_name     TEXT NOT NULL,
         task_name      TEXT NOT NULL,
         args           JSONB NOT NULL CHECK(JSONB_TYPEOF(args) = 'object'),
         result         JSONB,

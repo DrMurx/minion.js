@@ -1,3 +1,4 @@
+import { type JobEnqueueOptions } from './backend.js';
 import { type Worker, type WorkerId } from './worker.js';
 
 export interface Job<A extends JobArgs> {
@@ -170,28 +171,9 @@ export interface JobInfo<A extends JobArgs = JobArgs> extends JobDescriptor<A> {
   time: Date;
 }
 
-export interface JobDequeueOptions {
-  id?: JobId;
-  queueNames?: string[];
-  minPriority?: number;
-}
+export type JobAddOptions = Partial<JobEnqueueOptions>;
 
-export interface JobEnqueueOptions {
-  queueName?: string;
-
-  priority?: number;
-  maxAttempts?: number;
-
-  metadata?: Record<string, any>;
-
-  parentJobIds?: JobId[];
-  laxDependency?: boolean;
-
-  delayFor?: number;
-  expireIn?: number;
-}
-
-export type JobRetryOptions = Omit<JobEnqueueOptions, 'metadata'>;
+export type JobRetryOptions = Omit<JobAddOptions, 'metadata'>;
 
 export interface JobResultOptions {
   interval?: number;

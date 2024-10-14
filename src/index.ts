@@ -5,9 +5,9 @@ import { DefaultQueue } from './queue.js';
 import { type Backend } from './types/backend.js';
 import {
   type Job,
+  type JobAddOptions,
   type JobArgs,
   type JobDescriptor,
-  type JobEnqueueOptions,
   type JobId,
   type JobInfo,
   type JobResult,
@@ -29,9 +29,9 @@ export {
   WorkerState,
   type Backend,
   type Job,
+  type JobAddOptions,
   type JobArgs,
   type JobDescriptor,
-  type JobEnqueueOptions,
   type JobId,
   type JobInfo,
   type JobResult,

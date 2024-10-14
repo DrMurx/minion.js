@@ -1,13 +1,12 @@
 import { BackendIterator } from './backends/iterator.js';
 import { DefaultJob } from './job.js';
 import { DefaultTaskManager } from './task-manager.js';
-import { type Backend } from './types/backend.js';
+import { type Backend, type JobDequeueOptions, type JobEnqueueOptions } from './types/backend.js';
 import {
   type Job,
+  type JobAddOptions,
   type JobArgs,
-  type JobDequeueOptions,
   type JobDescriptor,
-  type JobEnqueueOptions,
   type JobId,
   type JobInfo,
   type JobResult,
@@ -22,6 +21,7 @@ import {
   type ListWorkersOptions,
   type Worker,
   type WorkerCommandArg,
+  WorkerConfig,
   type WorkerInfo,
   type WorkerOptions,
   WorkerState,
@@ -36,6 +36,7 @@ export interface DefaultQueueInterface extends Queue, QueueReader {}
  */
 export class DefaultQueue implements DefaultQueueInterface {
   public static readonly DEFAULT_OPTIONS: Readonly<QueueOptions> = Object.freeze({
+    queueNames: ['default'],
     pruneInterval: 5 * 60 * 1000,
     workerMissingTimeout: 30 * 60 * 1000,
     jobRetentionPeriod: 2 * 24 * 60 * 60 * 1000,
@@ -57,11 +58,24 @@ export class DefaultQueue implements DefaultQueueInterface {
     options: Partial<QueueOptions> = {},
   ) {
     this.options = { ...DefaultQueue.DEFAULT_OPTIONS, ...options };
+    if (!Array.isArray(this.options.queueNames) || this.options.queueNames.length === 0) {
+      throw new Error('No queue names given');
+    }
     this.scheduleNextPrune();
   }
 
-  async addJob<A extends JobArgs>(taskName: string, args?: A, options?: JobEnqueueOptions): Promise<Job<A>> {
-    const id = await this.backend.addJob(taskName, args ?? {}, options ?? {});
+  async addJob<A extends JobArgs>(taskName: string, args?: A, options?: JobAddOptions): Promise<Job<A>> {
+    const _options = <JobEnqueueOptions>{
+      queueName: this.options.queueNames[0],
+      priority: 0,
+      maxAttempts: 1,
+      parentJobIds: [],
+      laxDependency: false,
+      metadata: {},
+      delayFor: 0,
+      ...options,
+    };
+    const id = await this.backend.addJob(taskName, args ?? {}, _options);
     const job: Job<A> = this.createJobObject<A>({
       id,
       taskName,
@@ -75,7 +89,7 @@ export class DefaultQueue implements DefaultQueueInterface {
   async addJobWithAck<A extends JobArgs>(
     taskName: string,
     args?: A,
-    enqueueOptions?: JobEnqueueOptions,
+    enqueueOptions?: JobAddOptions,
     resultOptions?: JobResultOptions,
   ): Promise<JobResult> {
     const job = await this.addJob(taskName, args, enqueueOptions);
@@ -125,10 +139,18 @@ export class DefaultQueue implements DefaultQueueInterface {
     return await this.backend.getJobHistory();
   }
 
-  async assignNextJob(worker: Worker, wait = 0, options: JobDequeueOptions = {}): Promise<Job<JobArgs> | null> {
+  async assignNextJob(
+    worker: Worker,
+    wait = 0,
+    options: Partial<JobDequeueOptions> = {},
+  ): Promise<Job<JobArgs> | null> {
     if (worker.id === undefined) return null;
+    const _options = <JobDequeueOptions>{
+      queueNames: this.options.queueNames,
+      ...options,
+    };
     const taskNames = this.taskManager.getTaskNames();
-    const dequeueJobInfo = await this.backend.assignNextJob(worker.id, taskNames, wait, options);
+    const dequeueJobInfo = await this.backend.assignNextJob(worker.id, taskNames, wait, _options);
     return dequeueJobInfo === null ? null : this.createJobObject(dequeueJobInfo);
   }
 
@@ -175,7 +197,14 @@ export class DefaultQueue implements DefaultQueueInterface {
   }
 
   getNewWorker(options?: WorkerOptions): Worker {
-    return new DefaultWorker(this, this.backend, options ?? {});
+    const config = <WorkerConfig>{
+      ...DefaultWorker.DEFAULT_CONFIG,
+      queueNames: this.options.queueNames,
+      ...(options?.config ?? {}),
+    };
+    const metadata = options?.metadata ?? {};
+    const commands = options?.commands ?? {};
+    return new DefaultWorker(this, this.backend, config, metadata, commands);
   }
 
   listWorkerInfos(options: ListWorkersOptions = {}, chunkSize: number = 10): BackendIterator<WorkerInfo> {

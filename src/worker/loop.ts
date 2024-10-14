@@ -1,5 +1,6 @@
 import EventEmitter from 'events';
-import { JobArgs, type Job, type JobDequeueOptions } from '../types/job.js';
+import { type JobDequeueOptions } from '../types/backend.js';
+import { type Job, type JobArgs } from '../types/job.js';
 import { type QueueReader } from '../types/queue.js';
 import { type Worker } from '../types/worker.js';
 

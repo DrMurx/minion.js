@@ -6,7 +6,6 @@ import {
   type WorkerConfig,
   type WorkerId,
   type WorkerInfo,
-  type WorkerOptions,
   WorkerState,
 } from './types/worker.js';
 import { WorkerCommandManager } from './worker/command-manager.js';
@@ -19,8 +18,7 @@ import { WorkerLoop } from './worker/loop.js';
 export class DefaultWorker implements Worker {
   public static readonly FOREGROUND_QUEUE = '_foreground_queue';
 
-  public static readonly DEFAULT_CONFIG: Readonly<WorkerConfig> = Object.freeze({
-    queueNames: ['default'],
+  public static readonly DEFAULT_CONFIG: Readonly<Partial<WorkerConfig>> = Object.freeze({
     concurrency: 1,
     prefetchJobs: 0,
     prefetchMinPriority: 1,
@@ -30,14 +28,9 @@ export class DefaultWorker implements Worker {
   });
 
   /**
-   * Worker config.
-   */
-  private _config: WorkerConfig;
-
-  /**
    * Additional metadata
    */
-  private metadata: Record<string, any> = {};
+  private _metadata: Record<string, any> = {};
 
   private finishedJobCount = 0;
 
@@ -55,11 +48,12 @@ export class DefaultWorker implements Worker {
   constructor(
     protected queueReader: QueueReader,
     protected backend: WorkerBackend,
-    options: WorkerOptions,
+    protected _config: WorkerConfig,
+    metadata: Record<string, any>,
+    defaultCommands: Record<string, WorkerCommandHandler>,
   ) {
-    this._config = { ...DefaultWorker.DEFAULT_CONFIG, ...options.config };
-    this.metadata = { ...options.metadata };
-    this.commandManager = new WorkerCommandManager(this, options.commands ?? {});
+    this._metadata = { ...metadata };
+    this.commandManager = new WorkerCommandManager(this, defaultCommands);
   }
 
   get id(): WorkerId | undefined {
@@ -86,9 +80,9 @@ export class DefaultWorker implements Worker {
 
   async setMetadata(key: string, value: any): Promise<void> {
     if (value !== null) {
-      this.metadata[key] = value;
+      this._metadata[key] = value;
     } else {
-      delete this.metadata[key];
+      delete this._metadata[key];
     }
     await this.heartbeat(true);
   }
@@ -159,7 +153,7 @@ export class DefaultWorker implements Worker {
         config: this._config,
         state: WorkerState.Online,
         finishedJobCount: this.finishedJobCount,
-        metadata: this.metadata,
+        metadata: this._metadata,
       };
       this._id = await this.backend.registerWorker(options);
       this._state = WorkerState.Online;
@@ -177,7 +171,7 @@ export class DefaultWorker implements Worker {
         config: this._config,
         state: this.state,
         finishedJobCount: this.finishedJobCount,
-        metadata: this.metadata,
+        metadata: this._metadata,
       };
       await this.backend.updateWorker(this._id!, options);
       this.lastHeartbeatAt = Date.now();

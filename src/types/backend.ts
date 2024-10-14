@@ -1,9 +1,7 @@
 import EventEmitter from 'events';
 import {
   type JobArgs,
-  type JobDequeueOptions,
   type JobDescriptor,
-  type JobEnqueueOptions,
   type JobId,
   type JobInfo,
   type JobResult,
@@ -25,6 +23,27 @@ export type JobInfoList<A extends JobArgs> = {
   jobs: JobInfo<A>[];
   total: number;
 };
+
+export interface JobEnqueueOptions {
+  queueName: string;
+
+  priority: number;
+  maxAttempts: number;
+
+  metadata: Record<string, any>;
+
+  parentJobIds: JobId[];
+  laxDependency: boolean;
+
+  delayFor: number;
+  expireIn?: number;
+}
+
+export interface JobDequeueOptions {
+  id?: JobId;
+  queueNames: string[];
+  minPriority?: number;
+}
 
 export type WorkerInfoList = {
   workers: WorkerInfo[];

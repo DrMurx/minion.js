@@ -1,9 +1,9 @@
 import { type BackendIterator } from '../backends/iterator.js';
+import { type JobDequeueOptions } from './backend.js';
 import {
   type Job,
+  type JobAddOptions,
   type JobArgs,
-  type JobDequeueOptions,
-  type JobEnqueueOptions,
   type JobId,
   type JobInfo,
   type JobResult,
@@ -38,12 +38,12 @@ export interface Queue extends JobManager, JobExecutor, WorkerManager, StatsRead
    * @param options.delayUntil    - Delay job for this many milliseconds (from now), defaults to `0`.
    * @param options.expireAt      - Job is valid for this many milliseconds (from now) before it expires.
    */
-  addJob<A extends JobArgs>(taskName: string, args?: A, options?: JobEnqueueOptions): Promise<Job<A>>;
+  addJob<A extends JobArgs>(taskName: string, args?: A, options?: JobAddOptions): Promise<Job<A>>;
 
   addJobWithAck<A extends JobArgs>(
     taskName: string,
     args?: A,
-    enqueueOptions?: JobEnqueueOptions,
+    enqueueOptions?: JobAddOptions,
     resultOptions?: JobResultOptions,
   ): Promise<JobResult>;
 
@@ -119,7 +119,7 @@ export interface JobExecutor {
   /**
    * Perform all jobs with a temporary worker, very useful for testing.
    */
-  runJobs(options?: JobDequeueOptions): Promise<void>;
+  runJobs(options?: Partial<JobDequeueOptions>): Promise<void>;
 }
 
 export interface QueueReader {
@@ -127,7 +127,7 @@ export interface QueueReader {
    * Wait a given amount of time in milliseconds for a job, dequeue job object and transition from `pending` to
    * `running` state for the given worker, or return `null` if queues were empty.
    */
-  assignNextJob(worker: Worker, wait?: number, options?: JobDequeueOptions): Promise<Job<JobArgs> | null>;
+  assignNextJob(worker: Worker, wait?: number, options?: Partial<JobDequeueOptions>): Promise<Job<JobArgs> | null>;
 }
 
 export interface WorkerManager {
@@ -155,6 +155,7 @@ export interface StatsReader {
 }
 
 export interface QueueOptions extends PruneOptions {
+  queueNames: string[];
   pruneInterval: number;
 }
 

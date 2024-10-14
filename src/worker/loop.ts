@@ -14,8 +14,8 @@ export class WorkerLoop extends EventEmitter {
   private stopPromises: Array<() => void> = [];
 
   constructor(
-    private worker: Worker,
-    private queueReader: QueueReader,
+    protected worker: Worker,
+    protected queueReader: QueueReader,
   ) {
     super();
   }
@@ -40,9 +40,11 @@ export class WorkerLoop extends EventEmitter {
   async run(): Promise<void> {
     while (!this.isStopping || this.hasRunningJobs) {
       await this.worker.processInbox();
-      this.wipe();
-      await this.waitToFinish();
-      await this.replenish();
+      this.pruneFinished();
+      await this.waitForCapacity();
+      if (!this.isStopping) {
+        await this.replenish();
+      }
     }
 
     this.resolveStopPromises();
@@ -58,7 +60,7 @@ export class WorkerLoop extends EventEmitter {
   /**
    * Filter `this.jobs` to only running jobs, and emit the number of finished jobs.
    */
-  protected wipe(): void {
+  protected pruneFinished(): void {
     const before = this.jobs.length;
     this.jobs = this.jobs.filter((jobStatus) => jobStatus.isRunning);
     this.emit('finished', before - this.jobs.length);
@@ -67,24 +69,22 @@ export class WorkerLoop extends EventEmitter {
   /**
    * If `this.jobs` is on its capacity, wait for one of the jobs to finish.
    */
-  protected async waitToFinish(): Promise<void> {
+  protected async waitForCapacity(): Promise<void> {
     const { concurrency, prefetchJobs } = this.worker.config;
     if (this.jobs.length >= concurrency + prefetchJobs) {
-      await Promise.race(this.jobs.map((jobStatus) => jobStatus.promise));
+      await Promise.race(this.jobs.map((jobStatus) => jobStatus.performPromise));
     }
   }
 
   /**
-   * Pull another job into the worker for execution, unless worker is stopped.
+   * Pull another job into the worker for execution. Should not be called when the worker has stopped.
    */
   protected async replenish(): Promise<boolean> {
-    if (this.isStopping) return false;
-
-    const { dequeueTimeout, queues, concurrency, prefetchMinPriority } = this.worker.config;
+    const { dequeueTimeout, queueNames, concurrency, prefetchMinPriority } = this.worker.config;
 
     // Dequeue options for pulling the job
     const options: JobDequeueOptions = {
-      queueNames: queues,
+      queueNames,
       // If regular concurrency slots are occupied, we fetch only jobs with configured min priority
       minPriority: this.jobs.length > concurrency ? prefetchMinPriority : undefined,
     };
@@ -94,12 +94,13 @@ export class WorkerLoop extends EventEmitter {
     if (job === null) return false;
 
     // Construct the jobStatus object - the promise on `Job.perform` will update its status after it has finished
+    const performPromise = job.perform(this.worker, false);
     const jobStatus: JobStatus = {
       job,
+      performPromise,
       isRunning: true,
-      promise: job.perform(this.worker, false),
     };
-    jobStatus.promise.then(() => {
+    jobStatus.performPromise.finally(() => {
       jobStatus.isRunning = false;
     });
     this.jobs.push(jobStatus);
@@ -119,6 +120,6 @@ export class WorkerLoop extends EventEmitter {
 
 interface JobStatus {
   job: Job<JobArgs>;
+  performPromise: Promise<void>;
   isRunning: boolean;
-  promise: Promise<void>;
 }

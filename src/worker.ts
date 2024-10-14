@@ -20,7 +20,7 @@ export class DefaultWorker implements Worker {
   public static readonly FOREGROUND_QUEUE = '_foreground_queue';
 
   public static readonly DEFAULT_CONFIG: Readonly<WorkerConfig> = Object.freeze({
-    queues: ['default'],
+    queueNames: ['default'],
     concurrency: 1,
     prefetchJobs: 0,
     prefetchMinPriority: 1,

@@ -80,7 +80,7 @@ export interface WorkerOptions {
 }
 
 export interface WorkerConfig {
-  queues: string[];
+  queueNames: string[];
   concurrency: number;
   prefetchJobs: number;
   prefetchMinPriority: number;

@@ -26,7 +26,7 @@ import {
 export interface Queue extends JobManager, JobExecutor, WorkerManager, StatsReader {
   /**
    * Enqueue a new job with `pending` or `scheduled` state. Arguments can only be simple scalars, maps or arrays.
-   * @param options.queueName     - Queue to put job in, defaults to `default`.
+   * @param options.queueName     - Queue to put job in, defaults to the first queueName given to the `Queue`.
    * @param options.priority      - Job priority, defaults to `0`. Jobs with a higher priority get performed first.
    *                                Priorities can be positive or negative.
    * @param options.maxAttempts   - Number of times performing this job will be attempted, with a delay based on the
@@ -35,8 +35,10 @@ export interface Queue extends JobManager, JobExecutor, WorkerManager, StatsRead
    * @param options.parentJobIds  - One or more existing jobs this job depends on, and that need to have transitioned
    *                                to a finished state before it can be processed.
    * @param options.laxDependency - If `false`, parent jobs must be `successful`, if `true`, any completion will do.
-   * @param options.delayUntil    - Delay job for this many milliseconds (from now), defaults to `0`.
-   * @param options.expireAt      - Job is valid for this many milliseconds (from now) before it expires.
+   * @param options.delayFor      - Delay job for this many milliseconds (from now), defaults to `0`. If given, the job
+   *                                will start in the `scheduled` state.
+   * @param options.expireIn      - Job becomes invalid/expired after this many milliseconds (from now). If given, the
+   *                                job will be deleted once it's expired.
    */
   addJob<A extends JobArgs>(taskName: string, args?: A, options?: JobAddOptions): Promise<Job<A>>;
 
@@ -161,23 +163,22 @@ export interface QueueOptions extends PruneOptions {
 
 export interface PruneOptions {
   /**
-   * Amount of time in milliseconds after which workers without contact will be considered missing and removed from
-   * the registry. Defaults to 30 minutes.
+   * Amount of time in milliseconds after which workers without contact will be considered `lost` and marked as
+   * such.
    */
-  workerMissingTimeout: number;
+  workerLostTimeout: number;
 
   /**
    * Amount of time in milliseconds after which jobs that have reached the state `succeeded` and have no unresolved
-   * dependencies will be removed automatically from the queue. Defaults to 2 days. It is not recommended to set this
-   * value any lower.
+   * dependencies will be removed automatically from the queue.
    */
-  jobRetentionPeriod: number;
+  jobExpungePeriod: number;
 
   /**
-   * Amount of time in milliseconds after which jobs that have not been processed will be considered stuck by
-   * and transition to the `failed` state. Defaults to 2 days.
+   * Amount of time in milliseconds after which jobs that have not been processed will transition to the
+   * `unattended` state.
    */
-  jobStuckTimeout: number;
+  jobUnattendedPeriod: number;
 }
 
 export interface QueueStats {
@@ -189,14 +190,14 @@ export interface QueueStats {
   failedJobs: number;
   abortedJobs: number;
   abandonedJobs: number;
-  stuckJobs: number;
+  unattendedJobs: number;
   canceledJobs: number;
 
   offlineWorkers: number;
   onlineWorkers: number;
   idleWorkers: number;
   busyWorkers: number;
-  missingWorkers: number;
+  lostWorkers: number;
 
   queueboneVersion: string;
 

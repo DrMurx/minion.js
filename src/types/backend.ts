@@ -63,14 +63,26 @@ export type WorkerInboxOptions = {
 };
 
 export type JobPruneResult = {
-  deletedPendingJobs: JobDescriptor[];
-  deletedSucceededJobs: JobDescriptor[];
+  /**
+   * Jobs pending beyond their `expireAt` time, so they are no longer needed. Have been deleted.
+   */
+  expiredJobs: JobDescriptor[];
+  /**
+   * Jobs finished as `succeeded` but are beyond expunge period. Have been deleted.
+   */
+  expungedJobs: JobDescriptor[];
+  /**
+   * Jobs that have been picked up by a worker, but the worker faded away. Can be rescheduled.
+   */
   abandonedJobs: JobDescriptor[];
-  stuckJobs: JobDescriptor[];
+  /**
+   * Jobs that are overdue but haven't been picked up for a given time. Can be rescheduled.
+   */
+  unattendedJobs: JobDescriptor[];
 };
 
 export type WorkerPruneResult = {
-  deletedStaleWorkers: WorkerInfo[];
+  lostWorkers: WorkerInfo[];
 };
 
 export interface Backend extends QueueBackend, JobBackend, WorkerBackend, EventEmitter {
@@ -79,7 +91,7 @@ export interface Backend extends QueueBackend, JobBackend, WorkerBackend, EventE
   /**
    * Prune workers without heartbeat after the given timeout
    */
-  pruneWorkers(missingTimeout: number): Promise<WorkerPruneResult>;
+  pruneWorkers(listTimeout: number): Promise<WorkerPruneResult>;
 
   /**
    * Broadcast remote control command to one or more workers.
@@ -129,10 +141,12 @@ export interface QueueBackend {
 
   /**
    * Prune jobs:
-   * * Mark jobs with lost workers as  and return their jobs (so that they could be rescheduled)
-   *  Remove `pending` jobs if they are stuck or expired, and `succeeded` jobs after their retention period.
+   * 1. Delete jobs that are past expiration time.
+   * 2. Expunge successfully finished jobs after `expungePeriod`.
+   * 3. Mark `running` jobs of `lost` workers as `abandoned`.
+   * 4. Mark `pending` jobs that are overdue as `unattended`.
    */
-  pruneJobs(stuckTimeout: number, retentionTimeout: number, excludeQueues: string[]): Promise<JobPruneResult>;
+  pruneJobs(unattendedPeriod: number, expungePeriod: number, excludeQueues: string[]): Promise<JobPruneResult>;
 
   /**
    * Get history information for job queue.

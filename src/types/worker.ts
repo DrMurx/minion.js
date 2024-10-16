@@ -94,7 +94,7 @@ export enum WorkerState {
   Online = 'online',
   Idle = 'idle',
   Busy = 'busy',
-  Missing = 'missing',
+  Lost = 'lost',
 }
 
 export interface ListWorkersOptions {

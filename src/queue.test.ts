@@ -115,7 +115,7 @@ t.test('Queue with PostgreSQL backend', skip, async (t) => {
     await worker.unregister();
   });
 
-  await t.test('Repair missing worker', async (t) => {
+  await t.test('Repair lost worker', async (t) => {
     const worker1 = await queue.getNewWorker().register();
     const worker2 = await queue.getNewWorker().register();
     t.not(worker1.id, worker2.id);
@@ -125,16 +125,16 @@ t.test('Queue with PostgreSQL backend', skip, async (t) => {
     t.equal(job.id, addedJob1.id);
     t.equal((await job.getInfo())!.state, JobState.Running);
     const workerId = worker2.id;
-    const missingAfter = DefaultQueue.DEFAULT_OPTIONS.workerMissingTimeout + 1;
+    const lostAfter = DefaultQueue.DEFAULT_OPTIONS.workerLostTimeout + 1;
     t.ok(await worker2.getInfo());
 
     await pool.query(`UPDATE ${WORKER_TABLE} SET last_seen_at = NOW() - $1 * INTERVAL '1 millisecond' WHERE id = $2`, [
-      missingAfter,
+      lostAfter,
       workerId,
     ]);
 
     await queue.prune();
-    t.equal((await worker2.getInfo())!.state, WorkerState.Missing);
+    t.equal((await worker2.getInfo())!.state, WorkerState.Lost);
     const info = (await job.getInfo())!;
     t.equal(info.state, JobState.Abandoned);
     t.equal(info.result, 'Worker went away');
@@ -169,7 +169,7 @@ t.test('Queue with PostgreSQL backend', skip, async (t) => {
   });
 
   await t.test('Repair old jobs', async (t) => {
-    t.equal(DefaultQueue.DEFAULT_OPTIONS.jobRetentionPeriod, 172800000);
+    t.equal(DefaultQueue.DEFAULT_OPTIONS.jobExpungePeriod, 172800000);
 
     const worker = await queue.getNewWorker().register();
     const addedJob1 = await queue.addJob('test');
@@ -186,7 +186,7 @@ t.test('Queue with PostgreSQL backend', skip, async (t) => {
     );
     const finishedAt1 = result1.rows[0].finished_at;
     await pool.query(`UPDATE ${JOB_TABLE} SET finished_at = TO_TIMESTAMP($1) WHERE id = $2`, [
-      finishedAt1 - (DefaultQueue.DEFAULT_OPTIONS.jobRetentionPeriod + 1),
+      finishedAt1 - (DefaultQueue.DEFAULT_OPTIONS.jobExpungePeriod + 1),
       addedJob2.id,
     ]);
     const result2 = await pool.query(
@@ -195,7 +195,7 @@ t.test('Queue with PostgreSQL backend', skip, async (t) => {
     );
     const finishedAt2 = result2.rows[0].finished_at;
     await pool.query(`UPDATE ${JOB_TABLE} SET finished_at = TO_TIMESTAMP($1) WHERE id = $2`, [
-      finishedAt2 - (DefaultQueue.DEFAULT_OPTIONS.jobRetentionPeriod + 1),
+      finishedAt2 - (DefaultQueue.DEFAULT_OPTIONS.jobExpungePeriod + 1),
       addedJob3.id,
     ]);
 
@@ -206,8 +206,8 @@ t.test('Queue with PostgreSQL backend', skip, async (t) => {
     t.notOk(await queue.getJob(addedJob3.id));
   });
 
-  await t.test('Repair stuck jobs', async (t) => {
-    t.equal(DefaultQueue.DEFAULT_OPTIONS.jobStuckTimeout, 172800000);
+  await t.test('Repair unattended jobs', async (t) => {
+    t.equal(DefaultQueue.DEFAULT_OPTIONS.jobUnattendedPeriod, 172800000);
 
     const worker = await queue.getNewWorker().register();
     const addedJob1 = await queue.addJob('test', { delayFor: 1000 });
@@ -215,21 +215,21 @@ t.test('Queue with PostgreSQL backend', skip, async (t) => {
     const addedJob3 = await queue.addJob('test', { delayFor: 1000 });
     const addedJob4 = await queue.addJob('test', { delayFor: 1000 });
 
-    const stuck = DefaultQueue.DEFAULT_OPTIONS.jobStuckTimeout + 1;
+    const unattendedPeriod = DefaultQueue.DEFAULT_OPTIONS.jobUnattendedPeriod + 1;
     await pool.query(`UPDATE ${JOB_TABLE} SET delay_until = NOW() - $1 * INTERVAL '1 second' WHERE id = $2`, [
-      stuck,
+      unattendedPeriod,
       addedJob1.id,
     ]);
     await pool.query(`UPDATE ${JOB_TABLE} SET delay_until = NOW() - $1 * INTERVAL '1 second' WHERE id = $2`, [
-      stuck,
+      unattendedPeriod,
       addedJob2.id,
     ]);
     await pool.query(`UPDATE ${JOB_TABLE} SET delay_until = NOW() - $1 * INTERVAL '1 second' WHERE id = $2`, [
-      stuck,
+      unattendedPeriod,
       addedJob3.id,
     ]);
     await pool.query(`UPDATE ${JOB_TABLE} SET delay_until = NOW() - $1 * INTERVAL '1 second' WHERE id = $2`, [
-      stuck,
+      unattendedPeriod,
       addedJob4.id,
     ]);
 
@@ -241,15 +241,15 @@ t.test('Queue with PostgreSQL backend', skip, async (t) => {
     t.equal((await job2.getInfo())!.state, JobState.Running);
     t.ok(await job2.markSucceeded());
 
-    t.equal((await queue.getStatistics()).stuckJobs, 2);
+    t.equal((await queue.getStatistics()).unattendedJobs, 2);
     const job3 = (await queue.getJob(addedJob1.id))!;
     const info1 = (await job3.getInfo())!;
-    t.equal(info1.state, JobState.Stuck);
-    t.equal(info1.result, 'Job appears stuck in queue');
+    t.equal(info1.state, JobState.Unattended);
+    t.equal(info1.result, 'Job appears unattended');
     const job4 = (await queue.getJob(addedJob3.id))!;
     const info2 = (await job4.getInfo())!;
-    t.equal(info2.state, JobState.Stuck);
-    t.equal(info2.result, 'Job appears stuck in queue');
+    t.equal(info2.state, JobState.Unattended);
+    t.equal(info2.result, 'Job appears unattended');
 
     const job5 = (await queue.getJob(addedJob4.id))!;
     const info3 = (await job5.getInfo())!;
@@ -899,7 +899,7 @@ t.test('Queue with PostgreSQL backend', skip, async (t) => {
   });
 
   await t.test('Job dependencies', async (t) => {
-    await queue.prune({ jobRetentionPeriod: 0 });
+    await queue.prune({ jobExpungePeriod: 0 });
     t.equal((await queue.getStatistics()).succeededJobs, 0);
     const worker = await queue.getNewWorker().register();
     const addedJob1 = await queue.addJob('test');
@@ -927,11 +927,11 @@ t.test('Queue with PostgreSQL backend', skip, async (t) => {
     t.same((await job4.getInfo())!.childJobIds, []);
     t.same((await job4.getInfo())!.parentJobIds, [addedJob1.id, addedJob2.id]);
     t.equal((await queue.getStatistics()).succeededJobs, 2);
-    await queue.prune({ jobRetentionPeriod: 0 });
+    await queue.prune({ jobExpungePeriod: 0 });
     t.equal((await queue.getStatistics()).succeededJobs, 0);
     t.ok(await job4.markSucceeded());
     t.equal((await queue.getStatistics()).succeededJobs, 1);
-    await queue.prune({ jobRetentionPeriod: 0 });
+    await queue.prune({ jobExpungePeriod: 0 });
     t.equal((await queue.getStatistics()).succeededJobs, 0);
 
     const addedJob4 = await queue.addJob('test', {}, { parentJobIds: [-1] });

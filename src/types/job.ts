@@ -113,7 +113,7 @@ export enum JobState {
   /**
    * The job was pending for too long and may require manual intervention. It may be requeued.
    */
-  Stuck = 'stuck',
+  Unattended = 'unattended',
   /**
    * The job was canceled by the user while it was still pending. It will be requeued.
    */
@@ -190,5 +190,5 @@ export interface DailyJobHistory {
   failedJobs: number;
   abortedJobs: number;
   abandonedJobs: number;
-  stuckJobs: number;
+  unattendedJobs: number;
 }

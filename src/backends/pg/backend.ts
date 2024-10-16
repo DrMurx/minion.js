@@ -268,7 +268,7 @@ export class PgBackend extends EventEmitter implements Backend {
                   OR (state IN ('${JobState.Failed}',
                                 '${JobState.Aborted}',
                                 '${JobState.Abandoned}',
-                                '${JobState.Stuck}',
+                                '${JobState.Unattended}',
                                 '${JobState.Canceled}') AND NOT j.lax_dependency)
                 )
             )
@@ -318,36 +318,36 @@ export class PgBackend extends EventEmitter implements Backend {
     return (results.rowCount ?? 0) > 0;
   }
 
-  async pruneJobs(stuckTimeout: number, retentionTimeout: number, excludeQueues: string[]): Promise<JobPruneResult> {
+  async pruneJobs(unattendedPeriod: number, expungePeriod: number, excludeQueues: string[]): Promise<JobPruneResult> {
     // Delete `pending`/`scheduled` jobs past expiration date
-    const deletePendingJobsResult = await this._pool.query<JobDescriptor>(
+    const expiredJobsResult = await this._pool.query<JobDescriptor>(
       `DELETE FROM ${JOB_TABLE}
       WHERE state IN ('${JobState.Pending}', '${JobState.Scheduled}')
         AND expires_at <= NOW()
       RETURNING id, task_name AS "taskName", args, max_attempts AS "maxAttempts", attempt`,
     );
 
-    // Delete `succeeded` jobs after the retention period
-    const deleteSucceededJobsResult = await this._pool.query<JobDescriptor>(
+    // Delete `succeeded` jobs after the expunge period
+    const expungedJobsResult = await this._pool.query<JobDescriptor>(
       `DELETE FROM ${JOB_TABLE}
       WHERE state = '${JobState.Succeeded}'
         AND NOW() - finished_at >= $1 * INTERVAL '1 millisecond'
       RETURNING id, task_name AS "taskName", args, max_attempts AS "maxAttempts", attempt`,
-      [retentionTimeout],
+      [expungePeriod],
     );
 
-    // Mark `pending`/`scheduled` jobs as `stuck` if they linger in the queue past `stuckTimeout`.
-    const stuckJobsResult = await this._pool.query<JobDescriptor>(
+    // Mark `pending`/`scheduled` jobs as `unattended` if they are due, but in the queue past `unattendedPeriod`.
+    const unattendedJobsResult = await this._pool.query<JobDescriptor>(
       `UPDATE ${JOB_TABLE} SET
-        state = '${JobState.Stuck}',
-        result = '"Job appears stuck in queue"'
+        state = '${JobState.Unattended}',
+        result = '"Job appears unattended"'
       WHERE state IN ('${JobState.Pending}', '${JobState.Scheduled}')
         AND NOW() - delay_until > $1 * INTERVAL '1 millisecond'
       RETURNING id, task_name AS "taskName", args, max_attempts AS "maxAttempts", attempt`,
-      [stuckTimeout],
+      [unattendedPeriod],
     );
 
-    // Mark `running` jobs that are assigned to a `missing` or non-existing worker as `abandoned`
+    // Mark `running` jobs as `abandoned` if they are assigned to an `offline`, `lost`, or non-existing worker.
     const abandonedJobsResult = await this._pool.query<JobDescriptor & { workerId: WorkerId }>(
       `UPDATE ${JOB_TABLE} AS j
       SET result = $1,
@@ -366,10 +366,10 @@ export class PgBackend extends EventEmitter implements Backend {
     );
 
     return {
-      deletedPendingJobs: deletePendingJobsResult.rows,
-      deletedSucceededJobs: deleteSucceededJobsResult.rows,
+      expiredJobs: expiredJobsResult.rows,
+      expungedJobs: expungedJobsResult.rows,
       abandonedJobs: abandonedJobsResult.rows,
-      stuckJobs: stuckJobsResult.rows,
+      unattendedJobs: unattendedJobsResult.rows,
     };
   }
 
@@ -446,7 +446,7 @@ export class PgBackend extends EventEmitter implements Backend {
         COALESCE(failed_jobs, 0) AS "failedJobs",
         COALESCE(aborted_jobs, 0) AS "abortedJobs",
         COALESCE(abandoned_jobs, 0) AS "abandonedJobs",
-        COALESCE(stuck_jobs, 0) AS "stuckJobs"
+        COALESCE(unattended_jobs, 0) AS "unattendedJobs"
       FROM
       (
         SELECT
@@ -464,7 +464,7 @@ export class PgBackend extends EventEmitter implements Backend {
           COUNT(*) FILTER (WHERE state = '${JobState.Failed}') AS failed_jobs,
           COUNT(*) FILTER (WHERE state = '${JobState.Aborted}') AS aborted_jobs,
           COUNT(*) FILTER (WHERE state = '${JobState.Abandoned}') AS abandoned_jobs,
-          COUNT(*) FILTER (WHERE state = '${JobState.Stuck}') AS stuck_jobs
+          COUNT(*) FILTER (WHERE state = '${JobState.Unattended}') AS unattended_jobs
         FROM ${JOB_TABLE}
         WHERE finished_at > NOW() - INTERVAL '23 hours'
         GROUP BY day, hour
@@ -539,10 +539,10 @@ export class PgBackend extends EventEmitter implements Backend {
     return (results.rowCount ?? 0) > 0;
   }
 
-  async pruneWorkers(missingTimeout: number): Promise<WorkerPruneResult> {
-    const deleteStaleWorkerResult = await this._pool.query<WorkerInfo>(
+  async pruneWorkers(lostTimeout: number): Promise<WorkerPruneResult> {
+    const lostWorkersResult = await this._pool.query<WorkerInfo>(
       `UPDATE ${WORKER_TABLE}
-      SET state = '${WorkerState.Missing}'
+      SET state = '${WorkerState.Lost}'
       WHERE state IN ('${WorkerState.Online}', '${WorkerState.Idle}', '${WorkerState.Busy}')
         AND NOW() - last_seen_at > $1 * INTERVAL '1 millisecond'
       RETURNING
@@ -556,11 +556,11 @@ export class PgBackend extends EventEmitter implements Backend {
         started_at AS "startedAt",
         last_seen_at AS "lastSeenAt",
         '[]'::JSONB AS "jobs"`,
-      [missingTimeout],
+      [lostTimeout],
     );
 
     return {
-      deletedStaleWorkers: deleteStaleWorkerResult.rows,
+      lostWorkers: lostWorkersResult.rows,
     };
   }
 
@@ -648,18 +648,18 @@ export class PgBackend extends EventEmitter implements Backend {
         (SELECT CASE WHEN is_called THEN last_value ELSE 0 END FROM ${JOB_TABLE}_id_seq) AS "enqueuedJobs",
         (SELECT COUNT(*) FROM ${JOB_TABLE} WHERE state IN ('${JobState.Pending}', '${JobState.Scheduled}') AND (expires_at IS NULL OR expires_at > NOW())) AS "pendingJobs",
         (SELECT COUNT(*) FROM ${JOB_TABLE} WHERE state = '${JobState.Scheduled}' AND delay_until > NOW()) AS "scheduledJobs",
-        (SELECT COUNT(*) FROM ${JOB_TABLE} WHERE state = '${JobState.Running}')   AS "runningJobs",
-        (SELECT COUNT(*) FROM ${JOB_TABLE} WHERE state = '${JobState.Succeeded}') AS "succeededJobs",
-        (SELECT COUNT(*) FROM ${JOB_TABLE} WHERE state = '${JobState.Failed}')    AS "failedJobs",
-        (SELECT COUNT(*) FROM ${JOB_TABLE} WHERE state = '${JobState.Aborted}')   AS "abortedJobs",
-        (SELECT COUNT(*) FROM ${JOB_TABLE} WHERE state = '${JobState.Abandoned}') AS "abandonedJobs",
-        (SELECT COUNT(*) FROM ${JOB_TABLE} WHERE state = '${JobState.Stuck}')     AS "stuckJobs",
-        (SELECT COUNT(*) FROM ${JOB_TABLE} WHERE state = '${JobState.Canceled}')  AS "canceledJobs",
+        (SELECT COUNT(*) FROM ${JOB_TABLE} WHERE state = '${JobState.Running}')    AS "runningJobs",
+        (SELECT COUNT(*) FROM ${JOB_TABLE} WHERE state = '${JobState.Succeeded}')  AS "succeededJobs",
+        (SELECT COUNT(*) FROM ${JOB_TABLE} WHERE state = '${JobState.Failed}')     AS "failedJobs",
+        (SELECT COUNT(*) FROM ${JOB_TABLE} WHERE state = '${JobState.Aborted}')    AS "abortedJobs",
+        (SELECT COUNT(*) FROM ${JOB_TABLE} WHERE state = '${JobState.Abandoned}')  AS "abandonedJobs",
+        (SELECT COUNT(*) FROM ${JOB_TABLE} WHERE state = '${JobState.Unattended}') AS "unattendedJobs",
+        (SELECT COUNT(*) FROM ${JOB_TABLE} WHERE state = '${JobState.Canceled}')   AS "canceledJobs",
 
         (SELECT COUNT(*) FROM ${WORKER_TABLE} WHERE state = '${WorkerState.Offline}') AS "offlineWorkers",
         (SELECT COUNT(*) FROM ${WORKER_TABLE} WHERE state IN ('${WorkerState.Online}', '${WorkerState.Idle}', '${WorkerState.Busy}')) AS "onlineWorkers",
         (SELECT COUNT(DISTINCT worker_id) FROM ${JOB_TABLE} mj WHERE state = '${JobState.Running}') AS "busyWorkers",
-        (SELECT COUNT(*) FROM ${WORKER_TABLE} WHERE state = '${WorkerState.Missing}') AS "missingWorkers",
+        (SELECT COUNT(*) FROM ${WORKER_TABLE} WHERE state = '${WorkerState.Lost}') AS "lostWorkers",
 
         CURRENT_SETTING('server_version_num') AS "backendVersion",
         EXTRACT(EPOCH FROM NOW() - PG_POSTMASTER_START_TIME()) AS "backendUptime"`,
@@ -746,7 +746,7 @@ const queueDatabaseUpgrades: MigrationStep[] = [
         '${JobState.Failed}',
         '${JobState.Aborted}',
         '${JobState.Abandoned}',
-        '${JobState.Stuck}',
+        '${JobState.Unattended}',
         '${JobState.Canceled}'
       );
 
@@ -803,7 +803,7 @@ const queueDatabaseUpgrades: MigrationStep[] = [
         '${WorkerState.Online}',
         '${WorkerState.Idle}',
         '${WorkerState.Busy}',
-        '${WorkerState.Missing}'
+        '${WorkerState.Lost}'
       );
       CREATE UNLOGGED TABLE ${WORKER_TABLE} (
         id                 BIGSERIAL NOT NULL PRIMARY KEY,

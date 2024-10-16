@@ -1,3 +1,4 @@
+import EventEmitter from 'events';
 import { BackendIterator } from './backends/iterator.js';
 import { DefaultJob } from './job.js';
 import { DefaultTaskManager } from './task-manager.js';
@@ -34,13 +35,13 @@ export interface DefaultQueueInterface extends Queue, QueueReader {}
 /**
  * Job queue class.
  */
-export class DefaultQueue implements DefaultQueueInterface {
-  public static readonly DEFAULT_OPTIONS: Readonly<QueueOptions> = Object.freeze({
+export class DefaultQueue extends EventEmitter implements DefaultQueueInterface {
+  public static readonly DEFAULT_OPTIONS = Object.freeze(<QueueOptions>{
     queueNames: ['default'],
     pruneInterval: 5 * 60 * 1000,
-    workerMissingTimeout: 30 * 60 * 1000,
-    jobRetentionPeriod: 2 * 24 * 60 * 60 * 1000,
-    jobStuckTimeout: 2 * 24 * 60 * 60 * 1000,
+    workerLostTimeout: 30 * 60 * 1000,
+    jobExpungePeriod: 2 * 24 * 60 * 60 * 1000,
+    jobUnattendedPeriod: 2 * 24 * 60 * 60 * 1000,
   });
 
   private options: QueueOptions;
@@ -57,6 +58,7 @@ export class DefaultQueue implements DefaultQueueInterface {
     protected backend: Backend,
     options: Partial<QueueOptions> = {},
   ) {
+    super();
     this.options = { ...DefaultQueue.DEFAULT_OPTIONS, ...options };
     if (!Array.isArray(this.options.queueNames) || this.options.queueNames.length === 0) {
       throw new Error('No queue names given');
@@ -254,12 +256,38 @@ export class DefaultQueue implements DefaultQueueInterface {
 
       const options = { ...this.options, ...extraOptions };
 
-      const { deletedStaleWorkers } = await this.backend.pruneWorkers(options.workerMissingTimeout);
-      const { deletedPendingJobs, abandonedJobs } = await this.backend.pruneJobs(
-        options.jobStuckTimeout,
-        options.jobRetentionPeriod,
+      const { lostWorkers } = await this.backend.pruneWorkers(options.workerLostTimeout);
+      if (this.listenerCount('worker_lost') > 0) {
+        for (const lostWorker of lostWorkers) {
+          this.emit('worker_lost', { worker: lostWorker });
+        }
+      }
+
+      const { expiredJobs, expungedJobs, abandonedJobs, unattendedJobs } = await this.backend.pruneJobs(
+        options.jobUnattendedPeriod,
+        options.jobExpungePeriod,
         [DefaultWorker.FOREGROUND_QUEUE],
       );
+      if (this.listenerCount('job_expired') > 0) {
+        for (const job of expiredJobs) {
+          this.emit('job_expired', { job });
+        }
+      }
+      if (this.listenerCount('job_expunged') > 0) {
+        for (const job of expungedJobs) {
+          this.emit('job_expunged', { job });
+        }
+      }
+      if (this.listenerCount('job_abandoned') > 0) {
+        for (const job of abandonedJobs) {
+          this.emit('job_abandoned', { job });
+        }
+      }
+      if (this.listenerCount('job_unattended') > 0) {
+        for (const job of unattendedJobs) {
+          this.emit('job_unattended', { job });
+        }
+      }
 
       for (const jobDescriptor of abandonedJobs) {
         const job = this.createJobObject(jobDescriptor);
@@ -267,7 +295,7 @@ export class DefaultQueue implements DefaultQueueInterface {
       }
 
       this.lastPruneAt = Date.now();
-      return deletedStaleWorkers.length > 0 || deletedPendingJobs.length > 0;
+      return lostWorkers.length > 0 || expiredJobs.length > 0;
     } finally {
       if (this.pruneSchedulerActive) this.scheduleNextPrune();
     }
@@ -314,7 +342,7 @@ export class DefaultQueue implements DefaultQueueInterface {
         info.state === JobState.Failed ||
         info.state === JobState.Aborted ||
         info.state === JobState.Abandoned ||
-        info.state === JobState.Stuck ||
+        info.state === JobState.Unattended ||
         info.state === JobState.Canceled
       ) {
         reject(info);

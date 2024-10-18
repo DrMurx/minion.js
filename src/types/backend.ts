@@ -19,8 +19,8 @@ import {
   WorkerState,
 } from './worker.js';
 
-export type JobInfoList<A extends JobArgs> = {
-  jobs: JobInfo<A>[];
+export type JobInfoList<Args extends JobArgs> = {
+  jobs: JobInfo<Args>[];
   total: number;
 };
 
@@ -62,23 +62,23 @@ export type WorkerInboxOptions = {
   finishedJobCount: number;
 };
 
-export type JobPruneResult = {
+export type JobPruneResult<Args extends JobArgs = JobArgs> = {
   /**
    * Jobs pending beyond their `expireAt` time, so they are no longer needed. Have been deleted.
    */
-  expiredJobs: JobDescriptor[];
+  expiredJobs: JobDescriptor<Args>[];
   /**
    * Jobs finished as `succeeded` but are beyond expunge period. Have been deleted.
    */
-  expungedJobs: JobDescriptor[];
+  expungedJobs: JobDescriptor<Args>[];
   /**
    * Jobs that have been picked up by a worker, but the worker faded away. Can be rescheduled.
    */
-  abandonedJobs: JobDescriptor[];
+  abandonedJobs: JobDescriptor<Args>[];
   /**
    * Jobs that are overdue but haven't been picked up for a given time. Can be rescheduled.
    */
-  unattendedJobs: JobDescriptor[];
+  unattendedJobs: JobDescriptor<Args>[];
 };
 
 export type WorkerPruneResult = {
@@ -132,12 +132,12 @@ export interface QueueBackend {
    * Looks for a new job in the queues. If a job is found, dequeue it and transition from `pending` to `running`
    * state. Return `null` if queues were empty.
    */
-  assignNextJob(
+  assignNextJob<Args extends JobArgs>(
     id: WorkerId,
     taskNames: string[],
     timeout: number,
     options: JobDequeueOptions,
-  ): Promise<JobDescriptor | null>;
+  ): Promise<JobDescriptor<Args> | null>;
 
   /**
    * Prune jobs:
@@ -146,20 +146,36 @@ export interface QueueBackend {
    * 3. Mark `running` jobs of `lost` workers as `abandoned`.
    * 4. Mark `pending` jobs that are overdue as `unattended`.
    */
-  pruneJobs(unattendedPeriod: number, expungePeriod: number, excludeQueues: string[]): Promise<JobPruneResult>;
+  pruneJobs<Args extends JobArgs>(
+    unattendedPeriod: number,
+    expungePeriod: number,
+    excludeQueues: string[],
+  ): Promise<JobPruneResult<Args>>;
 
   /**
    * Get history information for job queue.
    */
   getJobHistory(): Promise<any>;
 
-  getJobInfos<A extends JobArgs>(offset: number, limit: number, options: ListJobsOptions): Promise<JobInfoList<A>>;
+  /**
+   * Returns the information about jobs in batches.
+   */
+  getJobInfos<Args extends JobArgs>(
+    offset: number,
+    limit: number,
+    options: ListJobsOptions,
+  ): Promise<JobInfoList<Args>>;
 }
 
 /**
  * The backend methods a `Job` object needs
  */
 export interface JobBackend {
+  /**
+   * Returns the information about a specific job.
+   */
+  getJobInfo<Args extends JobArgs>(jobId: JobId): Promise<JobInfo<Args>>;
+
   /**
    * Change one or more metadata fields for a job. Setting a value to `null` will remove the field.
    */

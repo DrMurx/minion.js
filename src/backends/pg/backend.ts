@@ -220,30 +220,30 @@ export class PgBackend extends EventEmitter implements Backend {
     return (results.rowCount ?? 0) > 0;
   }
 
-  async assignNextJob(
+  async assignNextJob<Args extends JobArgs>(
     workerId: WorkerId,
     taskNames: string[],
     timeout: number,
     options: JobDequeueOptions,
-  ): Promise<JobDescriptor | null> {
+  ): Promise<JobDescriptor<Args> | null> {
     for (let repeat = 1; ; repeat--) {
-      const dequeueJobInfo = await this.tryAssignNextJob(workerId, taskNames, options);
+      const dequeueJobInfo = await this.tryAssignNextJob<Args>(workerId, taskNames, options);
       if (dequeueJobInfo !== null) return dequeueJobInfo;
       if (timeout === 0 || repeat <= 0) return null;
       await this.waitForNewJobs(timeout);
     }
   }
 
-  protected async tryAssignNextJob(
+  protected async tryAssignNextJob<Args extends JobArgs>(
     workerId: WorkerId,
     taskNames: string[],
     options: JobDequeueOptions,
-  ): Promise<JobDescriptor | null> {
+  ): Promise<JobDescriptor<Args> | null> {
     const jobId = options.id;
     const minPriority = options.minPriority;
     const queueNames = options.queueNames;
 
-    const results = await this._pool.query<JobDescriptor>(
+    const results = await this._pool.query<JobDescriptor<Args>>(
       `UPDATE ${JOB_TABLE}
       SET state = '${JobState.Running}',
           progress = 0.0,
@@ -318,9 +318,13 @@ export class PgBackend extends EventEmitter implements Backend {
     return (results.rowCount ?? 0) > 0;
   }
 
-  async pruneJobs(unattendedPeriod: number, expungePeriod: number, excludeQueues: string[]): Promise<JobPruneResult> {
+  async pruneJobs<Args extends JobArgs>(
+    unattendedPeriod: number,
+    expungePeriod: number,
+    excludeQueues: string[],
+  ): Promise<JobPruneResult<Args>> {
     // Delete `pending`/`scheduled` jobs past expiration date
-    const expiredJobsResult = await this._pool.query<JobDescriptor>(
+    const expiredJobsResult = await this._pool.query<JobDescriptor<Args>>(
       `DELETE FROM ${JOB_TABLE}
       WHERE state IN ('${JobState.Pending}', '${JobState.Scheduled}')
         AND expires_at <= NOW()
@@ -328,7 +332,7 @@ export class PgBackend extends EventEmitter implements Backend {
     );
 
     // Delete `succeeded` jobs after the expunge period
-    const expungedJobsResult = await this._pool.query<JobDescriptor>(
+    const expungedJobsResult = await this._pool.query<JobDescriptor<Args>>(
       `DELETE FROM ${JOB_TABLE}
       WHERE state = '${JobState.Succeeded}'
         AND NOW() - finished_at >= $1 * INTERVAL '1 millisecond'
@@ -337,7 +341,7 @@ export class PgBackend extends EventEmitter implements Backend {
     );
 
     // Mark `pending`/`scheduled` jobs as `unattended` if they are due, but in the queue past `unattendedPeriod`.
-    const unattendedJobsResult = await this._pool.query<JobDescriptor>(
+    const unattendedJobsResult = await this._pool.query<JobDescriptor<Args>>(
       `UPDATE ${JOB_TABLE} SET
         state = '${JobState.Unattended}',
         result = '"Job appears unattended"'
@@ -348,7 +352,7 @@ export class PgBackend extends EventEmitter implements Backend {
     );
 
     // Mark `running` jobs as `abandoned` if they are assigned to an `offline`, `lost`, or non-existing worker.
-    const abandonedJobsResult = await this._pool.query<JobDescriptor & { workerId: WorkerId }>(
+    const abandonedJobsResult = await this._pool.query<JobDescriptor<Args> & { workerId: WorkerId }>(
       `UPDATE ${JOB_TABLE} AS j
       SET result = $1,
           state = '${JobState.Abandoned}',
@@ -376,12 +380,52 @@ export class PgBackend extends EventEmitter implements Backend {
   /**
    * Returns the information about jobs in batches.
    */
-  async getJobInfos<A extends JobArgs>(
+  async getJobInfo<Args extends JobArgs>(jobId: JobId): Promise<JobInfo<Args>> {
+    const results = await this._pool.query<JobInfoRow<Args>>(
+      `SELECT
+        id,
+
+        task_name AS "taskName",
+        queue_name AS "queueName",
+        args,
+        result,
+
+        state,
+        priority,
+        progress,
+        max_attempts AS "maxAttempts",
+        attempt,
+
+        parent_job_ids AS "parentJobIds",
+        ARRAY(SELECT id FROM ${JOB_TABLE} WHERE parent_job_ids @> ARRAY[j.id]) AS "childJobIds",
+        lax_dependency AS "laxDependency",
+
+        worker_id AS "workerId",
+        metadata,
+
+        delay_until AS "delayUntil",
+        started_at AS "startedAt",
+        retried_at AS "retriedAt",
+        finished_at AS "finishedAt",
+
+        created_at AS "createdAt",
+        expires_at AS "expiresAt",
+
+        NOW() AS "time",
+        COUNT(*) OVER() AS "total"
+      FROM ${JOB_TABLE} AS j
+      WHERE id = $1`,
+      [jobId],
+    );
+    return results.rows[0];
+  }
+
+  async getJobInfos<Args extends JobArgs>(
     offset: number,
     limit: number,
     options: ListJobsOptions,
-  ): Promise<JobInfoList<A>> {
-    const results = await this._pool.query<JobInfoRow<A>>(
+  ): Promise<JobInfoList<Args>> {
+    const results = await this._pool.query<JobInfoRow<Args>>(
       `SELECT
         id,
 
@@ -828,7 +872,7 @@ interface EnqueueResult {
   id: JobId;
 }
 
-interface JobInfoRow<A extends JobArgs> extends JobInfo<A> {
+interface JobInfoRow<Args extends JobArgs> extends JobInfo<Args> {
   total: number;
 }
 

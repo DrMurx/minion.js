@@ -1,20 +1,18 @@
 import { type JobEnqueueOptions } from './backend.js';
 import { type Worker, type WorkerId } from './worker.js';
 
-export interface Job<A extends JobArgs> {
+/**
+ * A limited interface for a running `Job` when it is passed to a `Task` handler
+ */
+export interface RunningJob<Args extends JobArgs> {
   get id(): JobId;
   get taskName(): string;
-  get args(): A;
+  get args(): Args;
   get state(): JobState | undefined;
   get progress(): number;
   get maxAttempts(): number;
   get attempt(): number;
   get abortSignal(): AbortSignal;
-
-  /**
-   * Perform job and wait for it to finish. Note that this method should only be used to implement custom workers.
-   */
-  perform(worker: Worker, throwOnError?: boolean): Promise<void>;
 
   /**
    * Update job progress.
@@ -26,6 +24,23 @@ export interface Job<A extends JobArgs> {
    * will get serialized as JSON.
    */
   amendMetadata(records: Record<string, any>): Promise<boolean>;
+
+  /**
+   * Get job information.
+   */
+  getInfo(): Promise<JobInfo<Args> | undefined>;
+
+  /**
+   * Return all jobs this job depends on.
+   */
+  getParentJobs<Args1 extends Args = Args, Args1Job extends Job<Args1> = Job<Args1>>(): Promise<Args1Job[]>;
+}
+
+export interface Job<Args extends JobArgs> extends RunningJob<Args> {
+  /**
+   * Perform job and wait for it to finish. Note that this method should only be used to implement custom workers.
+   */
+  perform(worker: Worker, throwOnError?: boolean): Promise<void>;
 
   /**
    * Transition from `running` to `succeeded` state with or without a result.
@@ -54,19 +69,9 @@ export interface Job<A extends JobArgs> {
   cancel(): Promise<boolean>;
 
   /**
-   * Remove `failed`, `succeeded` or `pending` job from queue.
+   * Remove job from queue (unless it's `running`).
    */
   remove(): Promise<boolean>;
-
-  /**
-   * Get job information.
-   */
-  getInfo(): Promise<JobInfo | undefined>;
-
-  /**
-   * Return all jobs this job depends on.
-   */
-  getParentJobs(): Promise<Job<JobArgs>[]>;
 
   /**
    * Return the backoff delay in ms.
@@ -129,22 +134,22 @@ export interface ListJobsOptions {
   metadata?: string[];
 }
 
-export interface JobDescriptor<A extends JobArgs = JobArgs> {
+export interface JobDescriptor<Args extends JobArgs = JobArgs> {
   id: JobId;
 
   taskName: string;
-  args: A;
+  args: Args;
 
   maxAttempts: number;
   attempt: number;
 }
 
-export interface JobInfo<A extends JobArgs = JobArgs> extends JobDescriptor<A> {
+export interface JobInfo<Args extends JobArgs = JobArgs> extends JobDescriptor<Args> {
   id: JobId;
 
   queueName: string;
   taskName: string;
-  args: A;
+  args: Args;
   result: JobResult;
 
   state: JobState;

@@ -16,7 +16,7 @@ import { type Worker } from './types/worker.js';
 /**
  * Default job class.
  */
-export class DefaultJob<A extends JobArgs = JobArgs> implements Job<A> {
+export class DefaultJob<Args extends JobArgs = JobArgs> implements Job<Args> {
   private _state?: JobState = JobState.Pending;
   private _progress: number = 0.0;
 
@@ -30,10 +30,10 @@ export class DefaultJob<A extends JobArgs = JobArgs> implements Job<A> {
    * @param jobInfo Simplified JobInfo object
    */
   constructor(
-    protected jobManager: JobManager,
-    private taskReader: TaskReader,
+    protected jobManager: JobManager<Args>,
+    private taskReader: TaskReader<Args>,
     private backend: JobBackend,
-    protected readonly jobInfo: JobDescriptor<A> | JobInfo<A>,
+    protected readonly jobInfo: JobDescriptor<Args> | JobInfo<Args>,
   ) {
     if ('state' in jobInfo) {
       this._state = jobInfo.state;
@@ -48,7 +48,7 @@ export class DefaultJob<A extends JobArgs = JobArgs> implements Job<A> {
     return this.jobInfo.taskName;
   }
 
-  get args(): A {
+  get args(): Args {
     return this.jobInfo.args;
   }
 
@@ -166,18 +166,18 @@ export class DefaultJob<A extends JobArgs = JobArgs> implements Job<A> {
     return isUpdated;
   }
 
-  async getInfo(): Promise<JobInfo | undefined> {
-    const jobInfo = await this.jobManager.getJobInfo(this.id);
+  async getInfo(): Promise<JobInfo<Args> | undefined> {
+    const jobInfo = await this.backend.getJobInfo<Args>(this.id);
     if (jobInfo && jobInfo.attempt === this.attempt) {
       this._state = jobInfo.state;
     }
     return jobInfo;
   }
 
-  async getParentJobs(): Promise<Job<JobArgs>[]> {
+  async getParentJobs<Args1 extends Args = Args, Args1Job extends Job<Args1> = Job<Args1>>(): Promise<Args1Job[]> {
     const info = await this.getInfo();
     if (info === undefined) return [];
-    return await this.jobManager.getJobs({ ids: info.parentJobIds });
+    return await this.jobManager.getJobs<Args1, Args1Job>({ ids: info.parentJobIds });
   }
 
   async getBackoffDelay(): Promise<number> {

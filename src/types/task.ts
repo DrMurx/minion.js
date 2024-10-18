@@ -1,20 +1,13 @@
-import { JobArgs, type Job, type JobResult } from './job.js';
+import { type JobArgs, type JobResult, type RunningJob } from './job.js';
 
-export type TaskHandlerFunction<A extends JobArgs = JobArgs> = (job: Job<A>) => Promise<JobResult | void>;
+export type TaskHandlerFunction<A extends JobArgs> = (job: RunningJob<A>) => Promise<JobResult | void>;
 
 export interface Task<A extends JobArgs = JobArgs> {
   readonly name: string;
-  handle(job: Job<A>): Promise<JobResult | void>;
+  handle(job: RunningJob<A>): Promise<JobResult | void>;
 }
 
-export interface TaskManager extends TaskReader {
-  /**
-   * Registers a new task handler.
-   */
-  registerTask(task: Task): void;
-}
-
-export interface TaskReader {
+export interface TaskReader<A extends JobArgs> {
   /**
    * Retrieves a list of all task names.
    */
@@ -24,5 +17,12 @@ export interface TaskReader {
    * Retrieve a task handler.
    * @throws When task unknown
    */
-  getTask(taskName: string): Task;
+  getTask(taskName: string): Task<A>;
+}
+
+export interface TaskManager<A extends JobArgs> extends TaskReader<A> {
+  /**
+   * Registers a new task handler.
+   */
+  registerTask(task: Task<A>): void;
 }

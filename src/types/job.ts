@@ -1,7 +1,10 @@
 import { type JobEnqueueOptions } from './backend.js';
 import { type Worker, type WorkerId } from './worker.js';
 
-export interface Job<A extends JobArgs> {
+/**
+ * A limited interface for a running `Job` when it is passed to a `Task` handler
+ */
+export interface RunningJob<A extends JobArgs> {
   get id(): JobId;
   get taskName(): string;
   get args(): A;
@@ -10,11 +13,6 @@ export interface Job<A extends JobArgs> {
   get maxAttempts(): number;
   get attempt(): number;
   get abortSignal(): AbortSignal;
-
-  /**
-   * Perform job and wait for it to finish. Note that this method should only be used to implement custom workers.
-   */
-  perform(worker: Worker, throwOnError?: boolean): Promise<void>;
 
   /**
    * Update job progress.
@@ -26,6 +24,23 @@ export interface Job<A extends JobArgs> {
    * will get serialized as JSON.
    */
   amendMetadata(records: Record<string, any>): Promise<boolean>;
+
+  /**
+   * Get job information.
+   */
+  getInfo(): Promise<JobInfo<A> | undefined>;
+
+  /**
+   * Return all jobs this job depends on.
+   */
+  getParentJobs<A extends JobArgs = JobArgs, J extends Job<A> = Job<A>>(): Promise<J[]>;
+}
+
+export interface Job<A extends JobArgs> extends RunningJob<A> {
+  /**
+   * Perform job and wait for it to finish. Note that this method should only be used to implement custom workers.
+   */
+  perform(worker: Worker, throwOnError?: boolean): Promise<void>;
 
   /**
    * Transition from `running` to `succeeded` state with or without a result.
@@ -54,19 +69,9 @@ export interface Job<A extends JobArgs> {
   cancel(): Promise<boolean>;
 
   /**
-   * Remove `failed`, `succeeded` or `pending` job from queue.
+   * Remove job from queue (unless it's `running`).
    */
   remove(): Promise<boolean>;
-
-  /**
-   * Get job information.
-   */
-  getInfo(): Promise<JobInfo | undefined>;
-
-  /**
-   * Return all jobs this job depends on.
-   */
-  getParentJobs(): Promise<Job<JobArgs>[]>;
 
   /**
    * Return the backoff delay in ms.

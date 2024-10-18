@@ -30,12 +30,17 @@ import {
 import { version } from './version.js';
 import { DefaultWorker } from './worker.js';
 
-export interface DefaultQueueInterface extends Queue, QueueReader {}
+export interface DefaultQueueInterface<A extends JobArgs = JobArgs, J extends Job<A> = Job<A>>
+  extends Queue<A, J>,
+    QueueReader {}
 
 /**
  * Job queue class.
  */
-export class DefaultQueue extends EventEmitter implements DefaultQueueInterface {
+export class DefaultQueue<A extends JobArgs = JobArgs, J extends Job<A> = Job<A>>
+  extends EventEmitter
+  implements DefaultQueueInterface<A, J>
+{
   public static readonly DEFAULT_OPTIONS = Object.freeze(<QueueOptions>{
     queueNames: ['default'],
     pruneInterval: 5 * 60 * 1000,
@@ -46,7 +51,7 @@ export class DefaultQueue extends EventEmitter implements DefaultQueueInterface 
 
   private options: QueueOptions;
 
-  protected taskManager: TaskManager = new DefaultTaskManager();
+  protected taskManager: TaskManager<A> = new DefaultTaskManager<A>();
   private pruneScheduler: NodeJS.Timeout | undefined;
   private lastPruneAt: number = 0;
 
@@ -66,7 +71,7 @@ export class DefaultQueue extends EventEmitter implements DefaultQueueInterface 
     this.scheduleNextPrune();
   }
 
-  async addJob<A extends JobArgs>(taskName: string, args?: A, options?: JobAddOptions): Promise<Job<A>> {
+  async addJob(taskName: string, args?: A, options?: JobAddOptions): Promise<J> {
     const _options = <JobEnqueueOptions>{
       queueName: this.options.queueNames[0],
       priority: 0,
@@ -78,7 +83,7 @@ export class DefaultQueue extends EventEmitter implements DefaultQueueInterface 
       ...options,
     };
     const id = await this.backend.addJob(taskName, args ?? {}, _options);
-    const job: Job<A> = this.createJobObject<A>({
+    const job: J = this.createJobObject({
       id,
       taskName,
       args: args ?? ({} as A),
@@ -88,7 +93,7 @@ export class DefaultQueue extends EventEmitter implements DefaultQueueInterface 
     return job;
   }
 
-  async addJobWithAck<A extends JobArgs>(
+  async addJobWithAck(
     taskName: string,
     args?: A,
     enqueueOptions?: JobAddOptions,
@@ -108,32 +113,29 @@ export class DefaultQueue extends EventEmitter implements DefaultQueueInterface 
     this.backend.cancelJob(id);
   }
 
-  async getJob<A extends JobArgs>(id: JobId): Promise<Job<A> | null> {
-    const info = await this.getJobInfo<A>(id);
+  async getJob(id: JobId): Promise<J | null> {
+    const info = await this.getJobInfo(id);
     if (info === undefined) return null;
-    return this.createJobObject<A>(info);
+    return this.createJobObject(info);
   }
 
-  async getJobs<A extends JobArgs = JobArgs>(options: ListJobsOptions): Promise<Job<A>[]> {
-    const jobs: Job<A>[] = [];
-    for await (const jobInfo of this.listJobInfos<A>(options)) {
-      jobs.push(this.createJobObject<A>(jobInfo));
+  async getJobs(options: ListJobsOptions): Promise<J[]> {
+    const jobs: J[] = [];
+    for await (const jobInfo of this.listJobInfos(options)) {
+      jobs.push(this.createJobObject(jobInfo));
     }
     return jobs;
   }
 
-  protected createJobObject<A extends JobArgs>(jobInfo: JobDescriptor<A> | JobInfo<A>): Job<A> {
-    return new DefaultJob(this, this.taskManager, this.backend, jobInfo);
+  protected createJobObject(jobInfo: JobDescriptor<A> | JobInfo<A>): J {
+    return new DefaultJob<A>(this, this.taskManager, this.backend, jobInfo) as unknown as J;
   }
 
-  async getJobInfo<A extends JobArgs>(jobId: JobId): Promise<JobInfo<A> | undefined> {
+  async getJobInfo(jobId: JobId): Promise<JobInfo<A> | undefined> {
     return (await this.backend.getJobInfos(0, 1, { ids: [jobId] })).jobs[0] as JobInfo<A>;
   }
 
-  listJobInfos<A extends JobArgs = JobArgs>(
-    options: ListJobsOptions = {},
-    chunkSize: number = 10,
-  ): BackendIterator<JobInfo<A>> {
+  listJobInfos(options: ListJobsOptions = {}, chunkSize: number = 10): BackendIterator<JobInfo<A>> {
     return new BackendIterator<JobInfo<A>>(this.backend, 'jobs', options, { chunkSize });
   }
 
@@ -141,18 +143,14 @@ export class DefaultQueue extends EventEmitter implements DefaultQueueInterface 
     return await this.backend.getJobHistory();
   }
 
-  async assignNextJob(
-    worker: Worker,
-    wait = 0,
-    options: Partial<JobDequeueOptions> = {},
-  ): Promise<Job<JobArgs> | null> {
+  async assignNextJob(worker: Worker, wait = 0, options: Partial<JobDequeueOptions> = {}): Promise<J | null> {
     if (worker.id === undefined) return null;
     const _options = <JobDequeueOptions>{
       queueNames: this.options.queueNames,
       ...options,
     };
     const taskNames = this.taskManager.getTaskNames();
-    const dequeueJobInfo = await this.backend.assignNextJob(worker.id, taskNames, wait, _options);
+    const dequeueJobInfo = await this.backend.assignNextJob<A>(worker.id, taskNames, wait, _options);
     return dequeueJobInfo === null ? null : this.createJobObject(dequeueJobInfo);
   }
 
@@ -185,10 +183,10 @@ export class DefaultQueue extends EventEmitter implements DefaultQueueInterface 
     }
   }
 
-  registerTask(task: Task | string, taskFn?: TaskHandlerFunction): void {
+  registerTask(task: Task<A> | string, taskFn?: TaskHandlerFunction<A>): void {
     if (typeof task === 'string') {
       const taskName = task;
-      const t = new (class implements Task {
+      const t = new (class implements Task<A> {
         name = taskName;
         handle = taskFn!;
       })();
@@ -263,7 +261,7 @@ export class DefaultQueue extends EventEmitter implements DefaultQueueInterface 
         }
       }
 
-      const { expiredJobs, expungedJobs, abandonedJobs, unattendedJobs } = await this.backend.pruneJobs(
+      const { expiredJobs, expungedJobs, abandonedJobs, unattendedJobs } = await this.backend.pruneJobs<A>(
         options.jobUnattendedPeriod,
         options.jobExpungePeriod,
         [DefaultWorker.FOREGROUND_QUEUE],

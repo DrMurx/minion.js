@@ -62,23 +62,23 @@ export type WorkerInboxOptions = {
   finishedJobCount: number;
 };
 
-export type JobPruneResult = {
+export type JobPruneResult<A extends JobArgs = JobArgs> = {
   /**
    * Jobs pending beyond their `expireAt` time, so they are no longer needed. Have been deleted.
    */
-  expiredJobs: JobDescriptor[];
+  expiredJobs: JobDescriptor<A>[];
   /**
    * Jobs finished as `succeeded` but are beyond expunge period. Have been deleted.
    */
-  expungedJobs: JobDescriptor[];
+  expungedJobs: JobDescriptor<A>[];
   /**
    * Jobs that have been picked up by a worker, but the worker faded away. Can be rescheduled.
    */
-  abandonedJobs: JobDescriptor[];
+  abandonedJobs: JobDescriptor<A>[];
   /**
    * Jobs that are overdue but haven't been picked up for a given time. Can be rescheduled.
    */
-  unattendedJobs: JobDescriptor[];
+  unattendedJobs: JobDescriptor<A>[];
 };
 
 export type WorkerPruneResult = {
@@ -132,12 +132,12 @@ export interface QueueBackend {
    * Looks for a new job in the queues. If a job is found, dequeue it and transition from `pending` to `running`
    * state. Return `null` if queues were empty.
    */
-  assignNextJob(
+  assignNextJob<A extends JobArgs>(
     id: WorkerId,
     taskNames: string[],
     timeout: number,
     options: JobDequeueOptions,
-  ): Promise<JobDescriptor | null>;
+  ): Promise<JobDescriptor<A> | null>;
 
   /**
    * Prune jobs:
@@ -146,7 +146,11 @@ export interface QueueBackend {
    * 3. Mark `running` jobs of `lost` workers as `abandoned`.
    * 4. Mark `pending` jobs that are overdue as `unattended`.
    */
-  pruneJobs(unattendedPeriod: number, expungePeriod: number, excludeQueues: string[]): Promise<JobPruneResult>;
+  pruneJobs<A extends JobArgs>(
+    unattendedPeriod: number,
+    expungePeriod: number,
+    excludeQueues: string[],
+  ): Promise<JobPruneResult<A>>;
 
   /**
    * Get history information for job queue.

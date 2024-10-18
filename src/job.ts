@@ -31,7 +31,7 @@ export class DefaultJob<A extends JobArgs = JobArgs> implements Job<A> {
    */
   constructor(
     protected jobManager: JobManager,
-    private taskReader: TaskReader,
+    private taskReader: TaskReader<A>,
     private backend: JobBackend,
     protected readonly jobInfo: JobDescriptor<A> | JobInfo<A>,
   ) {
@@ -166,18 +166,18 @@ export class DefaultJob<A extends JobArgs = JobArgs> implements Job<A> {
     return isUpdated;
   }
 
-  async getInfo(): Promise<JobInfo | undefined> {
-    const jobInfo = await this.jobManager.getJobInfo(this.id);
+  async getInfo(): Promise<JobInfo<A> | undefined> {
+    const jobInfo = (await this.jobManager.getJobInfo(this.id)) as JobInfo<A>;
     if (jobInfo && jobInfo.attempt === this.attempt) {
       this._state = jobInfo.state;
     }
     return jobInfo;
   }
 
-  async getParentJobs(): Promise<Job<JobArgs>[]> {
+  async getParentJobs<A extends JobArgs = JobArgs, J extends Job<A> = Job<A>>(): Promise<J[]> {
     const info = await this.getInfo();
     if (info === undefined) return [];
-    return await this.jobManager.getJobs({ ids: info.parentJobIds });
+    return (await this.jobManager.getJobs({ ids: info.parentJobIds })) as J[];
   }
 
   async getBackoffDelay(): Promise<number> {

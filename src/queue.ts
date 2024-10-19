@@ -17,12 +17,12 @@ import {
   type QueueJobStatistics,
 } from './types/job.js';
 import { type PruneOptions, type Queue, type QueueOptions, type QueueReader, type QueueStats } from './types/queue.js';
-import { type Task, type TaskHandlerFunction, type TaskManager } from './types/task.js';
+import { isTask, type Task, type TaskHandlerFunction, type TaskManager } from './types/task.js';
 import {
   type ListWorkersOptions,
   type Worker,
   type WorkerCommandArg,
-  WorkerConfig,
+  type WorkerConfig,
   type WorkerInfo,
   type WorkerOptions,
   WorkerState,
@@ -187,16 +187,19 @@ export class DefaultQueue<Args extends JobArgs = JobArgs, ArgsJob extends Job<Ar
     }
   }
 
-  registerTask(task: Task<Args> | string, taskFn?: TaskHandlerFunction<Args>): void {
-    if (typeof task === 'string') {
+  registerTask(task: Task<Args, ArgsJob> | string, taskFn?: TaskHandlerFunction<Args>): void {
+    if (typeof task === 'string' && taskFn !== undefined) {
       const taskName = task;
-      const t = new (class implements Task<Args> {
+      const handlerFunction = taskFn;
+      const t = new (class implements Task<Args, ArgsJob> {
         name = taskName;
-        handle = taskFn!;
+        handle = handlerFunction;
       })();
       this.taskManager.registerTask(t);
-    } else {
+    } else if (isTask(task)) {
       this.taskManager.registerTask(task);
+    } else {
+      throw new Error('Invalid task');
     }
   }
 

@@ -137,7 +137,7 @@ t.test('Queue with PostgreSQL backend', skip, async (t) => {
     t.equal((await worker2.getInfo())!.state, WorkerState.Lost);
     const info = (await job.getInfo())!;
     t.equal(info.state, JobState.Abandoned);
-    t.equal(info.result, 'Worker went away');
+    t.same(info.result, { name: 'WorkerGoneError', message: 'Worker went away' });
     t.equal((await queue.getStatistics()).abandonedJobs, 1);
     await worker1.unregister();
     // don't unregister worker2 here for a listWorker test
@@ -151,7 +151,7 @@ t.test('Queue with PostgreSQL backend', skip, async (t) => {
     await queue.prune();
     const info = (await job.getInfo())!;
     t.equal(info.state, JobState.Abandoned);
-    t.equal(info.result, 'Worker went away');
+    t.same(info.result, { name: 'WorkerGoneError', message: 'Worker went away' });
     t.equal((await queue.getStatistics()).abandonedJobs, 2);
   });
 
@@ -245,11 +245,9 @@ t.test('Queue with PostgreSQL backend', skip, async (t) => {
     const job3 = (await queue.getJob(addedJob1.id))!;
     const info1 = (await job3.getInfo())!;
     t.equal(info1.state, JobState.Unattended);
-    t.equal(info1.result, 'Job appears unattended');
     const job4 = (await queue.getJob(addedJob3.id))!;
     const info2 = (await job4.getInfo())!;
     t.equal(info2.state, JobState.Unattended);
-    t.equal(info2.result, 'Job appears unattended');
 
     const job5 = (await queue.getJob(addedJob4.id))!;
     const info3 = (await job5.getInfo())!;
@@ -839,7 +837,7 @@ t.test('Queue with PostgreSQL backend', skip, async (t) => {
     await queue.prune();
     const info2 = (await job1.getInfo())!;
     t.equal(info2.state, JobState.Scheduled);
-    t.match(info2.result, 'Worker went away');
+    t.same(info2.result, { name: 'WorkerGoneError', message: 'Worker went away' });
     t.equal(info2.maxAttempts, 2);
     t.equal(info2.attempt, 2);
     t.ok(info2.retriedAt < info2.delayUntil);
@@ -854,7 +852,7 @@ t.test('Queue with PostgreSQL backend', skip, async (t) => {
     await queue.prune();
     const info3 = (await job2.getInfo())!;
     t.equal(info3.state, JobState.Abandoned);
-    t.match(info3.result, 'Worker went away');
+    t.same(info3.result, { name: 'WorkerGoneError', message: 'Worker went away' });
   });
 
   await t.test('A job needs to be dequeued again after a retry', async (t) => {

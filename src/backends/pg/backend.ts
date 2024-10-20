@@ -343,8 +343,7 @@ export class PgBackend extends EventEmitter implements Backend {
     // Mark `pending`/`scheduled` jobs as `unattended` if they are due, but in the queue past `unattendedPeriod`.
     const unattendedJobsResult = await this._pool.query<JobDescriptor<Args>>(
       `UPDATE ${JOB_TABLE} SET
-        state = '${JobState.Unattended}',
-        result = '"Job appears unattended"'
+        state = '${JobState.Unattended}'
       WHERE state IN ('${JobState.Pending}', '${JobState.Scheduled}')
         AND NOW() - delay_until > $1 * INTERVAL '1 millisecond'
       RETURNING id, task_name AS "taskName", args, max_attempts AS "maxAttempts", attempt`,
@@ -366,7 +365,7 @@ export class PgBackend extends EventEmitter implements Backend {
             AND state IN ('${WorkerState.Online}', '${WorkerState.Busy}', '${WorkerState.Idle}')
         )
       RETURNING id, task_name AS "taskName", args, max_attempts AS "maxAttempts", attempt, worker_id AS "workerId"`,
-      [JSON.stringify('Worker went away'), excludeQueues],
+      [JSON.stringify({ name: 'WorkerGoneError', message: 'Worker went away' }), excludeQueues],
     );
 
     return {

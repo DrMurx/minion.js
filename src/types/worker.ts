@@ -13,6 +13,9 @@ export interface Worker {
   get config(): Readonly<WorkerConfig>;
   setConfig(config: Partial<WorkerConfig>): Promise<void>;
   setMetadata(key: string, value: any): Promise<void>;
+  getMetadata<T = any>(key: string): T | undefined;
+  setAttachment(key: string, value: any): void;
+  getAttachment<T = any>(key: string): T;
 
   get state(): WorkerState;
 
@@ -76,6 +79,7 @@ export type WorkerCommandDescriptor = { command: string; arg: WorkerCommandArg }
 export interface WorkerOptions {
   config?: Partial<WorkerConfig>;
   metadata?: Record<string, any>;
+  attachments?: Record<string, any>;
   commands?: Record<string, WorkerCommandHandler>;
 }
 

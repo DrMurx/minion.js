@@ -210,8 +210,9 @@ export class DefaultQueue<Args extends JobArgs = JobArgs, ArgsJob extends Job<Ar
       ...(options?.config ?? {}),
     };
     const metadata = options?.metadata ?? {};
+    const attachments = options?.attachments ?? {};
     const commands = options?.commands ?? {};
-    return new DefaultWorker(this, this.backend, config, metadata, commands);
+    return new DefaultWorker(this, this.backend, config, metadata, attachments, commands);
   }
 
   listWorkerInfos(options: ListWorkersOptions = {}, chunkSize: number = 10): BackendIterator<WorkerInfo> {

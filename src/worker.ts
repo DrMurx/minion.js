@@ -50,6 +50,7 @@ export class DefaultWorker implements Worker {
     protected backend: WorkerBackend,
     protected _config: WorkerConfig,
     metadata: Record<string, any>,
+    protected attachments: Record<string, any>,
     defaultCommands: Record<string, WorkerCommandHandler>,
   ) {
     this._metadata = { ...metadata };
@@ -85,6 +86,21 @@ export class DefaultWorker implements Worker {
       delete this._metadata[key];
     }
     await this.heartbeat(true);
+  }
+
+  getMetadata<T = any>(key: string): T | undefined {
+    return this._metadata[key];
+  }
+
+  setAttachment(key: string, value: any): void {
+    this.attachments[key] = value;
+  }
+
+  getAttachment<T = any>(key: string): T {
+    if (this.attachments[key] === undefined) {
+      throw new Error(`Attachment ${key} not found`);
+    }
+    return this.attachments[key];
   }
 
   get needsInboxCheck(): boolean {

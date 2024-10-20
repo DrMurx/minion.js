@@ -92,7 +92,7 @@ export class DefaultJob<Args extends JobArgs = JobArgs> implements Job<Args> {
       worker.abortSignal.addEventListener('abort', abortEventHandler);
 
       const task = this.taskReader.getTask(this.taskName);
-      const result = await task.handle(this);
+      const result = await task.handle(this, worker);
       await this.markSucceeded(result ?? {});
     } catch (error: any) {
       await this.markFailed(error);

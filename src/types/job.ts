@@ -31,9 +31,9 @@ export interface RunningJob<Args extends JobArgs> {
   getInfo(): Promise<JobInfo<Args> | undefined>;
 
   /**
-   * Return all jobs this job depends on.
+   * Return all job ids this job depends on.
    */
-  getParentJobs<Args1 extends Args = Args, Args1Job extends Job<Args1> = Job<Args1>>(): Promise<Args1Job[]>;
+  getParentJobIds(): Promise<JobId[]>;
 }
 
 export interface Job<Args extends JobArgs> extends RunningJob<Args> {
@@ -124,6 +124,14 @@ export enum JobState {
    */
   Canceled = 'canceled',
 }
+
+export const unsuccessfulJobStates = [
+  JobState.Failed,
+  JobState.Aborted,
+  JobState.Abandoned,
+  JobState.Unattended,
+  JobState.Canceled,
+];
 
 export interface ListJobsOptions {
   ids?: JobId[];

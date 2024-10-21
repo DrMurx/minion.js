@@ -15,6 +15,7 @@ import {
   JobState,
   type ListJobsOptions,
   type QueueJobStatistics,
+  unsuccessfulJobStates,
 } from './types/job.js';
 import { type PruneOptions, type Queue, type QueueOptions, type QueueReader, type QueueStats } from './types/queue.js';
 import { isTask, type Task, type TaskHandlerFunction, type TaskManager } from './types/task.js';
@@ -30,14 +31,18 @@ import {
 import { version } from './version.js';
 import { DefaultWorker } from './worker.js';
 
-export interface DefaultQueueInterface<Args extends JobArgs = JobArgs> extends Queue<Args>, QueueReader {}
+export interface DefaultQueueInterface<
+  BaseJobArgs extends JobArgs = JobArgs,
+  BaseJob extends Job<BaseJobArgs> = Job<BaseJobArgs>,
+> extends Queue<BaseJobArgs, BaseJob>,
+    QueueReader {}
 
 /**
  * Job queue class.
  */
-export class DefaultQueue<Args extends JobArgs = JobArgs, ArgsJob extends Job<Args> = Job<Args>>
+export class DefaultQueue<BaseJobArgs extends JobArgs = JobArgs, BaseJob extends Job<BaseJobArgs> = Job<BaseJobArgs>>
   extends EventEmitter
-  implements DefaultQueueInterface<Args>
+  implements DefaultQueueInterface<BaseJobArgs, BaseJob>
 {
   public static readonly DEFAULT_OPTIONS = Object.freeze(<QueueOptions>{
     queueNames: ['default'],
@@ -49,7 +54,7 @@ export class DefaultQueue<Args extends JobArgs = JobArgs, ArgsJob extends Job<Ar
 
   private options: QueueOptions;
 
-  protected taskManager: TaskManager<Args> = new DefaultTaskManager<Args>();
+  protected taskManager: TaskManager<BaseJobArgs> = new DefaultTaskManager<BaseJobArgs>();
   private pruneScheduler: NodeJS.Timeout | undefined;
   private lastPruneAt: number = 0;
 
@@ -69,8 +74,12 @@ export class DefaultQueue<Args extends JobArgs = JobArgs, ArgsJob extends Job<Ar
     this.scheduleNextPrune();
   }
 
-  async addJob<Args1 extends Args>(taskName: string, args?: Args1, options?: JobAddOptions): Promise<Job<Args1>> {
-    const _args = args ?? ({} as Args1);
+  async addJob<Args extends BaseJobArgs, ArgsJob extends BaseJob = BaseJob>(
+    taskName: string,
+    args?: Args,
+    options?: JobAddOptions,
+  ): Promise<ArgsJob> {
+    const _args = args ?? ({} as Args);
     const _options = <JobEnqueueOptions>{
       queueName: this.options.queueNames[0],
       priority: 0,
@@ -82,18 +91,19 @@ export class DefaultQueue<Args extends JobArgs = JobArgs, ArgsJob extends Job<Ar
       ...options,
     };
     const id = await this.backend.addJob(taskName, _args, _options);
-    return this.createJobObject<Args1>({
+    const jobInfo = <JobInfo<ArgsJob extends Job<infer A> ? A : never>>{
       id,
       taskName,
       args: _args,
       maxAttempts: options?.maxAttempts ?? 1,
       attempt: 1,
-    });
+    };
+    return this.createJobObject<ArgsJob>(jobInfo);
   }
 
-  async addJobWithAck<Args1 extends Args>(
+  async addJobWithAck<Args extends BaseJobArgs>(
     taskName: string,
-    args?: Args1,
+    args?: Args,
     enqueueOptions?: JobAddOptions,
     resultOptions?: JobResultOptions,
   ): Promise<JobResult> {
@@ -111,35 +121,38 @@ export class DefaultQueue<Args extends JobArgs = JobArgs, ArgsJob extends Job<Ar
     this.backend.cancelJob(id);
   }
 
-  async getJob<Args1 extends Args = Args, Args1Job extends Job<Args1> = Job<Args1>>(
-    id: JobId,
-  ): Promise<Args1Job | null> {
-    const info = await this.getJobInfo<Args1>(id);
+  async getJob<ArgsJob extends BaseJob = BaseJob>(id: JobId): Promise<ArgsJob | null> {
+    type Args = ArgsJob extends Job<infer A> ? A : never;
+    const info = await this.getJobInfo<Args>(id);
     if (info === undefined) return null;
-    return this.createJobObject<Args1, Args1Job>(info);
+    return this.createJobObject<ArgsJob>(info);
   }
 
-  async getJobs<Args1 extends Args = Args, Args1Job extends Job<Args1> = Job<Args1>>(
-    options: ListJobsOptions,
-  ): Promise<Args1Job[]> {
-    const jobs: Args1Job[] = [];
-    for await (const jobInfo of this.listJobInfos(options)) {
-      jobs.push(this.createJobObject(jobInfo));
+  async getJobs<ArgsJob extends BaseJob = BaseJob>(options: ListJobsOptions): Promise<ArgsJob[]> {
+    type Args = ArgsJob extends Job<infer A> ? A : never;
+    const jobs: ArgsJob[] = [];
+    for await (const jobInfo of this.listJobInfos<Args>(options)) {
+      jobs.push(this.createJobObject<ArgsJob>(jobInfo));
     }
     return jobs;
   }
 
-  protected createJobObject<Args1 extends Args = Args, Args1Job extends Job<Args1> = Job<Args1>>(
-    jobInfo: JobDescriptor<Args1> | JobInfo<Args1>,
-  ): Args1Job {
-    return new DefaultJob<Args>(this, this.taskManager, this.backend, jobInfo) as unknown as Args1Job;
+  protected createJobObject<ArgsJob extends BaseJob = BaseJob>(
+    jobInfo:
+      | JobDescriptor<ArgsJob extends Job<infer A> ? A : never>
+      | JobInfo<ArgsJob extends Job<infer A> ? A : never>,
+  ): ArgsJob {
+    return new DefaultJob<BaseJobArgs>(this.taskManager, this.backend, jobInfo) as unknown as ArgsJob;
   }
 
-  async getJobInfo<Args1 extends Args = Args>(jobId: JobId): Promise<JobInfo<Args1> | undefined> {
-    return await this.backend.getJobInfo(jobId);
+  async getJobInfo<Args extends BaseJobArgs = BaseJobArgs>(jobId: JobId): Promise<JobInfo<Args> | undefined> {
+    return await this.backend.getJobInfo<Args>(jobId);
   }
 
-  listJobInfos(options: ListJobsOptions = {}, chunkSize: number = 10): BackendIterator<JobInfo<Args>> {
+  listJobInfos<Args extends BaseJobArgs = BaseJobArgs>(
+    options: ListJobsOptions = {},
+    chunkSize: number = 10,
+  ): BackendIterator<JobInfo<Args>> {
     return new BackendIterator<JobInfo<Args>>(this.backend, 'jobs', options, { chunkSize });
   }
 
@@ -147,7 +160,8 @@ export class DefaultQueue<Args extends JobArgs = JobArgs, ArgsJob extends Job<Ar
     return await this.backend.getJobHistory();
   }
 
-  async assignNextJob(worker: Worker, wait = 0, options: Partial<JobDequeueOptions> = {}): Promise<ArgsJob | null> {
+  async assignNextJob(worker: Worker, wait = 0, options: Partial<JobDequeueOptions> = {}): Promise<BaseJob | null> {
+    type Args = BaseJob extends Job<infer A> ? A : never;
     if (worker.id === undefined) return null;
     const _options = <JobDequeueOptions>{
       queueNames: this.options.queueNames,
@@ -155,7 +169,7 @@ export class DefaultQueue<Args extends JobArgs = JobArgs, ArgsJob extends Job<Ar
     };
     const taskNames = this.taskManager.getTaskNames();
     const dequeueJobInfo = await this.backend.assignNextJob<Args>(worker.id, taskNames, wait, _options);
-    return dequeueJobInfo === null ? null : this.createJobObject<Args, ArgsJob>(dequeueJobInfo);
+    return dequeueJobInfo === null ? null : this.createJobObject<BaseJob>(dequeueJobInfo);
   }
 
   async runJob(jobId: number): Promise<boolean> {
@@ -187,11 +201,11 @@ export class DefaultQueue<Args extends JobArgs = JobArgs, ArgsJob extends Job<Ar
     }
   }
 
-  registerTask(task: Task<Args, ArgsJob> | string, taskFn?: TaskHandlerFunction<Args>): void {
+  registerTask(task: Task<BaseJobArgs, BaseJob> | string, taskFn?: TaskHandlerFunction<BaseJobArgs>): void {
     if (typeof task === 'string' && taskFn !== undefined) {
       const taskName = task;
       const handlerFunction = taskFn;
-      const t = new (class implements Task<Args, ArgsJob> {
+      const t = new (class implements Task<BaseJobArgs, BaseJob> {
         name = taskName;
         handle = handlerFunction;
       })();
@@ -269,11 +283,9 @@ export class DefaultQueue<Args extends JobArgs = JobArgs, ArgsJob extends Job<Ar
         }
       }
 
-      const { expiredJobs, expungedJobs, abandonedJobs, unattendedJobs } = await this.backend.pruneJobs<Args>(
-        options.jobUnattendedPeriod,
-        options.jobExpungePeriod,
-        [DefaultWorker.FOREGROUND_QUEUE],
-      );
+      const { expiredJobs, expungedJobs, abandonedJobs, unattendedJobs } = await this.backend.pruneJobs<
+        BaseJob extends Job<infer A> ? A : never
+      >(options.jobUnattendedPeriod, options.jobExpungePeriod, [DefaultWorker.FOREGROUND_QUEUE]);
       if (this.listenerCount('job_expired') > 0) {
         for (const job of expiredJobs) {
           this.emit('job_expired', { job });
@@ -344,13 +356,7 @@ export class DefaultQueue<Args extends JobArgs = JobArgs, ArgsJob extends Job<Ar
         resolve(null);
       } else if (info.state === JobState.Succeeded) {
         resolve(info.result);
-      } else if (
-        info.state === JobState.Failed ||
-        info.state === JobState.Aborted ||
-        info.state === JobState.Abandoned ||
-        info.state === JobState.Unattended ||
-        info.state === JobState.Canceled
-      ) {
+      } else if (unsuccessfulJobStates.includes(info.state)) {
         reject(info);
       } else if (signal !== null && signal.aborted === true) {
         reject(signal.reason);

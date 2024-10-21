@@ -10,7 +10,7 @@ t.test('Default backoff strategy', async (t) => {
     maxAttempts: 0,
     attempt: 0,
   };
-  const job = new DefaultJob(null as any, null as any, null as any, jobDescriptor);
+  const job = new DefaultJob(null as any, null as any, jobDescriptor);
   jobDescriptor.attempt = 0;
   t.equal(await job.getBackoffDelay(), 15);
   jobDescriptor.attempt = 1;

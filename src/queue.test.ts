@@ -900,6 +900,7 @@ t.test('Queue with PostgreSQL backend', skip, async (t) => {
     await queue.prune({ jobExpungePeriod: 0 });
     t.equal((await queue.getStatistics()).succeededJobs, 0);
     const worker = await queue.getNewWorker().register();
+
     const addedJob1 = await queue.addJob('test');
     const addedJob2 = await queue.addJob('test');
     const addedJob3 = await queue.addJob('test', {}, { parentJobIds: [addedJob1.id, addedJob2.id] });
@@ -949,14 +950,14 @@ t.test('Queue with PostgreSQL backend', skip, async (t) => {
     const addedJob7 = await queue.addJob('test');
     const addedJob8 = await queue.addJob('test', {}, { parentJobIds: [addedJob6.id, addedJob7.id] });
     const child = (await queue.getJob(addedJob8.id))!;
-    const parents = await child.getParentJobs();
-    t.equal(parents.length, 2);
-    t.equal(parents[0].id, addedJob6.id);
-    t.equal(parents[1].id, addedJob7.id);
-    await parents[0].remove();
-    await parents[1].remove();
-    t.equal((await child.getParentJobs()).length, 0);
+    const parentIds = await child.getParentJobIds();
+    t.equal(parentIds.length, 2);
+    t.equal(parentIds[0], addedJob6.id);
+    t.equal(parentIds[1], addedJob7.id);
+    t.ok(await addedJob6.remove());
+    t.ok(await addedJob7.remove());
     t.ok(await child.remove());
+
     await worker.unregister();
   });
 

@@ -9,7 +9,6 @@ import {
   type JobResult,
   type JobRetryOptions,
 } from './types/job.js';
-import { type JobManager } from './types/queue.js';
 import { type TaskReader } from './types/task.js';
 import { type Worker } from './types/worker.js';
 
@@ -24,13 +23,11 @@ export class DefaultJob<Args extends JobArgs = JobArgs> implements Job<Args> {
   private _abortController: AbortController = new AbortController();
 
   /**
-   * @param jobManager Accessing additional job services
    * @param taskReader For access to the task vault
    * @param backend Queue backend
    * @param jobInfo Simplified JobInfo object
    */
   constructor(
-    protected jobManager: JobManager<Args>,
     private taskReader: TaskReader<Args>,
     private backend: JobBackend,
     protected readonly jobInfo: JobDescriptor<Args> | JobInfo<Args>,
@@ -174,10 +171,9 @@ export class DefaultJob<Args extends JobArgs = JobArgs> implements Job<Args> {
     return jobInfo;
   }
 
-  async getParentJobs<Args1 extends Args = Args, Args1Job extends Job<Args1> = Job<Args1>>(): Promise<Args1Job[]> {
+  async getParentJobIds(): Promise<JobId[]> {
     const info = await this.getInfo();
-    if (info === undefined) return [];
-    return await this.jobManager.getJobs<Args1, Args1Job>({ ids: info.parentJobIds });
+    return info !== undefined ? info.parentJobIds : [];
   }
 
   async getBackoffDelay(): Promise<number> {

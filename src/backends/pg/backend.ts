@@ -379,7 +379,7 @@ export class PgBackend extends EventEmitter implements Backend {
   /**
    * Returns the information about jobs in batches.
    */
-  async getJobInfo<Args extends JobArgs>(jobId: JobId): Promise<JobInfo<Args>> {
+  async getJobInfo<Args extends JobArgs>(jobId: JobId): Promise<JobInfo<Args> | undefined> {
     const results = await this._pool.query<JobInfoRow<Args>>(
       `SELECT
         id,
@@ -416,7 +416,12 @@ export class PgBackend extends EventEmitter implements Backend {
       WHERE id = $1`,
       [jobId],
     );
-    return results.rows[0];
+    const jobInfo = results.rows[0];
+    if (jobInfo !== undefined) {
+      if (jobInfo.parentJobIds.length > 0) jobInfo.parentJobIds = jobInfo.parentJobIds.map(Number);
+      if (jobInfo.childJobIds.length) jobInfo.childJobIds = jobInfo.childJobIds.map(Number);
+    }
+    return jobInfo;
   }
 
   async getJobInfos<Args extends JobArgs>(
@@ -478,6 +483,10 @@ export class PgBackend extends EventEmitter implements Backend {
       ],
     );
     const total = removeTotal(results.rows);
+    results.rows.forEach((jobInfo) => {
+      if (jobInfo.parentJobIds.length) jobInfo.parentJobIds = jobInfo.parentJobIds.map(Number);
+      if (jobInfo.childJobIds.length) jobInfo.childJobIds = jobInfo.childJobIds.map(Number);
+    });
     return { total, jobs: results.rows };
   }
 

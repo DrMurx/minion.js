@@ -23,7 +23,10 @@ import {
 /**
  * The public queue interface
  */
-export interface Queue<Args extends JobArgs> extends JobManager<Args>, JobExecutor, WorkerManager, StatsReader {
+export interface Queue<BaseJobArgs extends JobArgs, BaseJob extends Job<BaseJobArgs>>
+  extends JobExecutor,
+    WorkerManager,
+    StatsReader {
   /**
    * Enqueue a new job with `pending` or `scheduled` state. Arguments can only be simple scalars, maps or arrays.
    * @param options.queueName     - Queue to put job in, defaults to the first queueName given to the `Queue`.
@@ -40,11 +43,15 @@ export interface Queue<Args extends JobArgs> extends JobManager<Args>, JobExecut
    * @param options.expireIn      - Job becomes invalid/expired after this many milliseconds (from now). If given, the
    *                                job will be deleted once it's expired.
    */
-  addJob<Args1 extends Args>(taskName: string, args?: Args1, options?: JobAddOptions): Promise<Job<Args1>>;
-
-  addJobWithAck<Args1 extends Args>(
+  addJob<Args extends BaseJobArgs, ArgsJob extends BaseJob = BaseJob>(
     taskName: string,
-    args?: Args1,
+    args?: Args,
+    options?: JobAddOptions,
+  ): Promise<ArgsJob>;
+
+  addJobWithAck<Args extends BaseJobArgs>(
+    taskName: string,
+    args?: Args,
     enqueueOptions?: JobAddOptions,
     resultOptions?: JobResultOptions,
   ): Promise<JobResult>;
@@ -56,10 +63,33 @@ export interface Queue<Args extends JobArgs> extends JobManager<Args>, JobExecut
   getJobResult(jobId: JobId, options: JobResultOptions): Promise<JobResult>;
 
   /**
+   * Retrieve a Job object (without making any changes to the actual job), or return `null` if job does not exist.
+   */
+  getJob<ArgsJob extends BaseJob = BaseJob>(id: JobId): Promise<ArgsJob | null>;
+
+  /**
+   * Get an array ob Job objects according to the specified options.
+   */
+  getJobs<ArgsJob extends BaseJob = BaseJob>(options: ListJobsOptions): Promise<ArgsJob[]>;
+
+  /**
+   * Get job data or return `null` if job does not exist.
+   */
+  getJobInfo<Args extends BaseJobArgs = BaseJobArgs>(jobId: JobId): Promise<JobInfo<Args> | undefined>;
+
+  /**
+   * Return iterator object to safely iterate through job information as returned by the backend.
+   */
+  listJobInfos<Args extends BaseJobArgs = BaseJobArgs>(
+    options?: ListJobsOptions,
+    chunkSize?: number,
+  ): BackendIterator<JobInfo<Args>>;
+
+  /**
    * Register a task.
    */
-  registerTask(task: Task<Args>): void;
-  registerTask(taskName: string, fn: TaskHandlerFunction<Args>): void;
+  registerTask(task: Task<BaseJobArgs>): void;
+  registerTask(taskName: string, fn: TaskHandlerFunction<BaseJobArgs>): void;
 
   /**
    * Broadcast remote control command to one or more workers. Unless `option.state` is specified, commands
@@ -87,30 +117,6 @@ export interface Queue<Args extends JobArgs> extends JobManager<Args>, JobExecut
    * Stop using the queue.
    */
   end(): Promise<void>;
-}
-
-export interface JobManager<Args extends JobArgs> {
-  /**
-   * Retrieve a Job object (without making any changes to the actual job), or return `null` if job does not exist.
-   */
-  getJob<Args1 extends Args = Args, Args1Job extends Job<Args1> = Job<Args1>>(id: JobId): Promise<Args1Job | null>;
-
-  /**
-   * Get an array ob Job objects according to the specified options.
-   */
-  getJobs<Args1 extends Args = Args, Args1Job extends Job<Args1> = Job<Args1>>(
-    options: ListJobsOptions,
-  ): Promise<Args1Job[]>;
-
-  /**
-   * Get job data or return `null` if job does not exist.
-   */
-  getJobInfo(jobId: JobId): Promise<JobInfo<Args> | undefined>;
-
-  /**
-   * Return iterator object to safely iterate through job information as returned by the backend.
-   */
-  listJobInfos(options?: ListJobsOptions, chunkSize?: number): BackendIterator<JobInfo<Args>>;
 }
 
 export interface JobExecutor {

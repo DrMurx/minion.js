@@ -174,7 +174,7 @@ export interface JobBackend {
   /**
    * Returns the information about a specific job.
    */
-  getJobInfo<Args extends JobArgs>(jobId: JobId): Promise<JobInfo<Args>>;
+  getJobInfo<Args extends JobArgs>(jobId: JobId): Promise<JobInfo<Args> | undefined>;
 
   /**
    * Change one or more metadata fields for a job. Setting a value to `null` will remove the field.

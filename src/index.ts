@@ -2,6 +2,7 @@ import { PgBackend } from './backends/pg/backend.js';
 import { createPool } from './backends/pg/factory.js';
 import { DefaultJob } from './job.js';
 import { DefaultQueue } from './queue.js';
+import { DefaultTaskManager } from './task-manager.js';
 import { type Backend } from './types/backend.js';
 import {
   type InferJobArgs,
@@ -16,7 +17,7 @@ import {
   type RunningJob,
 } from './types/job.js';
 import { type Queue, type QueueOptions } from './types/queue.js';
-import { type Task, type TaskHandlerFunction } from './types/task.js';
+import { type Task, type TaskHandlerFunction, type TaskManager } from './types/task.js';
 import { type Worker, type WorkerConfig, type WorkerId, type WorkerOptions, WorkerState } from './types/worker.js';
 import { version } from './version.js';
 
@@ -25,6 +26,7 @@ export {
   createPool,
   DefaultJob,
   DefaultQueue,
+  DefaultTaskManager,
   JobState,
   PgBackend,
   version,
@@ -43,6 +45,7 @@ export {
   type RunningJob,
   type Task,
   type TaskHandlerFunction,
+  type TaskManager,
   type Worker,
   type WorkerConfig,
   type WorkerId,

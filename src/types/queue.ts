@@ -1,6 +1,7 @@
 import { type BackendIterator } from '../backends/iterator.js';
 import { type JobDequeueOptions } from './backend.js';
 import {
+  type InferJobArgs,
   type Job,
   type JobAddOptions,
   type JobArgs,
@@ -23,10 +24,7 @@ import {
 /**
  * The public queue interface
  */
-export interface Queue<BaseJobArgs extends JobArgs, BaseJob extends Job<BaseJobArgs>>
-  extends JobExecutor,
-    WorkerManager,
-    StatsReader {
+export interface Queue<BaseJob extends Job<JobArgs>> extends JobExecutor, WorkerManager, StatsReader {
   /**
    * Enqueue a new job with `pending` or `scheduled` state. Arguments can only be simple scalars, maps or arrays.
    * @param options.queueName     - Queue to put job in, defaults to the first queueName given to the `Queue`.
@@ -43,13 +41,13 @@ export interface Queue<BaseJobArgs extends JobArgs, BaseJob extends Job<BaseJobA
    * @param options.expireIn      - Job becomes invalid/expired after this many milliseconds (from now). If given, the
    *                                job will be deleted once it's expired.
    */
-  addJob<Args extends BaseJobArgs, ArgsJob extends BaseJob = BaseJob>(
+  addJob<ArgsJob extends BaseJob = BaseJob>(
     taskName: string,
-    args?: Args,
+    args?: InferJobArgs<ArgsJob>,
     options?: JobAddOptions,
   ): Promise<ArgsJob>;
 
-  addJobWithAck<Args extends BaseJobArgs>(
+  addJobWithAck<Args extends InferJobArgs<BaseJob>>(
     taskName: string,
     args?: Args,
     enqueueOptions?: JobAddOptions,
@@ -75,12 +73,14 @@ export interface Queue<BaseJobArgs extends JobArgs, BaseJob extends Job<BaseJobA
   /**
    * Get job data or return `null` if job does not exist.
    */
-  getJobInfo<Args extends BaseJobArgs = BaseJobArgs>(jobId: JobId): Promise<JobInfo<Args> | undefined>;
+  getJobInfo<Args extends InferJobArgs<BaseJob> = InferJobArgs<BaseJob>>(
+    jobId: JobId,
+  ): Promise<JobInfo<Args> | undefined>;
 
   /**
    * Return iterator object to safely iterate through job information as returned by the backend.
    */
-  listJobInfos<Args extends BaseJobArgs = BaseJobArgs>(
+  listJobInfos<Args extends InferJobArgs<BaseJob> = InferJobArgs<BaseJob>>(
     options?: ListJobsOptions,
     chunkSize?: number,
   ): BackendIterator<JobInfo<Args>>;
@@ -88,8 +88,8 @@ export interface Queue<BaseJobArgs extends JobArgs, BaseJob extends Job<BaseJobA
   /**
    * Register a task.
    */
-  registerTask(task: Task<BaseJobArgs>): void;
-  registerTask(taskName: string, fn: TaskHandlerFunction<BaseJobArgs>): void;
+  registerTask(task: Task<BaseJob>): void;
+  registerTask(taskName: string, fn: TaskHandlerFunction<BaseJob>): void;
 
   /**
    * Broadcast remote control command to one or more workers. Unless `option.state` is specified, commands

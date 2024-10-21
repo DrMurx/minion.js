@@ -1,21 +1,21 @@
 import { type JobArgs, type JobResult, type RunningJob } from './job.js';
 import { Worker } from './worker.js';
 
-export type TaskHandlerFunction<Args extends JobArgs, ArgsJob extends RunningJob<Args> = RunningJob<Args>> = (
-  job: ArgsJob,
+export type TaskHandlerFunction<TaskJob extends RunningJob<JobArgs> = RunningJob<JobArgs>> = (
+  job: TaskJob,
   worker: Worker,
 ) => Promise<JobResult | void>;
 
-export interface Task<Args extends JobArgs = JobArgs, ArgsJob extends RunningJob<Args> = RunningJob<Args>> {
+export interface Task<TaskJob extends RunningJob<JobArgs> = RunningJob<JobArgs>> {
   readonly name: string;
-  handle(job: ArgsJob, worker: Worker): Promise<JobResult | void>;
+  handle(job: TaskJob, worker: Worker): Promise<JobResult | void>;
 }
 
 export function isTask(t: any): t is Task {
   return typeof t.name === 'string' && typeof t.handle === 'function';
 }
 
-export interface TaskReader<Args extends JobArgs> {
+export interface TaskReader<TaskJob extends RunningJob<JobArgs>> {
   /**
    * Retrieves a list of all task names.
    */
@@ -25,12 +25,12 @@ export interface TaskReader<Args extends JobArgs> {
    * Retrieve a task handler.
    * @throws When task unknown
    */
-  getTask(taskName: string): Task<Args>;
+  getTask(taskName: string): Task<TaskJob>;
 }
 
-export interface TaskManager<Args extends JobArgs> extends TaskReader<Args> {
+export interface TaskManager<TaskJob extends RunningJob<JobArgs>> extends TaskReader<TaskJob> {
   /**
    * Registers a new task handler.
    */
-  registerTask(task: Task<Args>): void;
+  registerTask(task: Task<TaskJob>): void;
 }

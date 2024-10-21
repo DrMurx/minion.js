@@ -79,6 +79,8 @@ export interface Job<Args extends JobArgs> extends RunningJob<Args> {
   getBackoffDelay(): Promise<number>;
 }
 
+export type InferJobArgs<J extends Job<JobArgs>> = J extends Job<infer A> ? A : never;
+
 export type JobId = number;
 
 export type JobArgs = Record<string, any> & { [Symbol.iterator]?: never };

@@ -28,7 +28,7 @@ export class DefaultJob<Args extends JobArgs = JobArgs> implements Job<Args> {
    * @param jobInfo Simplified JobInfo object
    */
   constructor(
-    private taskReader: TaskReader<Args>,
+    private taskReader: TaskReader<Job<JobArgs>>,
     private backend: JobBackend,
     protected readonly jobInfo: JobDescriptor<Args> | JobInfo<Args>,
   ) {

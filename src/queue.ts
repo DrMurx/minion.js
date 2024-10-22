@@ -16,6 +16,7 @@ import {
   JobState,
   type ListJobsOptions,
   type QueueJobStatistics,
+  RunningJob,
   unsuccessfulJobStates,
 } from './types/job.js';
 import { type PruneOptions, type Queue, type QueueOptions, type QueueReader, type QueueStats } from './types/queue.js';
@@ -53,7 +54,9 @@ export class DefaultQueue<BaseJob extends Job<JobArgs> = Job<JobArgs>>
 
   private options: QueueOptions;
 
-  protected taskManager: TaskManager<BaseJob> = new DefaultTaskManager<BaseJob>();
+  protected taskManager: TaskManager<RunningJob<InferJobArgs<BaseJob>>> = new DefaultTaskManager<
+    RunningJob<InferJobArgs<BaseJob>>
+  >();
   private pruneScheduler: NodeJS.Timeout | undefined;
   private lastPruneAt: number = 0;
 
@@ -198,11 +201,14 @@ export class DefaultQueue<BaseJob extends Job<JobArgs> = Job<JobArgs>>
     }
   }
 
-  registerTask(task: Task<BaseJob> | string, taskFn?: TaskHandlerFunction<BaseJob>): void {
+  registerTask(
+    task: Task<RunningJob<InferJobArgs<BaseJob>>> | string,
+    taskFn?: TaskHandlerFunction<RunningJob<InferJobArgs<BaseJob>>>,
+  ): void {
     if (typeof task === 'string' && taskFn !== undefined) {
       const taskName = task;
       const handlerFunction = taskFn;
-      const t = new (class implements Task<BaseJob> {
+      const t = new (class implements Task<RunningJob<InferJobArgs<BaseJob>>> {
         name = taskName;
         handle = handlerFunction;
       })();

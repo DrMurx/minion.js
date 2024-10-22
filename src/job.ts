@@ -8,6 +8,7 @@ import {
   type JobInfo,
   type JobResult,
   type JobRetryOptions,
+  type RunningJob,
 } from './types/job.js';
 import { type TaskReader } from './types/task.js';
 import { type Worker } from './types/worker.js';
@@ -28,7 +29,7 @@ export class DefaultJob<Args extends JobArgs = JobArgs> implements Job<Args> {
    * @param jobInfo Simplified JobInfo object
    */
   constructor(
-    private taskReader: TaskReader<Job<JobArgs>>,
+    private taskReader: TaskReader<RunningJob<JobArgs>>,
     private backend: JobBackend,
     protected readonly jobInfo: JobDescriptor<Args> | JobInfo<Args>,
   ) {

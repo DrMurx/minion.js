@@ -11,6 +11,7 @@ import {
   type JobResultOptions,
   type ListJobsOptions,
   type QueueJobStatistics,
+  type RunningJob,
 } from './job.js';
 import { TaskHandlerFunction, type Task } from './task.js';
 import {
@@ -88,8 +89,8 @@ export interface Queue<BaseJob extends Job<JobArgs>> extends JobExecutor, Worker
   /**
    * Register a task.
    */
-  registerTask(task: Task<BaseJob>): void;
-  registerTask(taskName: string, fn: TaskHandlerFunction<BaseJob>): void;
+  registerTask(task: Task<RunningJob<InferJobArgs<BaseJob>>>): void;
+  registerTask(taskName: string, fn: TaskHandlerFunction<RunningJob<InferJobArgs<BaseJob>>>): void;
 
   /**
    * Broadcast remote control command to one or more workers. Unless `option.state` is specified, commands

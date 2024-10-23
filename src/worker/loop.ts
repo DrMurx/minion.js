@@ -85,7 +85,7 @@ export class WorkerLoop extends EventEmitter {
 
     // Dequeue options for pulling the job
     const options: JobDequeueOptions = {
-      queueName: queueNames,
+      queueNames,
       // If regular concurrency slots are occupied, we fetch only jobs with configured min priority
       minPriority: this.jobs.length > concurrency ? prefetchMinPriority : undefined,
     };

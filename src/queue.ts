@@ -164,7 +164,7 @@ export class DefaultQueue<BaseJob extends Job<JobArgs> = Job<JobArgs>>
     type Args = BaseJob extends Job<infer A> ? A : never;
     if (worker.id === undefined) return null;
     const _options = <JobDequeueOptions>{
-      queueName: this.options.queueNames,
+      queueNames: this.options.queueNames,
       ...options,
     };
     const taskNames = this.taskManager.getTaskNames();
@@ -180,7 +180,7 @@ export class DefaultQueue<BaseJob extends Job<JobArgs> = Job<JobArgs>>
 
     const worker = await this.getNewWorker().register();
     try {
-      job = await this.assignNextJob(worker, 0, { id: jobId, queueName });
+      job = await this.assignNextJob(worker, 0, { id: jobId, queueNames: queueName });
       if (job === null) return false;
       await job.perform(worker, true);
       return true;

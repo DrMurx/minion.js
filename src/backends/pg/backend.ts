@@ -241,7 +241,7 @@ export class PgBackend extends EventEmitter implements Backend {
   ): Promise<JobDescriptor<Args> | null> {
     const jobId = options.id;
     const minPriority = options.minPriority;
-    const queueNames = Array.isArray(options.queueName) ? options.queueName : [options.queueName];
+    const queueNames = Array.isArray(options.queueNames) ? options.queueNames : [options.queueNames];
 
     const results = await this._pool.query<JobDescriptor<Args>>(
       `UPDATE ${JOB_TABLE}

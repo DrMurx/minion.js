@@ -158,7 +158,7 @@ t.test('Queue with PostgreSQL backend', skip, async (t) => {
   await t.test('Repair abandoned job in foreground queue (have to be handled manually)', async (t) => {
     const worker = await queue.getNewWorker().register();
     const addedJob1 = await queue.addJob('test', {}, { queueName: DefaultWorker.FOREGROUND_QUEUE });
-    const job = (await queue.assignNextJob(worker, 0, { queueName: [DefaultWorker.FOREGROUND_QUEUE] }))!;
+    const job = (await queue.assignNextJob(worker, 0, { queueNames: [DefaultWorker.FOREGROUND_QUEUE] }))!;
     t.equal(job.id, addedJob1.id);
     await worker.unregister();
     await queue.prune();
@@ -671,7 +671,7 @@ t.test('Queue with PostgreSQL backend', skip, async (t) => {
   await t.test('Queues', async (t) => {
     const addedJob1 = await queue.addJob('add', { first: 100, second: 1 });
     const worker = await queue.getNewWorker().register();
-    t.notOk(await queue.assignNextJob(worker, 0, { queueName: 'test1' }));
+    t.notOk(await queue.assignNextJob(worker, 0, { queueNames: 'test1' }));
     const job1 = (await queue.assignNextJob(worker))!;
     t.equal(job1.id, addedJob1.id);
     t.equal((await job1.getInfo())!.queueName, 'default');
@@ -679,12 +679,12 @@ t.test('Queue with PostgreSQL backend', skip, async (t) => {
 
     const addedJob2 = await queue.addJob('add', { first: 100, second: 3 }, { queueName: 'test1' });
     t.notOk(await queue.assignNextJob(worker));
-    const job2 = (await queue.assignNextJob(worker, 0, { queueName: 'test1' }))!;
+    const job2 = (await queue.assignNextJob(worker, 0, { queueNames: 'test1' }))!;
     t.equal(job2.id, addedJob2.id);
     t.equal((await job2.getInfo())!.queueName, 'test1');
     t.ok(await job2.markSucceeded());
     t.ok(await job2.retry({ queueName: 'test2' }));
-    const job3 = (await queue.assignNextJob(worker, 0, { queueName: ['default', 'test2'] }))!;
+    const job3 = (await queue.assignNextJob(worker, 0, { queueNames: ['default', 'test2'] }))!;
     t.equal(job3.id, addedJob2.id);
     t.equal((await job3.getInfo())!.queueName, 'test2');
     t.ok(await job3.markSucceeded());

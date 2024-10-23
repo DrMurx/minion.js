@@ -50,7 +50,7 @@ export interface JobDequeueOptions {
   /**
    * Select a job from the given queue(s)
    */
-  queueName: string | string[];
+  queueNames: string | string[];
   /**
    * Select a job of at least this priority
    */

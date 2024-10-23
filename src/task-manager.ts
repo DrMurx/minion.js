@@ -1,10 +1,10 @@
 import { type JobArgs, type RunningJob } from './types/job.js';
 import { type Task, type TaskManager } from './types/task.js';
 
-export class DefaultTaskManager<TaskJob extends RunningJob<JobArgs>> implements TaskManager<TaskJob> {
-  private tasks: TaskList<TaskJob> = new Map();
+export class DefaultTaskManager<BaseJob extends RunningJob<JobArgs>> implements TaskManager<BaseJob> {
+  private tasks: TaskList<BaseJob> = new Map();
 
-  registerTask(task: Task<TaskJob>): void {
+  registerTask(task: Task<BaseJob>): void {
     this.tasks.set(task.name, task);
   }
 
@@ -12,7 +12,7 @@ export class DefaultTaskManager<TaskJob extends RunningJob<JobArgs>> implements 
     return Array.from(this.tasks.keys());
   }
 
-  getTask(taskName: string): Task<TaskJob> {
+  getTask(taskName: string): Task<BaseJob> {
     if (!this.tasks.has(taskName)) {
       throw new Error(`Unknown task ${taskName}`);
     }

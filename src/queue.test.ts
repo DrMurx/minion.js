@@ -1,9 +1,10 @@
 import t from 'tap';
 import { JOB_TABLE, PgBackend, WORKER_TABLE } from './backends/pg/backend.js';
 import { createPool } from './backends/pg/factory.js';
-import { DefaultQueue, type DefaultQueueInterface } from './queue.js';
+import { DefaultQueue } from './queue.js';
 import { type Backend } from './types/backend.js';
 import { JobState } from './types/job.js';
+import { type Queue } from './types/queue.js';
 import { type Task } from './types/task.js';
 import { WorkerState } from './types/worker.js';
 import { DefaultWorker } from './worker.js';
@@ -18,7 +19,7 @@ t.test('Queue with PostgreSQL backend', skip, async (t) => {
   await pool.query('CREATE SCHEMA queue_test');
 
   const backend: Backend = new PgBackend(pool);
-  const queue: DefaultQueueInterface = new DefaultQueue(backend);
+  const queue: Queue = new DefaultQueue(backend);
   await queue.updateSchema();
 
   // Register at some simple tasks for further tests
@@ -46,7 +47,7 @@ t.test('Queue with PostgreSQL backend', skip, async (t) => {
 
     const addedJob1 = await queue.addJob('test');
     const resultPromise1 = queue.getJobResult(addedJob1.id, { interval: 0 });
-    const job1 = (await queue.assignNextJob(worker, 0))!;
+    const job1 = (await worker.assignNextJob(0))!;
     t.equal(job1.id, addedJob1.id);
     t.same(job1.progress, 0.0);
     t.same(await job1.amendMetadata({ foo: 'bar' }), true);
@@ -62,7 +63,7 @@ t.test('Queue with PostgreSQL backend', skip, async (t) => {
     const addedJob2 = await queue.addJob('test');
     t.not(addedJob2.id, addedJob1.id);
     const promise2 = queue.getJobResult(addedJob2.id, { interval: 0 }).catch((reason) => (failed = reason));
-    const job2 = (await queue.assignNextJob(worker))!;
+    const job2 = (await worker.assignNextJob())!;
     t.equal(job2.id, addedJob2.id);
     t.not(job2.id, addedJob1.id);
     t.same(await job2.markFailed({ just: 'works too' }), true);
@@ -108,7 +109,7 @@ t.test('Queue with PostgreSQL backend', skip, async (t) => {
   await t.test('Wait for job to be assigned to worker', async (t) => {
     const worker = await queue.getNewWorker().register();
     setTimeout(() => queue.addJob('test'), 500);
-    const job = (await queue.assignNextJob(worker, 10000))!;
+    const job = (await worker.assignNextJob(10000))!;
     t.notSame(job, null);
     await job.markSucceeded({ one: ['two', ['three']] });
     t.same((await job.getInfo())!.result, { one: ['two', ['three']] });
@@ -121,7 +122,7 @@ t.test('Queue with PostgreSQL backend', skip, async (t) => {
     t.not(worker1.id, worker2.id);
 
     const addedJob1 = await queue.addJob('test');
-    const job = (await queue.assignNextJob(worker2))!;
+    const job = (await worker2.assignNextJob())!;
     t.equal(job.id, addedJob1.id);
     t.equal((await job.getInfo())!.state, JobState.Running);
     const workerId = worker2.id;
@@ -146,7 +147,7 @@ t.test('Queue with PostgreSQL backend', skip, async (t) => {
   await t.test('Repair abandoned job', async (t) => {
     const worker = await queue.getNewWorker().register();
     await queue.addJob('test');
-    const job = (await queue.assignNextJob(worker))!;
+    const job = (await worker.assignNextJob())!;
     await worker.unregister();
     await queue.prune();
     const info = (await job.getInfo())!;
@@ -158,7 +159,7 @@ t.test('Queue with PostgreSQL backend', skip, async (t) => {
   await t.test('Repair abandoned job in foreground queue (have to be handled manually)', async (t) => {
     const worker = await queue.getNewWorker().register();
     const addedJob1 = await queue.addJob('test', {}, { queueName: DefaultWorker.FOREGROUND_QUEUE });
-    const job = (await queue.assignNextJob(worker, 0, { queueNames: [DefaultWorker.FOREGROUND_QUEUE] }))!;
+    const job = (await worker.assignNextJob(0, { queueNames: [DefaultWorker.FOREGROUND_QUEUE] }))!;
     t.equal(job.id, addedJob1.id);
     await worker.unregister();
     await queue.prune();
@@ -176,9 +177,9 @@ t.test('Queue with PostgreSQL backend', skip, async (t) => {
     const addedJob2 = await queue.addJob('test');
     const addedJob3 = await queue.addJob('test');
 
-    await queue.assignNextJob(worker).then((job) => job!.perform(worker));
-    await queue.assignNextJob(worker).then((job) => job!.perform(worker));
-    await queue.assignNextJob(worker).then((job) => job!.perform(worker));
+    await worker.assignNextJob().then((job) => job!.perform(worker));
+    await worker.assignNextJob().then((job) => job!.perform(worker));
+    await worker.assignNextJob().then((job) => job!.perform(worker));
 
     const result1 = await pool.query(
       `SELECT EXTRACT(EPOCH FROM finished_at) AS finished_at FROM ${JOB_TABLE} WHERE id = $1`,
@@ -233,9 +234,9 @@ t.test('Queue with PostgreSQL backend', skip, async (t) => {
       addedJob4.id,
     ]);
 
-    const job1 = (await queue.assignNextJob(worker, 0, { id: addedJob4.id }))!;
+    const job1 = (await worker.assignNextJob(0, { id: addedJob4.id }))!;
     await job1.markSucceeded({ i_say: 'Works!' });
-    const job2 = (await queue.assignNextJob(worker, 0, { id: addedJob2.id }))!;
+    const job2 = (await worker.assignNextJob(0, { id: addedJob2.id }))!;
     await queue.prune();
 
     t.equal((await job2.getInfo())!.state, JobState.Running);
@@ -349,7 +350,7 @@ t.test('Queue with PostgreSQL backend', skip, async (t) => {
     t.equal((await queue.getStatistics()).enqueuedJobs, 2);
     t.equal((await queue.getStatistics()).pendingJobs, 2);
 
-    const job1 = (await queue.assignNextJob(worker, 0))!;
+    const job1 = (await worker.assignNextJob(0))!;
     const stats2 = await queue.getStatistics();
     t.equal(stats2.pendingJobs, 1);
     t.equal(stats2.runningJobs, 1);
@@ -357,7 +358,7 @@ t.test('Queue with PostgreSQL backend', skip, async (t) => {
     t.equal(stats2.busyWorkers, 1);
 
     await queue.addJob('fail');
-    const job2 = (await queue.assignNextJob(worker))!;
+    const job2 = (await worker.assignNextJob())!;
     const stats3 = await queue.getStatistics();
     t.equal(stats3.pendingJobs, 1);
     t.equal(stats3.runningJobs, 2);
@@ -366,13 +367,13 @@ t.test('Queue with PostgreSQL backend', skip, async (t) => {
     t.same(await job2.markSucceeded(), true);
     t.same(await job1.markSucceeded(), true);
     t.equal((await queue.getStatistics()).succeededJobs, 2);
-    const job3 = (await queue.assignNextJob(worker))!;
+    const job3 = (await worker.assignNextJob())!;
     t.same(await job3.markFailed(), true);
     t.equal((await queue.getStatistics()).failedJobs, 1);
     t.same(await job3.retry(), true);
     t.equal((await queue.getStatistics()).failedJobs, 0);
 
-    const job4 = (await queue.assignNextJob(worker))!;
+    const job4 = (await worker.assignNextJob())!;
     await job4.markSucceeded(['works']);
     await worker.unregister();
     const stats4 = await queue.getStatistics();
@@ -393,7 +394,7 @@ t.test('Queue with PostgreSQL backend', skip, async (t) => {
   await t.test('History', async (t) => {
     await queue.addJob('fail');
     const worker = await queue.getNewWorker().register();
-    const job = (await queue.assignNextJob(worker))!;
+    const job = (await worker.assignNextJob())!;
     t.ok(await job.markFailed());
     await worker.unregister();
     const history = await queue.getJobStatistics();
@@ -456,9 +457,9 @@ t.test('Queue with PostgreSQL backend', skip, async (t) => {
     t.equal(info1.priority, 0);
 
     const worker = queue.getNewWorker();
-    t.same(await queue.assignNextJob(worker), null);
+    t.same(await worker.assignNextJob(), null);
     await worker.register();
-    const job1 = (await queue.assignNextJob(worker))!;
+    const job1 = (await worker.assignNextJob())!;
     t.same((await worker.getInfo())!.jobs, [addedJob1.id]);
     t.equal(job1.taskName, 'add');
     t.equal(job1.attempt, 1);
@@ -489,21 +490,21 @@ t.test('Queue with PostgreSQL backend', skip, async (t) => {
     const worker = await queue.getNewWorker().register();
 
     const addedJob1 = await queue.addJob('add', { first: 11, second: 17 }, { delayFor: 10000 });
-    t.notOk(await queue.assignNextJob(worker));
+    t.notOk(await worker.assignNextJob());
     const job1 = (await queue.getJob(addedJob1.id))!;
     t.equal((await job1.getInfo())!.state, JobState.Scheduled);
     t.ok(await job1.cancel());
     t.equal((await job1.getInfo())!.state, JobState.Canceled);
 
     const addedJob2 = await queue.addJob('add', { first: 13, second: 29 });
-    const job2 = (await queue.assignNextJob(worker))!;
+    const job2 = (await worker.assignNextJob())!;
     t.equal(job2.id, addedJob2.id);
     t.equal((await job2.getInfo())!.state, JobState.Running);
     t.notOk(await job2.cancel());
     t.equal((await job2.getInfo())!.state, JobState.Running);
 
     const addedJob3 = await queue.addJob('add', { first: 17, second: 29 });
-    const job3 = (await queue.assignNextJob(worker))!;
+    const job3 = (await worker.assignNextJob())!;
     t.equal(job3.id, addedJob3.id);
     await job3.markSucceeded();
     t.equal((await job3.getInfo())!.state, JobState.Succeeded);
@@ -516,7 +517,7 @@ t.test('Queue with PostgreSQL backend', skip, async (t) => {
   await t.test('Retry and remove job', async (t) => {
     const addedJob1 = await queue.addJob('add', { first: 5, second: 6 });
     const worker = await queue.getNewWorker().register();
-    const job1 = (await queue.assignNextJob(worker))!;
+    const job1 = (await worker.assignNextJob())!;
     t.equal(job1.id, addedJob1.id);
     const info1 = (await job1.getInfo())!;
     t.equal(info1.maxAttempts, 1);
@@ -532,7 +533,7 @@ t.test('Queue with PostgreSQL backend', skip, async (t) => {
     t.equal(info2.attempt, 2);
     t.same(info2.retriedAt instanceof Date, true);
 
-    const job3 = (await queue.assignNextJob(worker))!;
+    const job3 = (await worker.assignNextJob())!;
     const info3 = (await job3.getInfo())!;
     t.equal(info3.maxAttempts, 2);
     t.equal(info3.attempt, 2);
@@ -542,7 +543,7 @@ t.test('Queue with PostgreSQL backend', skip, async (t) => {
     t.equal(info4.maxAttempts, 3);
     t.equal(info4.attempt, 3);
 
-    const job4 = (await queue.assignNextJob(worker))!;
+    const job4 = (await worker.assignNextJob())!;
     t.equal((await job4.getInfo())!.state, JobState.Running);
     t.ok(await job4.markSucceeded());
     t.ok(await job4.remove());
@@ -561,7 +562,7 @@ t.test('Queue with PostgreSQL backend', skip, async (t) => {
     t.equal(info6.maxAttempts, 2);
     t.equal(info6.attempt, 2);
 
-    const job6 = (await queue.assignNextJob(worker))!;
+    const job6 = (await worker.assignNextJob())!;
     t.equal(job6.id, addedJob2.id);
     t.ok(await job6.markFailed({ oopsie: 'Fail and remove immediately' }));
     t.ok(await job6.remove());
@@ -578,21 +579,21 @@ t.test('Queue with PostgreSQL backend', skip, async (t) => {
     await queue.addJob('add', { first: 1, second: 2 });
     const addedJob1 = await queue.addJob('add', { first: 2, second: 4 }, { priority: 1 });
     const worker = await queue.getNewWorker().register();
-    const job1 = (await queue.assignNextJob(worker))!;
+    const job1 = (await worker.assignNextJob())!;
     t.equal(job1.id, addedJob1.id);
     const info1 = (await job1.getInfo())!;
     t.equal(info1.priority, 1);
     t.equal(info1.maxAttempts, 1);
     t.equal(info1.attempt, 1);
     t.ok(await job1.markSucceeded());
-    t.not((await queue.assignNextJob(worker))!.id, addedJob1.id);
+    t.not((await worker.assignNextJob())!.id, addedJob1.id);
     const addedJob2 = await queue.addJob('add', { first: 2, second: 5 });
-    const job2 = (await queue.assignNextJob(worker))!;
+    const job2 = (await worker.assignNextJob())!;
     t.equal(job2.id, addedJob2.id);
     t.equal((await job2.getInfo())!.priority, 0);
     t.ok(await job2.markSucceeded());
     t.ok(await job2.retry({ priority: 100 }));
-    const job3 = (await queue.assignNextJob(worker))!;
+    const job3 = (await worker.assignNextJob())!;
     t.equal(job3.id, addedJob2.id);
     const info2 = (await job3.getInfo())!;
     t.equal(info2.priority, 100);
@@ -600,7 +601,7 @@ t.test('Queue with PostgreSQL backend', skip, async (t) => {
     t.equal(info2.attempt, 2);
     t.ok(await job3.markSucceeded());
     t.ok(await job3.retry({ priority: 0 }));
-    const job4 = (await queue.assignNextJob(worker))!;
+    const job4 = (await worker.assignNextJob())!;
     t.equal(job4.id, addedJob2.id);
     const info3 = (await job4.getInfo())!;
     t.equal(info3.priority, 0);
@@ -609,24 +610,24 @@ t.test('Queue with PostgreSQL backend', skip, async (t) => {
     t.ok(await job4.markSucceeded());
 
     const addedJob3 = await queue.addJob('add', { first: 2, second: 6 }, { priority: 2 });
-    t.notOk(await queue.assignNextJob(worker, 0, { minPriority: 5 }));
-    t.notOk(await queue.assignNextJob(worker, 0, { minPriority: 3 }));
-    const job5 = (await queue.assignNextJob(worker, 0, { minPriority: 2 }))!;
+    t.notOk(await worker.assignNextJob(0, { minPriority: 5 }));
+    t.notOk(await worker.assignNextJob(0, { minPriority: 3 }));
+    const job5 = (await worker.assignNextJob(0, { minPriority: 2 }))!;
     t.equal(job5.id, addedJob3.id);
     t.equal((await job5.getInfo())!.priority, 2);
     t.ok(await job5.markSucceeded());
     await queue.addJob('add', { first: 2, second: 8 }, { priority: 0 });
     await queue.addJob('add', { first: 2, second: 7 }, { priority: 5 });
     await queue.addJob('add', { first: 2, second: 8 }, { priority: -2 });
-    t.notOk(await queue.assignNextJob(worker, 0, { minPriority: 6 }));
-    const job6 = (await queue.assignNextJob(worker, 0, { minPriority: 0 }))!;
+    t.notOk(await worker.assignNextJob(0, { minPriority: 6 }));
+    const job6 = (await worker.assignNextJob(0, { minPriority: 0 }))!;
     t.equal((await job6.getInfo())!.priority, 5);
     t.ok(await job6.markSucceeded());
-    const job7 = (await queue.assignNextJob(worker, 0, { minPriority: 0 }))!;
+    const job7 = (await worker.assignNextJob(0, { minPriority: 0 }))!;
     t.equal((await job7.getInfo())!.priority, 0);
     t.ok(await job7.markSucceeded());
-    t.notOk(await queue.assignNextJob(worker, 0, { minPriority: 0 }));
-    const job8 = (await queue.assignNextJob(worker, 0, { minPriority: -10 }))!;
+    t.notOk(await worker.assignNextJob(0, { minPriority: 0 }));
+    const job8 = (await worker.assignNextJob(0, { minPriority: -10 }))!;
     t.equal((await job8.getInfo())!.priority, -2);
     t.ok(await job8.markSucceeded());
     await worker.unregister();
@@ -637,12 +638,12 @@ t.test('Queue with PostgreSQL backend', skip, async (t) => {
 
     t.equal((await queue.getStatistics()).scheduledJobs, 1);
     const worker = await queue.getNewWorker().register();
-    t.notOk(await queue.assignNextJob(worker));
+    t.notOk(await worker.assignNextJob());
     const job1 = (await queue.getJob(addedJob1.id))!;
     const info1 = (await job1.getInfo())!;
     t.ok(info1.delayUntil > info1.createdAt);
     await pool.query(`UPDATE ${JOB_TABLE} SET delay_until = NOW() - INTERVAL '1 day' WHERE id = $1`, [addedJob1.id]);
-    const job2 = (await queue.assignNextJob(worker))!;
+    const job2 = (await worker.assignNextJob())!;
     t.equal(job2.id, addedJob1.id);
     t.same((await job2.getInfo())!.delayUntil instanceof Date, true);
     t.ok(await job2.markSucceeded());
@@ -654,7 +655,7 @@ t.test('Queue with PostgreSQL backend', skip, async (t) => {
     t.notOk(await job3.retry());
 
     const addedJob2 = await queue.addJob('add', { first: 6, second: 9 });
-    const job4 = (await queue.assignNextJob(worker))!;
+    const job4 = (await worker.assignNextJob())!;
     t.equal(job4.id, addedJob2.id);
     const info3 = (await job4.getInfo())!;
     t.ok(info3.delayUntil <= info3.createdAt);
@@ -671,20 +672,20 @@ t.test('Queue with PostgreSQL backend', skip, async (t) => {
   await t.test('Queues', async (t) => {
     const addedJob1 = await queue.addJob('add', { first: 100, second: 1 });
     const worker = await queue.getNewWorker().register();
-    t.notOk(await queue.assignNextJob(worker, 0, { queueNames: 'test1' }));
-    const job1 = (await queue.assignNextJob(worker))!;
+    t.notOk(await worker.assignNextJob(0, { queueNames: 'test1' }));
+    const job1 = (await worker.assignNextJob())!;
     t.equal(job1.id, addedJob1.id);
     t.equal((await job1.getInfo())!.queueName, 'default');
     t.ok(await job1.markSucceeded());
 
     const addedJob2 = await queue.addJob('add', { first: 100, second: 3 }, { queueName: 'test1' });
-    t.notOk(await queue.assignNextJob(worker));
-    const job2 = (await queue.assignNextJob(worker, 0, { queueNames: 'test1' }))!;
+    t.notOk(await worker.assignNextJob());
+    const job2 = (await worker.assignNextJob(0, { queueNames: 'test1' }))!;
     t.equal(job2.id, addedJob2.id);
     t.equal((await job2.getInfo())!.queueName, 'test1');
     t.ok(await job2.markSucceeded());
     t.ok(await job2.retry({ queueName: 'test2' }));
-    const job3 = (await queue.assignNextJob(worker, 0, { queueNames: ['default', 'test2'] }))!;
+    const job3 = (await worker.assignNextJob(0, { queueNames: ['default', 'test2'] }))!;
     t.equal(job3.id, addedJob2.id);
     t.equal((await job3.getInfo())!.queueName, 'test2');
     t.ok(await job3.markSucceeded());
@@ -694,7 +695,7 @@ t.test('Queue with PostgreSQL backend', skip, async (t) => {
   await t.test('Failed jobs', async (t) => {
     const addedJob1 = await queue.addJob('add', { first: 5, second: 6 });
     const worker = await queue.getNewWorker().register();
-    const job1 = (await queue.assignNextJob(worker))!;
+    const job1 = (await worker.assignNextJob())!;
     t.equal(job1.id, addedJob1.id);
     t.equal(job1.progress, 0.0);
     t.equal(await job1.updateProgress(0.5), true);
@@ -713,7 +714,7 @@ t.test('Queue with PostgreSQL backend', skip, async (t) => {
     t.equal(job1.progress, 0.5);
 
     const addedJob2 = await queue.addJob('add', { first: 6, second: 7 });
-    const job2 = (await queue.assignNextJob(worker))!;
+    const job2 = (await worker.assignNextJob())!;
     t.equal(job2.id, addedJob2.id);
     t.ok(await job2.markFailed({ oops: 'Something bad happened' }));
     const info3 = (await job2.getInfo())!;
@@ -721,7 +722,7 @@ t.test('Queue with PostgreSQL backend', skip, async (t) => {
     t.same(info3.result, { oops: 'Something bad happened' });
 
     const addedJob3 = await queue.addJob('fail');
-    const job3 = (await queue.assignNextJob(worker))!;
+    const job3 = (await worker.assignNextJob())!;
     t.equal(job3.id, addedJob3.id);
     await job3.perform(worker);
     const info4 = (await job3.getInfo())!;
@@ -747,7 +748,7 @@ t.test('Queue with PostgreSQL backend', skip, async (t) => {
       { metadata: { foo: [4, 5, 6] } },
     );
     const worker = await queue.getNewWorker().register();
-    const job = (await queue.assignNextJob(worker))!;
+    const job = (await worker.assignNextJob())!;
     await job.perform(worker);
     t.equal((await job.getInfo())!.state, JobState.Succeeded);
     t.ok(await job.amendMetadata({ yada: ['works'] }));
@@ -762,7 +763,7 @@ t.test('Queue with PostgreSQL backend', skip, async (t) => {
   await t.test('Multiple attempts with backoff while processing', async (t) => {
     const addedJob1 = await queue.addJob('fail', {}, { maxAttempts: 3 });
     const worker = await queue.getNewWorker().register();
-    const job1 = (await queue.assignNextJob(worker))!;
+    const job1 = (await worker.assignNextJob())!;
     t.equal(job1.id, addedJob1.id);
     t.equal(job1.attempt, 1);
     const info1 = (await job1.getInfo())!;
@@ -779,7 +780,7 @@ t.test('Queue with PostgreSQL backend', skip, async (t) => {
 
     await pool.query(`UPDATE ${JOB_TABLE} SET delay_until = NOW() WHERE id = $1`, [addedJob1.id]); // Skip backoff
 
-    const job2 = (await queue.assignNextJob(worker))!;
+    const job2 = (await worker.assignNextJob())!;
     t.equal(job2.id, addedJob1.id);
     t.equal(job2.attempt, 2);
     const info3 = (await job2.getInfo())!;
@@ -794,7 +795,7 @@ t.test('Queue with PostgreSQL backend', skip, async (t) => {
 
     await pool.query(`UPDATE ${JOB_TABLE} SET delay_until = NOW() WHERE id = $1`, [addedJob1.id]); // Skip backoff again
 
-    const job3 = (await queue.assignNextJob(worker))!;
+    const job3 = (await worker.assignNextJob())!;
     t.equal(job3.id, addedJob1.id);
     t.equal(job3.attempt, 3);
     const info5 = (await job3.getInfo())!;
@@ -809,14 +810,14 @@ t.test('Queue with PostgreSQL backend', skip, async (t) => {
     t.equal(info6.attempt, 3);
 
     t.ok(await job3.retry({ maxAttempts: 5 }));
-    const job4 = (await queue.assignNextJob(worker))!;
+    const job4 = (await worker.assignNextJob())!;
     t.equal(job4.id, addedJob1.id);
     await job4.perform(worker);
     t.equal((await job4.getInfo())!.state, JobState.Scheduled);
 
     await pool.query(`UPDATE ${JOB_TABLE} SET delay_until = NOW() WHERE id = $1`, [addedJob1.id]); // Skip backoff
 
-    const job5 = (await queue.assignNextJob(worker))!;
+    const job5 = (await worker.assignNextJob())!;
     t.equal(job5.id, addedJob1.id);
     await job5.perform(worker);
     t.equal((await job5.getInfo())!.state, JobState.Failed);
@@ -826,7 +827,7 @@ t.test('Queue with PostgreSQL backend', skip, async (t) => {
   await t.test('Multiple attempts with backoff during maintenance', async (t) => {
     const addedJob1 = await queue.addJob('fail', {}, { maxAttempts: 2 });
     const worker = await queue.getNewWorker().register();
-    const job1 = (await queue.assignNextJob(worker))!;
+    const job1 = (await worker.assignNextJob())!;
     t.equal(job1.id, addedJob1.id);
     t.equal(job1.attempt, 1);
     const info1 = (await job1.getInfo())!;
@@ -845,7 +846,7 @@ t.test('Queue with PostgreSQL backend', skip, async (t) => {
     await pool.query(`UPDATE ${JOB_TABLE} SET delay_until = NOW() WHERE id = $1`, [addedJob1.id]); // Skip backoff
 
     const worker2 = await queue.getNewWorker().register();
-    const job2 = (await queue.assignNextJob(worker2))!;
+    const job2 = (await worker2.assignNextJob())!;
     t.equal(job2.id, addedJob1.id);
     t.equal(job2.attempt, 2);
     await worker2.unregister();
@@ -861,13 +862,13 @@ t.test('Queue with PostgreSQL backend', skip, async (t) => {
     });
     const addedJob1 = await queue.addJob('restart');
     const worker = await queue.getNewWorker().register();
-    const job1 = (await queue.assignNextJob(worker))!;
+    const job1 = (await worker.assignNextJob())!;
     t.equal(job1.id, addedJob1.id);
     t.ok(await job1.markSucceeded());
     t.equal((await job1.getInfo())!.state, JobState.Succeeded);
     t.ok(await job1.retry());
     t.equal((await job1.getInfo())!.state, JobState.Pending);
-    const job2 = (await queue.assignNextJob(worker))!;
+    const job2 = (await worker.assignNextJob())!;
     t.equal((await job2.getInfo())!.state, JobState.Running);
     t.notOk(await job1.markSucceeded());
     t.equal((await job2.getInfo())!.state, JobState.Running);
@@ -884,10 +885,10 @@ t.test('Queue with PostgreSQL backend', skip, async (t) => {
     const addedJob3 = await queue.addJob('test');
     const addedJob4 = await queue.addJob('fail');
     const worker = await queue.getNewWorker().register();
-    const job1 = (await queue.assignNextJob(worker))!;
-    const job2 = (await queue.assignNextJob(worker))!;
-    const job3 = (await queue.assignNextJob(worker))!;
-    const job4 = (await queue.assignNextJob(worker))!;
+    const job1 = (await worker.assignNextJob())!;
+    const job2 = (await worker.assignNextJob())!;
+    const job3 = (await worker.assignNextJob())!;
+    const job4 = (await worker.assignNextJob())!;
     await Promise.all([job1.perform(worker), job2.perform(worker), job3.perform(worker), job4.perform(worker)]);
     t.equal((await queue.getJob(addedJob1.id).then((job) => job!.getInfo()))!.state, JobState.Succeeded);
     t.equal((await queue.getJob(addedJob2.id).then((job) => job!.getInfo()))!.state, JobState.Succeeded);
@@ -904,24 +905,24 @@ t.test('Queue with PostgreSQL backend', skip, async (t) => {
     const addedJob1 = await queue.addJob('test');
     const addedJob2 = await queue.addJob('test');
     const addedJob3 = await queue.addJob('test', {}, { parentJobIds: [addedJob1.id, addedJob2.id] });
-    const job1 = (await queue.assignNextJob(worker))!;
+    const job1 = (await worker.assignNextJob())!;
     t.equal(job1.id, addedJob1.id);
     t.same((await job1.getInfo())!.childJobIds, [addedJob3.id]);
     t.same((await job1.getInfo())!.parentJobIds, []);
-    const job2 = (await queue.assignNextJob(worker))!;
+    const job2 = (await worker.assignNextJob())!;
     t.equal(job2.id, addedJob2.id);
     t.same((await job2.getInfo())!.childJobIds, [addedJob3.id]);
     t.same((await job2.getInfo())!.parentJobIds, []);
-    t.notOk(await queue.assignNextJob(worker));
+    t.notOk(await worker.assignNextJob());
     t.ok(await job1.markSucceeded());
-    t.notOk(await queue.assignNextJob(worker));
+    t.notOk(await worker.assignNextJob());
     t.ok(await job2.markFailed());
-    t.notOk(await queue.assignNextJob(worker));
+    t.notOk(await worker.assignNextJob());
     t.ok(await job2.retry());
-    const job3 = (await queue.assignNextJob(worker))!;
+    const job3 = (await worker.assignNextJob())!;
     t.equal(job3.id, addedJob2.id);
     t.ok(await job3.markSucceeded());
-    const job4 = (await queue.assignNextJob(worker))!;
+    const job4 = (await worker.assignNextJob())!;
     t.equal(job4.id, addedJob3.id);
     t.same((await job4.getInfo())!.childJobIds, []);
     t.same((await job4.getInfo())!.parentJobIds, [addedJob1.id, addedJob2.id]);
@@ -934,15 +935,15 @@ t.test('Queue with PostgreSQL backend', skip, async (t) => {
     t.equal((await queue.getStatistics()).succeededJobs, 0);
 
     const addedJob4 = await queue.addJob('test', {}, { parentJobIds: [-1] });
-    const job5 = (await queue.assignNextJob(worker))!;
+    const job5 = (await worker.assignNextJob())!;
     t.equal(job5.id, addedJob4.id);
     t.ok(await job5.markSucceeded());
     const addedJob5 = await queue.addJob('test', {}, { parentJobIds: [-1] });
-    const job6 = (await queue.assignNextJob(worker))!;
+    const job6 = (await worker.assignNextJob())!;
     t.equal(job6.id, addedJob5.id);
     t.same((await job6.getInfo())!.parentJobIds, [-1]);
     t.ok(await job6.retry({ parentJobIds: [-1, -2] }));
-    const job7 = (await queue.assignNextJob(worker))!;
+    const job7 = (await worker.assignNextJob())!;
     t.same((await job7.getInfo())!.parentJobIds, [-1, -2]);
     t.ok(await job7.markSucceeded());
 
@@ -970,19 +971,19 @@ t.test('Queue with PostgreSQL backend', skip, async (t) => {
       {},
       { laxDependency: true, parentJobIds: [addedJob1.id, addedJob2.id] },
     );
-    const job1 = (await queue.assignNextJob(worker))!;
+    const job1 = (await worker.assignNextJob())!;
     t.equal(job1.id, addedJob1.id);
     t.same((await job1.getInfo())!.childJobIds, [addedJob3.id]);
     t.same((await job1.getInfo())!.parentJobIds, []);
-    const job2 = (await queue.assignNextJob(worker))!;
+    const job2 = (await worker.assignNextJob())!;
     t.equal(job2.id, addedJob2.id);
     t.same((await job2.getInfo())!.childJobIds, [addedJob3.id]);
     t.same((await job2.getInfo())!.parentJobIds, []);
-    t.notOk(await queue.assignNextJob(worker));
+    t.notOk(await worker.assignNextJob());
     t.ok(await job1.markSucceeded());
-    t.notOk(await queue.assignNextJob(worker));
+    t.notOk(await worker.assignNextJob());
     t.ok(await job2.markFailed());
-    const job3 = (await queue.assignNextJob(worker))!;
+    const job3 = (await worker.assignNextJob())!;
     t.equal(job3.id, addedJob3.id);
     t.same((await job3.getInfo())!.childJobIds, []);
     t.same((await job3.getInfo())!.parentJobIds, [addedJob1.id, addedJob2.id]);
@@ -990,13 +991,13 @@ t.test('Queue with PostgreSQL backend', skip, async (t) => {
 
     const addedJob4 = await queue.addJob('test');
     const addedJob5 = await queue.addJob('test', {}, { parentJobIds: [addedJob4.id] });
-    const job4 = (await queue.assignNextJob(worker))!;
+    const job4 = (await worker.assignNextJob())!;
     t.equal(job4.id, addedJob4.id);
-    t.notOk(await queue.assignNextJob(worker));
+    t.notOk(await worker.assignNextJob());
     t.ok(await job4.markFailed());
-    t.notOk(await queue.assignNextJob(worker));
+    t.notOk(await worker.assignNextJob());
     t.ok(await queue.getJob(addedJob5.id).then((job) => job!.retry({ laxDependency: true })));
-    const job5 = (await queue.assignNextJob(worker))!;
+    const job5 = (await worker.assignNextJob())!;
     t.equal(job5.id, addedJob5.id);
     t.same((await job5.getInfo())!.childJobIds, []);
     t.same((await job5.getInfo())!.parentJobIds, [addedJob4.id]);
@@ -1022,7 +1023,7 @@ t.test('Queue with PostgreSQL backend', skip, async (t) => {
     const addedJob2 = await queue.addJob('test', {}, { expireIn: 300000 });
     t.same((await queue.getJob(addedJob2.id).then((job) => job!.getInfo()))!.expiresAt instanceof Date, true);
     const worker = await queue.getNewWorker().register();
-    const job1 = (await queue.assignNextJob(worker))!;
+    const job1 = (await worker.assignNextJob())!;
     t.equal(job1.id, addedJob2.id);
     const expires = (await job1.getInfo())!.expiresAt;
     t.same(expires instanceof Date, true);
@@ -1034,7 +1035,7 @@ t.test('Queue with PostgreSQL backend', skip, async (t) => {
     t.not(info.expiresAt.getTime(), expires.getTime());
     await queue.prune();
     t.equal(await queue.listJobInfos({ states: [JobState.Pending] }).numRows(), 1);
-    const job2 = (await queue.assignNextJob(worker))!;
+    const job2 = (await worker.assignNextJob())!;
     t.equal(job2.id, addedJob2.id);
     t.ok(await job2.markSucceeded());
 
@@ -1042,11 +1043,11 @@ t.test('Queue with PostgreSQL backend', skip, async (t) => {
     t.equal(await queue.listJobInfos({ states: [JobState.Pending] }).numRows(), 1);
     await pool.query(`UPDATE ${JOB_TABLE} SET expires_at = NOW() - INTERVAL '1 day' WHERE id = $1`, [addedJob3.id]);
     await queue.prune();
-    t.notOk(await queue.assignNextJob(worker));
+    t.notOk(await worker.assignNextJob());
     t.equal(await queue.listJobInfos({ states: [JobState.Pending] }).numRows(), 0);
 
     const addedJob4 = await queue.addJob('test', {}, { expireIn: 300000 });
-    const job4 = (await queue.assignNextJob(worker))!;
+    const job4 = (await worker.assignNextJob())!;
     t.equal(job4.id, addedJob4.id);
     t.ok(await job4.markSucceeded());
     await pool.query(`UPDATE ${JOB_TABLE} SET expires_at = NOW() - INTERVAL '1 day' WHERE id = $1`, [addedJob4.id]);
@@ -1054,7 +1055,7 @@ t.test('Queue with PostgreSQL backend', skip, async (t) => {
     t.equal((await job4.getInfo())!.state, JobState.Succeeded);
 
     const addedJob5 = await queue.addJob('test', {}, { expireIn: 300000 });
-    const job5 = (await queue.assignNextJob(worker))!;
+    const job5 = (await worker.assignNextJob())!;
     t.equal(job5.id, addedJob5.id);
     t.ok(await job5.markFailed());
     await pool.query(`UPDATE ${JOB_TABLE} SET expires_at = NOW() - INTERVAL '1 day' WHERE id = $1`, [addedJob5.id]);
@@ -1062,7 +1063,7 @@ t.test('Queue with PostgreSQL backend', skip, async (t) => {
     t.equal((await job5.getInfo())!.state, JobState.Failed);
 
     const addedJob6 = await queue.addJob('test', {}, { expireIn: 300000 });
-    const job6 = (await queue.assignNextJob(worker))!;
+    const job6 = (await worker.assignNextJob())!;
     t.equal(job6.id, addedJob6.id);
     await pool.query(`UPDATE ${JOB_TABLE} SET expires_at = NOW() - INTERVAL '1 day' WHERE id = $1`, [addedJob6.id]);
     await queue.prune();
@@ -1071,10 +1072,10 @@ t.test('Queue with PostgreSQL backend', skip, async (t) => {
 
     const addedJob7 = await queue.addJob('test', {}, { expireIn: 300000 });
     const addedJob8 = await queue.addJob('test', {}, { expireIn: 300000, parentJobIds: [addedJob7.id] });
-    t.notOk(await queue.assignNextJob(worker, 0, { id: addedJob8.id }));
+    t.notOk(await worker.assignNextJob(0, { id: addedJob8.id }));
     await pool.query(`UPDATE ${JOB_TABLE} SET expires_at = NOW() - INTERVAL '1 day' WHERE id = $1`, [addedJob7.id]);
     await queue.prune();
-    const job8 = (await queue.assignNextJob(worker, 0, { id: addedJob8.id }))!;
+    const job8 = (await worker.assignNextJob(0, { id: addedJob8.id }))!;
     t.ok(await job8.markSucceeded());
     await worker.unregister();
   });

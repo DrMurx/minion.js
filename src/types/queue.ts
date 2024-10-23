@@ -5,6 +5,7 @@ import {
   type Job,
   type JobAddOptions,
   type JobArgs,
+  type JobDescriptor,
   type JobId,
   type JobInfo,
   type JobResult,
@@ -25,7 +26,11 @@ import {
 /**
  * The public queue interface
  */
-export interface Queue<BaseJob extends Job<JobArgs>> extends JobExecutor, WorkerManager, StatsReader {
+export interface Queue<BaseJob extends Job<JobArgs> = Job<JobArgs>>
+  extends JobFactory<BaseJob>,
+    JobExecutor,
+    WorkerManager<BaseJob>,
+    StatsReader {
   /**
    * Enqueue a new job with `pending` or `scheduled` state. Arguments can only be simple scalars, maps or arrays.
    * @param options.queueName     - Queue to put job in, defaults to the first queueName given to the `Queue`.
@@ -133,19 +138,17 @@ export interface JobExecutor {
   runJobs(options?: Partial<JobDequeueOptions>): Promise<void>;
 }
 
-export interface QueueReader {
-  /**
-   * Wait a given amount of time in milliseconds for a job, dequeue job object and transition from `pending` to
-   * `running` state for the given worker, or return `null` if queues were empty.
-   */
-  assignNextJob(worker: Worker, wait?: number, options?: Partial<JobDequeueOptions>): Promise<Job<JobArgs> | null>;
+export interface JobFactory<BaseJob extends Job<JobArgs>> {
+  createJobObject<ResultJob extends BaseJob = BaseJob>(
+    jobInfo: JobDescriptor<InferJobArgs<ResultJob>> | JobInfo<InferJobArgs<ResultJob>>,
+  ): ResultJob;
 }
 
-export interface WorkerManager {
+export interface WorkerManager<BaseJob extends Job<JobArgs>> {
   /**
    * Build worker object.
    */
-  getNewWorker(options?: WorkerOptions): Worker;
+  getNewWorker(options?: WorkerOptions): Worker<BaseJob>;
 
   /**
    * Return iterator object to safely iterate through worker information.

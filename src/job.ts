@@ -8,6 +8,7 @@ import {
   type JobInfo,
   type JobResult,
   type JobRetryOptions,
+  type RunningJob,
 } from './types/job.js';
 import { type RunningWorker } from './types/worker.js';
 
@@ -18,7 +19,7 @@ export class DefaultJob<Args extends JobArgs = JobArgs> implements Job<Args> {
   private _state?: JobState = JobState.Pending;
   private _progress: number = 0.0;
 
-  private _worker: RunningWorker | null = null;
+  private _worker: RunningWorker<RunningJob<Args>> | null = null;
   private _abortController: AbortController = new AbortController();
 
   /**
@@ -66,7 +67,7 @@ export class DefaultJob<Args extends JobArgs = JobArgs> implements Job<Args> {
     return this._abortController.signal;
   }
 
-  async perform(worker: RunningWorker, throwOnError: boolean = false): Promise<void> {
+  async perform(worker: RunningWorker<RunningJob<Args>>, throwOnError: boolean = false): Promise<void> {
     if (this._state !== JobState.Pending && this._state !== JobState.Scheduled && this._state !== JobState.Running) {
       throw new Error(`Try to perform job with state ${this._state}: ${this.id}`);
     }

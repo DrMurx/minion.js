@@ -1,8 +1,9 @@
 import os from 'os';
 import t from 'tap';
-import { DefaultQueue, type DefaultQueueInterface } from '../../queue.js';
+import { DefaultQueue } from '../../queue.js';
 import { type Backend } from '../../types/backend.js';
 import { JobState } from '../../types/job.js';
+import { type Queue } from '../../types/queue.js';
 import { WorkerState } from '../../types/worker.js';
 import { PgBackend } from './backend.js';
 import { createPool } from './factory.js';
@@ -17,7 +18,7 @@ t.test('PostgreSQL backend', skip, async (t) => {
   await pool.query('CREATE SCHEMA queue_backend_test');
 
   const backend: Backend = new PgBackend(pool);
-  const queue: DefaultQueueInterface = new DefaultQueue(backend);
+  const queue: Queue = new DefaultQueue(backend);
   await queue.updateSchema();
 
   // Register at some simple tasks for further tests
@@ -85,7 +86,7 @@ t.test('PostgreSQL backend', skip, async (t) => {
     const addedJob1 = await queue.addJob('add');
     const addedJob2 = await queue.addJob('fail', {}, { maxAttempts: 5 });
     const addedJob3 = await queue.addJob('test', {}, { queueName: 'another_queue' });
-    await queue.assignNextJob(worker1);
+    await worker1.assignNextJob();
 
     const results1 = await backend.getJobInfos(0, 10, {});
     const batch1 = results1.jobs;

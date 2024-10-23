@@ -4,8 +4,8 @@ import {
   type WorkerInboxOptions,
   type WorkerRegistrationOptions,
 } from './types/backend.js';
-import { type Job, type JobArgs, type RunningJob } from './types/job.js';
-import { type QueueReader } from './types/queue.js';
+import { type InferJobArgs, type Job, type JobArgs, type RunningJob } from './types/job.js';
+import { type JobFactory } from './types/queue.js';
 import { type Task, type TaskManager } from './types/task.js';
 import {
   type Worker,
@@ -22,7 +22,7 @@ import { WorkerLoop } from './worker/loop.js';
 /**
  * Default worker class.
  */
-export class DefaultWorker implements Worker {
+export class DefaultWorker<BaseJob extends Job<JobArgs>> implements Worker<BaseJob> {
   public static readonly FOREGROUND_QUEUE = '_foreground_queue';
 
   public static readonly DEFAULT_CONFIG = Object.freeze(<Partial<WorkerConfig>>{
@@ -53,8 +53,8 @@ export class DefaultWorker implements Worker {
   private _id: number | undefined = undefined;
 
   constructor(
-    protected queueReader: QueueReader,
-    protected taskManager: TaskManager<RunningJob<JobArgs>>,
+    protected jobFactory: JobFactory<BaseJob>,
+    protected taskManager: TaskManager<RunningJob<InferJobArgs<BaseJob>>>,
     protected backend: WorkerBackend,
     protected _config: WorkerConfig,
     metadata: Record<string, any>,
@@ -160,8 +160,23 @@ export class DefaultWorker implements Worker {
     }
   }
 
-  async assignNextJob(wait = 0, options: Partial<JobDequeueOptions> = {}): Promise<Job<JobArgs> | null> {
-    return this.queueReader.assignNextJob(this, wait, options);
+  async assignNextJob<ResultJob extends BaseJob = BaseJob>(
+    wait = 0,
+    options: Partial<JobDequeueOptions> = {},
+  ): Promise<ResultJob | null> {
+    if (this.id === undefined) return null;
+    const _options = <JobDequeueOptions>{
+      queueNames: this._config.queueNames,
+      ...options,
+    };
+    const taskNames = this.taskManager.getTaskNames();
+    const dequeueJobInfo = await this.backend.assignNextJob<InferJobArgs<ResultJob>>(
+      this.id,
+      taskNames,
+      wait,
+      _options,
+    );
+    return dequeueJobInfo === null ? null : this.jobFactory.createJobObject<ResultJob>(dequeueJobInfo);
   }
 
   async terminate(reason?: string): Promise<void> {

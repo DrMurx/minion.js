@@ -40,7 +40,7 @@ export interface Job<Args extends JobArgs> extends RunningJob<Args> {
   /**
    * Perform job and wait for it to finish. Note that this method should only be used to implement custom workers.
    */
-  perform(worker: RunningWorker, throwOnError?: boolean): Promise<void>;
+  perform(worker: RunningWorker<RunningJob<Args>>, throwOnError?: boolean): Promise<void>;
 
   /**
    * Transition from `running` to `succeeded` state with or without a result.

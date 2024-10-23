@@ -141,17 +141,6 @@ export interface QueueBackend {
   addJob(taskName: string, args: JobArgs, options: JobEnqueueOptions): Promise<JobId>;
 
   /**
-   * Looks for a new job in the queues. If a job is found, dequeue it and transition from `pending` to `running`
-   * state. Return `null` if queues were empty.
-   */
-  assignNextJob<Args extends JobArgs>(
-    id: WorkerId,
-    taskNames: string[],
-    timeout: number,
-    options: JobDequeueOptions,
-  ): Promise<JobDescriptor<Args> | null>;
-
-  /**
    * Prune jobs:
    * 1. Delete jobs that are past expiration time.
    * 2. Expunge successfully finished jobs after `expungePeriod`.
@@ -229,6 +218,17 @@ export interface JobBackend {
  * The backend methods a `Worker` object needs
  */
 export interface WorkerBackend {
+  /**
+   * Looks for a new job in the queues. If a job is found, dequeue it and transition from `pending` to `running`
+   * state. Return `null` if queues were empty.
+   */
+  assignNextJob<Args extends JobArgs>(
+    id: WorkerId,
+    taskNames: string[],
+    timeout: number,
+    options: JobDequeueOptions,
+  ): Promise<JobDescriptor<Args> | null>;
+
   /**
    * Register a new worker.
    */

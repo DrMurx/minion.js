@@ -13,7 +13,7 @@ export class WorkerLoop extends EventEmitter {
   private jobs: JobStatus[] = [];
   private stopPromises: Array<() => void> = [];
 
-  constructor(protected worker: Worker) {
+  constructor(protected worker: Worker<any>) {
     super();
   }
 

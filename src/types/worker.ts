@@ -2,7 +2,7 @@ import { type JobDequeueOptions } from './backend.js';
 import { type Job, type JobArgs, type JobId, type RunningJob } from './job.js';
 import { type Task } from './task.js';
 
-export interface RunningWorker {
+export interface RunningWorker<BaseJob extends RunningJob<JobArgs>> {
   /**
    * Worker id.
    */
@@ -19,7 +19,7 @@ export interface RunningWorker {
   /**
    * Returns the given task (throws if it doesn't exist)
    */
-  getTask(taskName: string): Task<RunningJob<JobArgs>>;
+  getTask(taskName: string): Task<BaseJob>;
 
   /**
    * Update the worker's lastSeen date.
@@ -27,7 +27,7 @@ export interface RunningWorker {
   heartbeat(force?: boolean): Promise<this>;
 }
 
-export interface Worker extends RunningWorker {
+export interface Worker<BaseJob extends Job<JobArgs>> extends RunningWorker<BaseJob> {
   /**
    * Get worker information.
    */
@@ -63,7 +63,10 @@ export interface Worker extends RunningWorker {
    * Wait a given amount of time in milliseconds for a job, dequeue job object and transition from `pending` to
    * `running` state for the given worker, or return `null` if queues were empty.
    */
-  assignNextJob(wait?: number, options?: Partial<JobDequeueOptions>): Promise<Job<JobArgs> | null>;
+  assignNextJob<ResultJob extends BaseJob>(
+    wait?: number,
+    options?: Partial<JobDequeueOptions>,
+  ): Promise<ResultJob | null>;
 
   /**
    * Register this worker in the backend (if not yet registered, otherwise just update its data).
@@ -89,7 +92,7 @@ export interface Worker extends RunningWorker {
 export type WorkerId = number;
 
 export type WorkerCommandArg = Record<string, any> & { [Symbol.iterator]?: never };
-export type WorkerCommandHandler = (worker: Worker, arg: WorkerCommandArg) => Promise<void>;
+export type WorkerCommandHandler = (worker: Worker<any>, arg: WorkerCommandArg) => Promise<void>;
 export type WorkerCommandDescriptor = { command: string; arg: WorkerCommandArg };
 
 export interface WorkerOptions {

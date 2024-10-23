@@ -2,9 +2,10 @@ import os from 'os';
 import t from 'tap';
 import { PgBackend } from './backends/pg/backend.js';
 import { createPool } from './backends/pg/factory.js';
-import { DefaultQueue, type DefaultQueueInterface } from './queue.js';
+import { DefaultQueue } from './queue.js';
 import { type Backend } from './types/backend.js';
 import { JobState } from './types/job.js';
+import { type Queue } from './types/queue.js';
 
 const skip = process.env.TEST_ONLINE === undefined ? { skip: 'set TEST_ONLINE to enable this test' } : {};
 
@@ -16,7 +17,7 @@ t.test('Worker', skip, async (t) => {
   await pool.query('CREATE SCHEMA queue_worker_test');
 
   const backend: Backend = new PgBackend(pool);
-  const queue: DefaultQueueInterface = new DefaultQueue(backend);
+  const queue: Queue = new DefaultQueue(backend);
   await queue.updateSchema();
 
   // Register at least a simple task for further tests

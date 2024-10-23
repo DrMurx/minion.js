@@ -12,7 +12,7 @@ export class WorkerCommandManager {
   private commands: Map<string, WorkerCommandHandler> = new Map();
 
   constructor(
-    private worker: Worker,
+    private worker: Worker<any>,
     commands: Record<string, WorkerCommandHandler>,
   ) {
     this.addDefaultHandlers();

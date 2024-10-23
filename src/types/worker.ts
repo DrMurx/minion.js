@@ -1,12 +1,32 @@
 import { type JobArgs, type JobId, type RunningJob } from './job.js';
 import { type Task } from './task.js';
 
-export interface Worker {
+export interface RunningWorker {
   /**
    * Worker id.
    */
   get id(): WorkerId | undefined;
 
+  getMetadata<T = any>(key: string): T | undefined;
+  getAttachment<T = any>(key: string): T;
+
+  /**
+   * Provides an abort signal to indicate that the worker is supposed to terminate.
+   */
+  get abortSignal(): AbortSignal;
+
+  /**
+   * Returns the given task (throws if it doesn't exist)
+   */
+  getTask(taskName: string): Task<RunningJob<JobArgs>>;
+
+  /**
+   * Update the worker's lastSeen date.
+   */
+  heartbeat(force?: boolean): Promise<this>;
+}
+
+export interface Worker extends RunningWorker {
   /**
    * Get worker information.
    */
@@ -14,9 +34,7 @@ export interface Worker {
   get config(): Readonly<WorkerConfig>;
   setConfig(config: Partial<WorkerConfig>): Promise<void>;
   setMetadata(key: string, value: any): Promise<void>;
-  getMetadata<T = any>(key: string): T | undefined;
   setAttachment(key: string, value: any): void;
-  getAttachment<T = any>(key: string): T;
 
   get state(): WorkerState;
 
@@ -41,16 +59,6 @@ export interface Worker {
   get isRunning(): boolean;
 
   /**
-   * Provides an abort signal to indicate that the worker is supposed to terminate.
-   */
-  get abortSignal(): AbortSignal;
-
-  /**
-   * Returns the given task (throws if it doesn't exist)
-   */
-  getTask(taskName: string): Task<RunningJob<JobArgs>>;
-
-  /**
    * Register this worker in the backend (if not yet registered, otherwise just update its data).
    */
   register(): Promise<this>;
@@ -59,11 +67,6 @@ export interface Worker {
    * Check the worker's inbox, process remote control commands (if any), and updates its lastSeen date.
    */
   processInbox(force?: boolean): Promise<this>;
-
-  /**
-   * Update the worker's lastSeen date.
-   */
-  heartbeat(force?: boolean): Promise<this>;
 
   /**
    * Unregister worker.

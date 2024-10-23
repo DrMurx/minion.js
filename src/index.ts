@@ -18,7 +18,14 @@ import {
 } from './types/job.js';
 import { type Queue, type QueueOptions } from './types/queue.js';
 import { type Task, type TaskHandlerFunction, type TaskManager } from './types/task.js';
-import { type Worker, type WorkerConfig, type WorkerId, type WorkerOptions, WorkerState } from './types/worker.js';
+import {
+  type RunningWorker,
+  type Worker,
+  type WorkerConfig,
+  type WorkerId,
+  type WorkerOptions,
+  WorkerState,
+} from './types/worker.js';
 import { version } from './version.js';
 
 export default DefaultQueue;
@@ -43,6 +50,7 @@ export {
   type Queue,
   type QueueOptions,
   type RunningJob,
+  type RunningWorker,
   type Task,
   type TaskHandlerFunction,
   type TaskManager,

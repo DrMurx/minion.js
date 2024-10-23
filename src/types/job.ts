@@ -1,5 +1,5 @@
 import { type JobEnqueueOptions } from './backend.js';
-import { type Worker, type WorkerId } from './worker.js';
+import { type RunningWorker, type WorkerId } from './worker.js';
 
 /**
  * A limited interface for a running `Job` when it is passed to a `Task` handler
@@ -40,7 +40,7 @@ export interface Job<Args extends JobArgs> extends RunningJob<Args> {
   /**
    * Perform job and wait for it to finish. Note that this method should only be used to implement custom workers.
    */
-  perform(worker: Worker, throwOnError?: boolean): Promise<void>;
+  perform(worker: RunningWorker, throwOnError?: boolean): Promise<void>;
 
   /**
    * Transition from `running` to `succeeded` state with or without a result.

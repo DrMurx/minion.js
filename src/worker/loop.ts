@@ -1,7 +1,6 @@
 import EventEmitter from 'events';
 import { type JobDequeueOptions } from '../types/backend.js';
 import { type Job, type JobArgs } from '../types/job.js';
-import { type QueueReader } from '../types/queue.js';
 import { type Worker } from '../types/worker.js';
 
 /**
@@ -14,10 +13,7 @@ export class WorkerLoop extends EventEmitter {
   private jobs: JobStatus[] = [];
   private stopPromises: Array<() => void> = [];
 
-  constructor(
-    protected worker: Worker,
-    protected queueReader: QueueReader,
-  ) {
+  constructor(protected worker: Worker) {
     super();
   }
 
@@ -91,7 +87,7 @@ export class WorkerLoop extends EventEmitter {
     };
 
     // Pull a job while assign it to current worker
-    const job = await this.queueReader.assignNextJob(this.worker, dequeueTimeout, options);
+    const job = await this.worker.assignNextJob(dequeueTimeout, options);
     if (job === null) return false;
 
     // Construct the jobStatus object - the promise on `Job.perform` will update its status after it has finished

@@ -1,5 +1,10 @@
-import { type WorkerBackend, type WorkerInboxOptions, type WorkerRegistrationOptions } from './types/backend.js';
-import { type JobArgs, type RunningJob } from './types/job.js';
+import {
+  type JobDequeueOptions,
+  type WorkerBackend,
+  type WorkerInboxOptions,
+  type WorkerRegistrationOptions,
+} from './types/backend.js';
+import { type Job, type JobArgs, type RunningJob } from './types/job.js';
 import { type QueueReader } from './types/queue.js';
 import { type Task, type TaskManager } from './types/task.js';
 import {
@@ -129,7 +134,7 @@ export class DefaultWorker implements Worker {
   async start(): Promise<this> {
     if (!this.workerLoop) {
       this.abortController = new AbortController();
-      this.workerLoop = new WorkerLoop(this, this.queueReader);
+      this.workerLoop = new WorkerLoop(this);
       this.workerLoop.on('finished', (finished) => (this.finishedJobCount += finished));
 
       await this.register();
@@ -153,6 +158,10 @@ export class DefaultWorker implements Worker {
     if (this.workerLoop) {
       await this.workerLoop.stop();
     }
+  }
+
+  async assignNextJob(wait = 0, options: Partial<JobDequeueOptions> = {}): Promise<Job<JobArgs> | null> {
+    return this.queueReader.assignNextJob(this, wait, options);
   }
 
   async terminate(reason?: string): Promise<void> {

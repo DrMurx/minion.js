@@ -1,4 +1,5 @@
-import { type JobArgs, type JobId, type RunningJob } from './job.js';
+import { type JobDequeueOptions } from './backend.js';
+import { type Job, type JobArgs, type JobId, type RunningJob } from './job.js';
 import { type Task } from './task.js';
 
 export interface RunningWorker {
@@ -57,6 +58,12 @@ export interface Worker extends RunningWorker {
    * Check if worker is currently running.
    */
   get isRunning(): boolean;
+
+  /**
+   * Wait a given amount of time in milliseconds for a job, dequeue job object and transition from `pending` to
+   * `running` state for the given worker, or return `null` if queues were empty.
+   */
+  assignNextJob(wait?: number, options?: Partial<JobDequeueOptions>): Promise<Job<JobArgs> | null>;
 
   /**
    * Register this worker in the backend (if not yet registered, otherwise just update its data).

@@ -16,7 +16,7 @@ import {
   JobState,
   type ListJobsOptions,
   type QueueJobStatistics,
-  RunningJob,
+  type RunningJob,
   unsuccessfulJobStates,
 } from './types/job.js';
 import { type PruneOptions, type Queue, type QueueOptions, type QueueReader, type QueueStats } from './types/queue.js';
@@ -45,7 +45,7 @@ export class DefaultQueue<BaseJob extends Job<JobArgs> = Job<JobArgs>>
   implements DefaultQueueInterface<BaseJob>
 {
   public static readonly DEFAULT_OPTIONS = Object.freeze(<QueueOptions>{
-    queueNames: ['default'],
+    queueNames: Object.freeze(['default']),
     pruneInterval: 5 * 60 * 1000,
     workerLostTimeout: 30 * 60 * 1000,
     jobExpungePeriod: 2 * 24 * 60 * 60 * 1000,
@@ -140,7 +140,7 @@ export class DefaultQueue<BaseJob extends Job<JobArgs> = Job<JobArgs>>
   protected createJobObject<ResultJob extends BaseJob = BaseJob>(
     jobInfo: JobDescriptor<InferJobArgs<ResultJob>> | JobInfo<InferJobArgs<ResultJob>>,
   ): ResultJob {
-    return new DefaultJob<InferJobArgs<ResultJob>>(this.taskManager, this.backend, jobInfo) as unknown as ResultJob;
+    return new DefaultJob<InferJobArgs<ResultJob>>(this.backend, jobInfo) as unknown as ResultJob;
   }
 
   async getJobInfo<Args extends InferJobArgs<BaseJob> = InferJobArgs<BaseJob>>(
@@ -164,7 +164,7 @@ export class DefaultQueue<BaseJob extends Job<JobArgs> = Job<JobArgs>>
     type Args = BaseJob extends Job<infer A> ? A : never;
     if (worker.id === undefined) return null;
     const _options = <JobDequeueOptions>{
-      queueNames: this.options.queueNames,
+      queueName: this.options.queueNames,
       ...options,
     };
     const taskNames = this.taskManager.getTaskNames();
@@ -173,14 +173,14 @@ export class DefaultQueue<BaseJob extends Job<JobArgs> = Job<JobArgs>>
   }
 
   async runJob(jobId: number): Promise<boolean> {
+    const queueName = DefaultWorker.FOREGROUND_QUEUE;
     let job = await this.getJob(jobId);
     if (job === null) return false;
-    if ((await job.retry({ queueName: DefaultWorker.FOREGROUND_QUEUE, maxAttempts: job.maxAttempts + 1 })) !== true)
-      return false;
+    if ((await job.retry({ queueName, maxAttempts: job.maxAttempts + 1 })) !== true) return false;
 
     const worker = await this.getNewWorker().register();
     try {
-      job = await this.assignNextJob(worker, 0, { id: jobId, queueNames: [DefaultWorker.FOREGROUND_QUEUE] });
+      job = await this.assignNextJob(worker, 0, { id: jobId, queueName });
       if (job === null) return false;
       await job.perform(worker, true);
       return true;
@@ -229,7 +229,7 @@ export class DefaultQueue<BaseJob extends Job<JobArgs> = Job<JobArgs>>
     const metadata = options?.metadata ?? {};
     const attachments = options?.attachments ?? {};
     const commands = options?.commands ?? {};
-    return new DefaultWorker(this, this.backend, config, metadata, attachments, commands);
+    return new DefaultWorker(this, this.taskManager, this.backend, config, metadata, attachments, commands);
   }
 
   listWorkerInfos(options: ListWorkersOptions = {}, chunkSize: number = 10): BackendIterator<WorkerInfo> {

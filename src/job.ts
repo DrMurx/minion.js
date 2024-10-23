@@ -8,9 +8,7 @@ import {
   type JobInfo,
   type JobResult,
   type JobRetryOptions,
-  type RunningJob,
 } from './types/job.js';
-import { type TaskReader } from './types/task.js';
 import { type Worker } from './types/worker.js';
 
 /**
@@ -24,12 +22,10 @@ export class DefaultJob<Args extends JobArgs = JobArgs> implements Job<Args> {
   private _abortController: AbortController = new AbortController();
 
   /**
-   * @param taskReader For access to the task vault
    * @param backend Queue backend
    * @param jobInfo Simplified JobInfo object
    */
   constructor(
-    private taskReader: TaskReader<RunningJob<JobArgs>>,
     private backend: JobBackend,
     protected readonly jobInfo: JobDescriptor<Args> | JobInfo<Args>,
   ) {
@@ -89,7 +85,7 @@ export class DefaultJob<Args extends JobArgs = JobArgs> implements Job<Args> {
       worker.abortSignal.throwIfAborted();
       worker.abortSignal.addEventListener('abort', abortEventHandler);
 
-      const task = this.taskReader.getTask(this.taskName);
+      const task = worker.getTask(this.taskName);
       const result = await task.handle(this, worker);
       await this.markSucceeded(result ?? {});
     } catch (error: any) {

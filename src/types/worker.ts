@@ -1,4 +1,5 @@
-import { type JobId } from './job.js';
+import { type JobArgs, type JobId, type RunningJob } from './job.js';
+import { type Task } from './task.js';
 
 export interface Worker {
   /**
@@ -43,6 +44,11 @@ export interface Worker {
    * Provides an abort signal to indicate that the worker is supposed to terminate.
    */
   get abortSignal(): AbortSignal;
+
+  /**
+   * Returns the given task (throws if it doesn't exist)
+   */
+  getTask(taskName: string): Task<RunningJob<JobArgs>>;
 
   /**
    * Register this worker in the backend (if not yet registered, otherwise just update its data).

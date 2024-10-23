@@ -1,5 +1,7 @@
 import { type WorkerBackend, type WorkerInboxOptions, type WorkerRegistrationOptions } from './types/backend.js';
+import { type JobArgs, type RunningJob } from './types/job.js';
 import { type QueueReader } from './types/queue.js';
+import { type Task, type TaskManager } from './types/task.js';
 import {
   type Worker,
   type WorkerCommandHandler,
@@ -47,6 +49,7 @@ export class DefaultWorker implements Worker {
 
   constructor(
     protected queueReader: QueueReader,
+    protected taskManager: TaskManager<RunningJob<JobArgs>>,
     protected backend: WorkerBackend,
     protected _config: WorkerConfig,
     metadata: Record<string, any>,
@@ -161,6 +164,10 @@ export class DefaultWorker implements Worker {
 
   get abortSignal(): AbortSignal {
     return this.abortController.signal;
+  }
+
+  getTask(taskName: string): Task<RunningJob<JobArgs>> {
+    return this.taskManager.getTask(taskName);
   }
 
   async register(): Promise<this> {

@@ -1,4 +1,4 @@
-import { RunningJob, type JobArgs } from './types/job.js';
+import { type JobArgs, type RunningJob } from './types/job.js';
 import { type Task, type TaskManager } from './types/task.js';
 
 export class DefaultTaskManager<TaskJob extends RunningJob<JobArgs>> implements TaskManager<TaskJob> {
@@ -13,7 +13,9 @@ export class DefaultTaskManager<TaskJob extends RunningJob<JobArgs>> implements 
   }
 
   getTask(taskName: string): Task<TaskJob> {
-    if (!this.tasks.has(taskName)) throw new Error(`Unknown task ${taskName}`);
+    if (!this.tasks.has(taskName)) {
+      throw new Error(`Unknown task ${taskName}`);
+    }
     return this.tasks.get(taskName)!;
   }
 }

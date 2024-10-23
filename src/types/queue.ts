@@ -13,7 +13,7 @@ import {
   type QueueJobStatistics,
   type RunningJob,
 } from './job.js';
-import { TaskHandlerFunction, type Task } from './task.js';
+import { type Task, type TaskHandlerFunction } from './task.js';
 import {
   type ListWorkersOptions,
   type Worker,

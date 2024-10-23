@@ -39,9 +39,21 @@ export interface JobEnqueueOptions {
   expireIn?: number;
 }
 
+/**
+ * Options used when retrieving a new job for execution
+ */
 export interface JobDequeueOptions {
+  /**
+   * Pick this specific job
+   */
   id?: JobId;
-  queueNames: string[];
+  /**
+   * Select a job from the given queue(s)
+   */
+  queueName: string | string[];
+  /**
+   * Select a job of at least this priority
+   */
   minPriority?: number;
 }
 

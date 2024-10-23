@@ -77,13 +77,6 @@ export interface Queue<BaseJob extends Job<JobArgs> = Job<JobArgs>>
   getJobs<ArgsJob extends BaseJob = BaseJob>(options: ListJobsOptions): Promise<ArgsJob[]>;
 
   /**
-   * Get job data or return `null` if job does not exist.
-   */
-  getJobInfo<Args extends InferJobArgs<BaseJob> = InferJobArgs<BaseJob>>(
-    jobId: JobId,
-  ): Promise<JobInfo<Args> | undefined>;
-
-  /**
    * Return iterator object to safely iterate through job information as returned by the backend.
    */
   listJobInfos<Args extends InferJobArgs<BaseJob> = InferJobArgs<BaseJob>>(

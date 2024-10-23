@@ -117,7 +117,7 @@ export class DefaultQueue<BaseJob extends Job<JobArgs> = Job<JobArgs>> extends E
   }
 
   async getJob<ResultJob extends BaseJob = BaseJob>(id: JobId): Promise<ResultJob | null> {
-    const info = await this.getJobInfo<InferJobArgs<ResultJob>>(id);
+    const info = await this.backend.getJobInfo<InferJobArgs<ResultJob>>(id);
     if (info === undefined) return null;
     return this.createJobObject<ResultJob>(info);
   }
@@ -134,12 +134,6 @@ export class DefaultQueue<BaseJob extends Job<JobArgs> = Job<JobArgs>> extends E
     jobInfo: JobDescriptor<InferJobArgs<ResultJob>> | JobInfo<InferJobArgs<ResultJob>>,
   ): ResultJob {
     return new DefaultJob<InferJobArgs<ResultJob>>(this.backend, jobInfo) as unknown as ResultJob;
-  }
-
-  async getJobInfo<Args extends InferJobArgs<BaseJob> = InferJobArgs<BaseJob>>(
-    jobId: JobId,
-  ): Promise<JobInfo<Args> | undefined> {
-    return await this.backend.getJobInfo<Args>(jobId);
   }
 
   listJobInfos<Args extends InferJobArgs<BaseJob> = InferJobArgs<BaseJob>>(
@@ -335,7 +329,7 @@ export class DefaultQueue<BaseJob extends Job<JobArgs> = Job<JobArgs>> extends E
   ) {
     const rerun = () => this.waitForResult(jobId, interval, signal, resolve, reject);
     try {
-      const info = await this.getJobInfo(jobId);
+      const info = await this.backend.getJobInfo(jobId);
       if (info === undefined) {
         resolve(null);
       } else if (info.state === JobState.Succeeded) {

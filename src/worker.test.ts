@@ -53,7 +53,7 @@ t.test('Worker', skip, async (t) => {
 
     const result = (await queue.getJobResult(job.id, { interval: 500 }))!;
     t.same(result, { success: true });
-    const info = (await queue.getJobInfo(job.id))!;
+    const info = (await job.getInfo())!;
     t.equal(info.state, JobState.Succeeded);
     t.same(info.metadata, { test: 'pass' });
 

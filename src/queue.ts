@@ -140,7 +140,7 @@ export class DefaultQueue<BaseJob extends Job<JobArgs> = Job<JobArgs>> extends E
     options: ListJobsOptions = {},
     chunkSize: number = 10,
   ): BackendIterator<JobInfo<Args>> {
-    return new BackendIterator<JobInfo<Args>>(this.backend, 'jobs', options, { chunkSize });
+    return new BackendIterator<JobInfo<Args>>('jobs', this.backend, options, { chunkSize });
   }
 
   async getJobStatistics(): Promise<QueueJobStatistics> {
@@ -212,7 +212,7 @@ export class DefaultQueue<BaseJob extends Job<JobArgs> = Job<JobArgs>> extends E
       state: [WorkerState.Online, WorkerState.Idle, WorkerState.Busy],
       ...options,
     };
-    return new BackendIterator<WorkerInfo>(this.backend, 'workers', _options, { chunkSize });
+    return new BackendIterator<WorkerInfo>('workers', this.backend, _options, { chunkSize });
   }
 
   async sendWorkerCommand(command: string, arg: WorkerCommandArg, options?: ListWorkersOptions): Promise<boolean> {

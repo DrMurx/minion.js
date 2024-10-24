@@ -1,4 +1,4 @@
-import { type Backend } from '../types/backend.js';
+import { type IteratorBackend } from '../types/backend.js';
 import { type ListJobsOptions } from '../types/job.js';
 import { type ListWorkersOptions } from '../types/worker.js';
 
@@ -21,8 +21,8 @@ export class BackendIterator<T> {
   private cache: T[] = [];
 
   constructor(
-    private backend: Backend,
     private name: BackendIteratorType,
+    private backend: IteratorBackend,
     options: ListJobsOptions | ListWorkersOptions,
     private iteratorOptions: IteratorOptions,
   ) {

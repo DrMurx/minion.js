@@ -97,7 +97,7 @@ export type WorkerPruneResult = {
   lostWorkers: WorkerInfo[];
 };
 
-export interface Backend extends QueueBackend, JobBackend, WorkerBackend, EventEmitter {
+export interface Backend extends QueueBackend, IteratorBackend, JobBackend, WorkerBackend, EventEmitter {
   name: string;
 
   /**
@@ -157,7 +157,9 @@ export interface QueueBackend {
    * Get history information for job queue.
    */
   getJobHistory(): Promise<any>;
+}
 
+export interface IteratorBackend {
   /**
    * Returns the information about jobs in batches.
    */
@@ -166,6 +168,11 @@ export interface QueueBackend {
     limit: number,
     options: ListJobsOptions,
   ): Promise<JobInfoList<Args>>;
+
+  /**
+   * Returns information about workers in batches.
+   */
+  getWorkerInfos(offset: number, limit: number, options: ListWorkersOptions): Promise<WorkerInfoList>;
 }
 
 /**
@@ -254,9 +261,4 @@ export interface WorkerBackend {
    * Returns information about a worker.
    */
   getWorkerInfo(id: WorkerId): Promise<WorkerInfo | undefined>;
-
-  /**
-   * Returns information about workers in batches.
-   */
-  getWorkerInfos(offset: number, limit: number, options: ListWorkersOptions): Promise<WorkerInfoList>;
 }

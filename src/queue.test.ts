@@ -181,20 +181,12 @@ t.test('Queue with PostgreSQL backend', skip, async (t) => {
     await worker.assignNextJob().then((job) => job!.perform(worker));
     await worker.assignNextJob().then((job) => job!.perform(worker));
 
-    const result1 = await pool.query(
-      `SELECT EXTRACT(EPOCH FROM finished_at) AS finished_at FROM ${JOB_TABLE} WHERE id = $1`,
-      [addedJob2.id],
-    );
-    const finishedAt1 = result1.rows[0].finished_at;
+    const finishedAt1 = (await addedJob2.getInfo())!.finishedAt!.getMilliseconds();
     await pool.query(`UPDATE ${JOB_TABLE} SET finished_at = TO_TIMESTAMP($1) WHERE id = $2`, [
       finishedAt1 - (DefaultQueue.DEFAULT_OPTIONS.jobExpungePeriod + 1),
       addedJob2.id,
     ]);
-    const result2 = await pool.query(
-      `SELECT EXTRACT(EPOCH FROM finished_at) AS finished_at FROM ${JOB_TABLE} WHERE id = $1`,
-      [addedJob3.id],
-    );
-    const finishedAt2 = result2.rows[0].finished_at;
+    const finishedAt2 = (await addedJob3.getInfo())!.finishedAt!.getMilliseconds();
     await pool.query(`UPDATE ${JOB_TABLE} SET finished_at = TO_TIMESTAMP($1) WHERE id = $2`, [
       finishedAt2 - (DefaultQueue.DEFAULT_OPTIONS.jobExpungePeriod + 1),
       addedJob3.id,
@@ -217,21 +209,9 @@ t.test('Queue with PostgreSQL backend', skip, async (t) => {
     const addedJob4 = await queue.addJob('test', { delayFor: 1000 });
 
     const unattendedPeriod = DefaultQueue.DEFAULT_OPTIONS.jobUnattendedPeriod + 1;
-    await pool.query(`UPDATE ${JOB_TABLE} SET delay_until = NOW() - $1 * INTERVAL '1 second' WHERE id = $2`, [
+    await pool.query(`UPDATE ${JOB_TABLE} SET delay_until = NOW() - $1 * INTERVAL '1 second' WHERE id = ANY ($2)`, [
       unattendedPeriod,
-      addedJob1.id,
-    ]);
-    await pool.query(`UPDATE ${JOB_TABLE} SET delay_until = NOW() - $1 * INTERVAL '1 second' WHERE id = $2`, [
-      unattendedPeriod,
-      addedJob2.id,
-    ]);
-    await pool.query(`UPDATE ${JOB_TABLE} SET delay_until = NOW() - $1 * INTERVAL '1 second' WHERE id = $2`, [
-      unattendedPeriod,
-      addedJob3.id,
-    ]);
-    await pool.query(`UPDATE ${JOB_TABLE} SET delay_until = NOW() - $1 * INTERVAL '1 second' WHERE id = $2`, [
-      unattendedPeriod,
-      addedJob4.id,
+      [addedJob1.id, addedJob2.id, addedJob3.id, addedJob4.id],
     ]);
 
     const job1 = (await worker.assignNextJob(0, { id: addedJob4.id }))!;

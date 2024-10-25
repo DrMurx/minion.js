@@ -1,6 +1,7 @@
 import EventEmitter from 'events';
 import { BackendIterator } from './backends/iterator.js';
 import { DefaultJob } from './job.js';
+import { QueuePruner } from './queue/pruner.js';
 import { DefaultTaskManager } from './task-manager.js';
 import { type Backend, type JobDequeueOptions, type JobEnqueueOptions } from './types/backend.js';
 import {
@@ -19,7 +20,7 @@ import {
   type RunningJob,
   unsuccessfulJobStates,
 } from './types/job.js';
-import { type PruneOptions, type Queue, type QueueOptions, type QueueStats } from './types/queue.js';
+import { type PruneOptions, type Queue, QueueEvents, type QueueOptions, type QueueStats } from './types/queue.js';
 import { isTask, type Task, type TaskHandlerFunction, type TaskManager } from './types/task.js';
 import {
   type ListWorkersOptions,
@@ -36,7 +37,10 @@ import { DefaultWorker } from './worker.js';
 /**
  * Job queue class.
  */
-export class DefaultQueue<BaseJob extends Job<JobArgs> = Job<JobArgs>> extends EventEmitter implements Queue<BaseJob> {
+export class DefaultQueue<BaseJob extends Job<JobArgs> = Job<JobArgs>>
+  extends EventEmitter<QueueEvents<BaseJob>>
+  implements Queue<BaseJob>
+{
   public static readonly DEFAULT_OPTIONS = Object.freeze(<QueueOptions>{
     queueNames: Object.freeze(['default']),
     pruneInterval: 5 * 60 * 1000,
@@ -50,8 +54,7 @@ export class DefaultQueue<BaseJob extends Job<JobArgs> = Job<JobArgs>> extends E
   protected taskManager: TaskManager<RunningJob<InferJobArgs<BaseJob>>> = new DefaultTaskManager<
     RunningJob<InferJobArgs<BaseJob>>
   >();
-  private pruneScheduler: NodeJS.Timeout | undefined;
-  private lastPruneAt: number = 0;
+  protected pruner: QueuePruner;
 
   /**
    * @param backend
@@ -66,7 +69,17 @@ export class DefaultQueue<BaseJob extends Job<JobArgs> = Job<JobArgs>> extends E
     if (!Array.isArray(this.options.queueNames) || this.options.queueNames.length === 0) {
       throw new Error('No queue names given');
     }
-    this.scheduleNextPrune();
+    this.pruner = new QueuePruner(this, this, this.backend, this.options.pruneInterval, this.options);
+  }
+
+  async start(): Promise<void> {
+    await this.backend.updateSchema();
+    this.pruner.start();
+  }
+
+  async stop(): Promise<void> {
+    await this.pruner.stop();
+    await this.backend.end();
   }
 
   async addJob<AddedJob extends BaseJob = BaseJob>(
@@ -224,77 +237,7 @@ export class DefaultQueue<BaseJob extends Job<JobArgs> = Job<JobArgs>> extends E
   }
 
   async prune(extraOptions: Partial<PruneOptions> = {}): Promise<boolean> {
-    return await this.performPruneRun(true, extraOptions);
-  }
-
-  /**
-   * Flag to indicate that the pruning scheduler is active.
-   */
-  protected get pruneSchedulerActive(): boolean {
-    return this.pruneScheduler !== undefined;
-  }
-
-  /**
-   * Schedules a prune in 60 seconds. An existing prune timer will be cleared.
-   */
-  protected scheduleNextPrune() {
-    clearTimeout(this.pruneScheduler);
-    this.pruneScheduler = setTimeout(async () => {
-      await this.performPruneRun(false).catch((e) => console.error(e));
-    }, 60 * 1000);
-  }
-
-  protected get needsPrune(): boolean {
-    return this.lastPruneAt + this.options.pruneInterval < Date.now();
-  }
-
-  protected async performPruneRun(force: boolean, extraOptions: Partial<PruneOptions> = {}): Promise<boolean> {
-    try {
-      if (!force && !this.needsPrune) return false;
-
-      const options = { ...this.options, ...extraOptions };
-
-      const { lostWorkers } = await this.backend.pruneWorkers(options.workerLostTimeout);
-      if (this.listenerCount('worker_lost') > 0) {
-        for (const lostWorker of lostWorkers) {
-          this.emit('worker_lost', { worker: lostWorker });
-        }
-      }
-
-      const { expiredJobs, expungedJobs, abandonedJobs, unattendedJobs } = await this.backend.pruneJobs<
-        BaseJob extends Job<infer A> ? A : never
-      >(options.jobUnattendedPeriod, options.jobExpungePeriod, [DefaultWorker.FOREGROUND_QUEUE]);
-      if (this.listenerCount('job_expired') > 0) {
-        for (const job of expiredJobs) {
-          this.emit('job_expired', { job });
-        }
-      }
-      if (this.listenerCount('job_expunged') > 0) {
-        for (const job of expungedJobs) {
-          this.emit('job_expunged', { job });
-        }
-      }
-      if (this.listenerCount('job_abandoned') > 0) {
-        for (const job of abandonedJobs) {
-          this.emit('job_abandoned', { job });
-        }
-      }
-      if (this.listenerCount('job_unattended') > 0) {
-        for (const job of unattendedJobs) {
-          this.emit('job_unattended', { job });
-        }
-      }
-
-      for (const jobDescriptor of abandonedJobs) {
-        const job = this.createJobObject(jobDescriptor);
-        await job.retryFailed();
-      }
-
-      this.lastPruneAt = Date.now();
-      return lostWorkers.length > 0 || expiredJobs.length > 0;
-    } finally {
-      if (this.pruneSchedulerActive) this.scheduleNextPrune();
-    }
+    return await this.pruner.perform(true, extraOptions);
   }
 
   async getStatistics(): Promise<QueueStats> {
@@ -306,18 +249,8 @@ export class DefaultQueue<BaseJob extends Job<JobArgs> = Job<JobArgs>> extends E
     return stats;
   }
 
-  async updateSchema(): Promise<void> {
-    await this.backend.updateSchema();
-  }
-
   async resetQueue(): Promise<void> {
     await this.backend.reset();
-  }
-
-  async end(): Promise<void> {
-    clearTimeout(this.pruneScheduler);
-    this.pruneScheduler = undefined;
-    await this.backend.end();
   }
 
   protected async waitForResult(

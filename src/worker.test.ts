@@ -18,7 +18,7 @@ t.test('Worker', skip, async (t) => {
 
   const backend: Backend = new PgBackend(pool);
   const queue: Queue = new DefaultQueue(backend);
-  await queue.updateSchema();
+  await queue.start();
 
   // Register at least a simple task for further tests
   queue.registerTask('test', async (job) => {
@@ -106,7 +106,7 @@ t.test('Worker', skip, async (t) => {
     t.notOk(await queue.sendWorkerCommand('test_id'));
   });
 
-  await queue.end();
+  await queue.stop();
 
   // Clean up once we are done
   await pool.query('DROP SCHEMA queue_worker_test CASCADE');

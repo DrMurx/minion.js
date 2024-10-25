@@ -20,7 +20,7 @@ t.test('Queue with PostgreSQL backend', skip, async (t) => {
 
   const backend: Backend = new PgBackend(pool);
   const queue: Queue = new DefaultQueue(backend);
-  await queue.updateSchema();
+  await queue.start();
 
   // Register at some simple tasks for further tests
   queue.registerTask(
@@ -1142,7 +1142,7 @@ t.test('Queue with PostgreSQL backend', skip, async (t) => {
     t.match(info5.result, { message: /Intentional failure/ });
   });
 
-  await queue.end();
+  await queue.stop();
 
   // Clean up once we are done
   await pool.query('DROP SCHEMA queue_test CASCADE');

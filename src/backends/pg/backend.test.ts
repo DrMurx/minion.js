@@ -19,7 +19,7 @@ t.test('PostgreSQL backend', skip, async (t) => {
 
   const backend: Backend = new PgBackend(pool);
   const queue: Queue = new DefaultQueue(backend);
-  await queue.updateSchema();
+  await queue.start();
 
   // Register at some simple tasks for further tests
   queue.registerTask('test', async () => {
@@ -157,7 +157,7 @@ t.test('PostgreSQL backend', skip, async (t) => {
     t.notOk(batch8[1]);
   });
 
-  await queue.end();
+  await queue.stop();
 
   // Clean up once we are done
   await pool.query('DROP SCHEMA queue_backend_test CASCADE');

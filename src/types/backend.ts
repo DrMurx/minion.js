@@ -101,21 +101,6 @@ export interface Backend extends QueueBackend, IteratorBackend, JobBackend, Work
   name: string;
 
   /**
-   * Prune workers without heartbeat after the given timeout
-   */
-  pruneWorkers(listTimeout: number): Promise<WorkerPruneResult>;
-
-  /**
-   * Broadcast remote control command to one or more workers.
-   */
-  sendWorkerCommand(command: string, arg: WorkerCommandArg, options: ListWorkersOptions): Promise<boolean>;
-
-  /**
-   * Get statistics for the job queue.
-   */
-  getStats(): Promise<any>;
-
-  /**
    * Update storage schemas to latest version.
    */
   updateSchema(): Promise<void>;
@@ -154,9 +139,24 @@ export interface QueueBackend {
   ): Promise<JobPruneResult<Args>>;
 
   /**
+   * Prune workers without heartbeat after the given timeout
+   */
+  pruneWorkers(listTimeout: number): Promise<WorkerPruneResult>;
+
+  /**
+   * Broadcast remote control command to one or more workers.
+   */
+  sendWorkerCommand(command: string, arg: WorkerCommandArg, options: ListWorkersOptions): Promise<boolean>;
+
+  /**
    * Get history information for job queue.
    */
   getJobHistory(): Promise<any>;
+
+  /**
+   * Get statistics for the job queue.
+   */
+  getStats(): Promise<any>;
 }
 
 export interface IteratorBackend {

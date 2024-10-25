@@ -1,6 +1,8 @@
+import type EventEmitter from 'events';
 import { type BackendIterator } from '../backends/iterator.js';
 import { type JobDequeueOptions } from './backend.js';
 import {
+  JobError,
   type InferJobArgs,
   type Job,
   type JobAddOptions,
@@ -30,7 +32,18 @@ export interface Queue<BaseJob extends Job<JobArgs> = Job<JobArgs>>
   extends JobFactory<BaseJob>,
     JobExecutor,
     WorkerManager<BaseJob>,
-    StatsReader {
+    StatsReader,
+    EventEmitter<QueueEvents<BaseJob>> {
+  /**
+   * Starts the queue and ensure that backend schema is updated to the latest version.
+   */
+  start(): Promise<void>;
+
+  /**
+   * Release all resources and stop using the queue.
+   */
+  stop(): Promise<void>;
+
   /**
    * Enqueue a new job with `pending` or `scheduled` state. Arguments can only be simple scalars, maps or arrays.
    * @param options.queueName     - Queue to put job in, defaults to the first queueName given to the `Queue`.
@@ -103,19 +116,9 @@ export interface Queue<BaseJob extends Job<JobArgs> = Job<JobArgs>>
   prune(extraOptions?: Partial<PruneOptions>): Promise<boolean>;
 
   /**
-   * Ensure that backend schema is updated to the latest version.
-   */
-  updateSchema(): Promise<void>;
-
-  /**
    * Reset job queue.
    */
   resetQueue(): Promise<void>;
-
-  /**
-   * Stop using the queue.
-   */
-  end(): Promise<void>;
 }
 
 export interface JobExecutor {
@@ -184,6 +187,17 @@ export interface PruneOptions {
    * `unattended` state.
    */
   jobUnattendedPeriod: number;
+}
+
+export interface QueueEvents<BaseJob extends Job<JobArgs>> {
+  job_started: [{ job: JobDescriptor<InferJobArgs<BaseJob>> }];
+  job_succeeded: [{ job: JobDescriptor<InferJobArgs<BaseJob>>; result: JobResult }];
+  job_failed: [{ job: JobDescriptor<InferJobArgs<BaseJob>>; result: JobError }];
+  job_expired: [{ job: JobDescriptor<InferJobArgs<BaseJob>> }];
+  job_expunged: [{ job: JobDescriptor<InferJobArgs<BaseJob>> }];
+  job_abandoned: [{ job: JobDescriptor<InferJobArgs<BaseJob>> }];
+  job_unattended: [{ job: JobDescriptor<InferJobArgs<BaseJob>> }];
+  worker_lost: [{ worker: Worker<BaseJob> }];
 }
 
 export interface QueueStats {

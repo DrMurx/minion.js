@@ -27,7 +27,7 @@ export class WorkerLoop extends EventEmitter {
   /**
    * `true` is a stop of this queue has been requested.
    */
-  get isStopping(): boolean {
+  protected get isStopping(): boolean {
     return this.stopPromises.length > 0;
   }
 

@@ -7,7 +7,6 @@ import { JobState } from './types/job.js';
 import { type Queue } from './types/queue.js';
 import { type Task } from './types/task.js';
 import { WorkerState } from './types/worker.js';
-import { DefaultWorker } from './worker.js';
 
 const skip = process.env.TEST_ONLINE === undefined ? { skip: 'set TEST_ONLINE to enable this test' } : {};
 
@@ -158,14 +157,14 @@ t.test('Queue with PostgreSQL backend', skip, async (t) => {
 
   await t.test('Repair abandoned job in foreground queue (have to be handled manually)', async (t) => {
     const worker = await queue.getNewWorker().register();
-    const addedJob1 = await queue.addJob('test', {}, { queueName: DefaultWorker.FOREGROUND_QUEUE });
-    const job = (await worker.assignNextJob(0, { queueNames: [DefaultWorker.FOREGROUND_QUEUE] }))!;
+    const addedJob1 = await queue.addJob('test', {}, { queueName: backend.FOREGROUND_QUEUE });
+    const job = (await worker.assignNextJob(0, { queueNames: [backend.FOREGROUND_QUEUE] }))!;
     t.equal(job.id, addedJob1.id);
     await worker.unregister();
     await queue.prune();
     const info = (await job.getInfo())!;
     t.equal(info.state, JobState.Running);
-    t.equal(info.queueName, DefaultWorker.FOREGROUND_QUEUE);
+    t.equal(info.queueName, backend.FOREGROUND_QUEUE);
     t.same(info.result, null);
   });
 
@@ -1103,21 +1102,21 @@ t.test('Queue with PostgreSQL backend', skip, async (t) => {
     t.equal(info1.attempt, 1);
     t.ok(await queue.runJob(addedJob1.id));
     const info2 = (await queue.getJob(addedJob1.id).then((job) => job!.getInfo()))!;
-    t.equal(info2.queueName, DefaultWorker.FOREGROUND_QUEUE);
+    t.equal(info2.queueName, backend.FOREGROUND_QUEUE);
     t.equal(info2.state, JobState.Succeeded);
     t.equal(info2.maxAttempts, 3);
     t.equal(info2.attempt, 2);
 
     t.ok(await queue.runJob(addedJob2.id));
     const info3 = (await queue.getJob(addedJob2.id).then((job) => job!.getInfo()))!;
-    t.equal(info3.queueName, DefaultWorker.FOREGROUND_QUEUE);
+    t.equal(info3.queueName, backend.FOREGROUND_QUEUE);
     t.equal(info3.state, JobState.Succeeded);
     t.equal(info3.maxAttempts, 2);
     t.equal(info3.attempt, 2);
 
     t.ok(await queue.runJob(addedJob3.id));
     const info4 = (await queue.getJob(addedJob3.id).then((job) => job!.getInfo()))!;
-    t.equal(info4.queueName, DefaultWorker.FOREGROUND_QUEUE);
+    t.equal(info4.queueName, backend.FOREGROUND_QUEUE);
     t.equal(info4.state, JobState.Succeeded);
     t.equal(info4.maxAttempts, 3);
     t.equal(info4.attempt, 3);
@@ -1138,7 +1137,7 @@ t.test('Queue with PostgreSQL backend', skip, async (t) => {
     t.equal(info5.maxAttempts, 2);
     t.equal(info5.attempt, 2);
     t.equal(info5.state, JobState.Failed);
-    t.equal(info5.queueName, DefaultWorker.FOREGROUND_QUEUE);
+    t.equal(info5.queueName, backend.FOREGROUND_QUEUE);
     t.match(info5.result, { message: /Intentional failure/ });
   });
 

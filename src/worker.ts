@@ -23,8 +23,6 @@ import { WorkerLoop } from './worker/loop.js';
  * Default worker class.
  */
 export class DefaultWorker<BaseJob extends Job<JobArgs>> implements Worker<BaseJob> {
-  public static readonly FOREGROUND_QUEUE = '_foreground_queue';
-
   public static readonly DEFAULT_CONFIG = Object.freeze(<Partial<WorkerConfig>>{
     concurrency: 1,
     prefetchJobs: 0,

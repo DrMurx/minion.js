@@ -1,8 +1,7 @@
 import EventEmitter from 'events';
 import { WorkerPruneResult, type Backend, type JobPruneResult } from '../types/backend.js';
-import { type JobFactory, type PruneOptions } from '../types/queue.js';
-import { DefaultWorker } from '../worker.js';
 import { type JobDescriptor } from '../types/job.js';
+import { type JobFactory, type PruneOptions } from '../types/queue.js';
 
 export class QueuePruner {
   private enabled: boolean = false;
@@ -59,11 +58,7 @@ export class QueuePruner {
 
         const options = { ...this.options, ...extraOptions };
         const workerPruneResult = await this.backend.pruneWorkers(options.workerLostTimeout);
-        const jobPruneResult = await this.backend.pruneJobs<any>(
-          options.jobUnattendedPeriod,
-          options.jobExpungePeriod,
-          [DefaultWorker.FOREGROUND_QUEUE],
-        );
+        const jobPruneResult = await this.backend.pruneJobs<any>(options.jobUnattendedPeriod, options.jobExpungePeriod);
         this.sendPruneNotifications(workerPruneResult, jobPruneResult);
         await this.retryFailed(jobPruneResult.abandonedJobs);
 

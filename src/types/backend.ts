@@ -98,7 +98,8 @@ export type WorkerPruneResult = {
 };
 
 export interface Backend extends QueueBackend, IteratorBackend, JobBackend, WorkerBackend, EventEmitter {
-  name: string;
+  readonly FOREGROUND_QUEUE: string;
+  readonly name: string;
 
   /**
    * Update storage schemas to latest version.
@@ -132,11 +133,7 @@ export interface QueueBackend {
    * 3. Mark `running` jobs of `lost` workers as `abandoned`.
    * 4. Mark `pending` jobs that are overdue as `unattended`.
    */
-  pruneJobs<Args extends JobArgs>(
-    unattendedPeriod: number,
-    expungePeriod: number,
-    excludeQueues: string[],
-  ): Promise<JobPruneResult<Args>>;
+  pruneJobs<Args extends JobArgs>(unattendedPeriod: number, expungePeriod: number): Promise<JobPruneResult<Args>>;
 
   /**
    * Prune workers without heartbeat after the given timeout

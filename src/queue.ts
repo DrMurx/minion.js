@@ -161,7 +161,7 @@ export class DefaultQueue<BaseJob extends Job<JobArgs> = Job<JobArgs>>
   }
 
   async runJob(jobId: number): Promise<boolean> {
-    const queueName = DefaultWorker.FOREGROUND_QUEUE;
+    const queueName = this.backend.FOREGROUND_QUEUE;
     let job = await this.getJob(jobId);
     if (job === null) return false;
     if ((await job.retry({ queueName, maxAttempts: job.maxAttempts + 1 })) !== true) return false;

@@ -162,13 +162,13 @@ export class DefaultQueue<BaseJob extends Job<JobArgs> = Job<JobArgs>>
 
   async runJob(jobId: number): Promise<boolean> {
     const queueName = this.backend.FOREGROUND_QUEUE;
-    let job = await this.getJob(jobId);
-    if (job === null) return false;
-    if ((await job.retry({ queueName, maxAttempts: job.maxAttempts + 1 })) !== true) return false;
+    const jobCtrl = await this.getJob(jobId);
+    if (jobCtrl === null) return false;
+    if ((await jobCtrl.retry({ queueName, maxAttempts: jobCtrl.maxAttempts + 1 })) !== true) return false;
 
     const worker = await this.getNewWorker({ config: { queueNames: [queueName] } }).register();
     try {
-      job = await worker.assignNextJob<BaseJob>(0, { id: jobId });
+      const job = await worker.assignNextJob(0, { id: jobId });
       if (job === null) return false;
       await job.perform(worker, true);
       return true;
@@ -180,8 +180,10 @@ export class DefaultQueue<BaseJob extends Job<JobArgs> = Job<JobArgs>>
   async runJobs(options?: JobDequeueOptions): Promise<void> {
     const worker = await this.getNewWorker().register();
     try {
-      let job: Job<JobArgs> | null;
-      while ((job = await worker.heartbeat().then((worker) => worker.assignNextJob(0, options)))) {
+      while (true) {
+        await worker.heartbeat();
+        const job = await worker.assignNextJob(0, options);
+        if (!job) break;
         await job.perform(worker);
       }
     } finally {

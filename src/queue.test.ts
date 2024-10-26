@@ -848,6 +848,7 @@ t.test('Queue with PostgreSQL backend', skip, async (t) => {
     t.ok(await job1.retry());
     t.equal((await job1.getInfo())!.state, JobState.Pending);
     const job2 = (await worker.assignNextJob())!;
+    t.equal(job2.id, addedJob1.id);
     t.equal((await job2.getInfo())!.state, JobState.Running);
     t.notOk(await job1.markSucceeded());
     t.equal((await job2.getInfo())!.state, JobState.Running);

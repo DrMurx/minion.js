@@ -21,6 +21,7 @@ export class DefaultJob<Args extends JobArgs = JobArgs> implements Job<Args> {
 
   private _worker: RunningWorker<RunningJob<Args>> | null = null;
   private _abortController: AbortController = new AbortController();
+  private jobInfo: JobDescriptor<Args>;
 
   /**
    * @param backend Queue backend
@@ -28,10 +29,14 @@ export class DefaultJob<Args extends JobArgs = JobArgs> implements Job<Args> {
    */
   constructor(
     private backend: JobBackend,
-    protected readonly jobInfo: JobDescriptor<Args> | JobInfo<Args>,
+    jobInfo: JobDescriptor<Args> | JobInfo<Args>,
   ) {
+    this.jobInfo = { ...jobInfo };
     if ('state' in jobInfo) {
       this._state = jobInfo.state;
+    }
+    if ('progress' in jobInfo) {
+      this._progress = jobInfo.progress;
     }
   }
 
@@ -133,7 +138,8 @@ export class DefaultJob<Args extends JobArgs = JobArgs> implements Job<Args> {
   }
 
   async retry(options: JobRetryOptions = {}): Promise<boolean> {
-    return await this.backend.retryJob(this.id, this.attempt, options);
+    const jobInfo = await this.backend.retryJob<Args>(this.id, this.attempt, options);
+    return !!jobInfo;
   }
 
   async retryFailed(): Promise<boolean> {

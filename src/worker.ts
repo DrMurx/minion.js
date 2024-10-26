@@ -132,14 +132,14 @@ export class DefaultWorker<BaseJob extends Job<JobArgs>> implements Worker<BaseJ
   async start(): Promise<this> {
     if (!this.workerLoop) {
       this.abortController = new AbortController();
-      this.workerLoop = new WorkerLoop(this);
-      this.workerLoop.on('finished', (finished) => (this.finishedJobCount += finished));
+      const workerLoop = (this.workerLoop = new WorkerLoop(this));
+      workerLoop.on('finished', (finished) => (this.finishedJobCount += finished));
 
       await this.register();
       (async () => {
         try {
           this._state = WorkerState.Idle;
-          await this.workerLoop!.run();
+          await workerLoop.run();
         } catch (e) {
           console.log(e);
         } finally {
@@ -168,12 +168,7 @@ export class DefaultWorker<BaseJob extends Job<JobArgs>> implements Worker<BaseJ
       ...options,
     };
     const taskNames = this.taskManager.getTaskNames();
-    const dequeueJobInfo = await this.backend.assignNextJob<InferJobArgs<ResultJob>>(
-      this.id,
-      taskNames,
-      wait,
-      _options,
-    );
+    const dequeueJobInfo = await this.backend.assignNextJob<InferJobArgs<BaseJob>>(this.id, taskNames, wait, _options);
     return dequeueJobInfo === null ? null : this.jobFactory.createJobObject<ResultJob>(dequeueJobInfo);
   }
 

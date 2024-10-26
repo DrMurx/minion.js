@@ -129,9 +129,13 @@ export class PgBackend extends EventEmitter implements Backend {
     return results.rows[0].id;
   }
 
-  async retryJob(id: JobId, attempt: number, options: JobRetryOptions): Promise<boolean> {
+  async retryJob<Args extends JobArgs>(
+    id: JobId,
+    attempt: number,
+    options: JobRetryOptions,
+  ): Promise<JobDescriptor<Args> | undefined> {
     const delayFor = options.delayFor ?? 0;
-    const results = await this._pool.query(
+    const results = await this._pool.query<JobDescriptor<Args>>(
       `UPDATE ${JOB_TABLE} SET
         queue_name = COALESCE($1, queue_name),
         state = $2,
@@ -146,7 +150,7 @@ export class PgBackend extends EventEmitter implements Backend {
         expires_at = CASE WHEN $8::BIGINT IS NULL THEN expires_at ELSE NOW() + $8::BIGINT * INTERVAL '1 millisecond' END
       WHERE id = $9
         AND attempt = $10
-      RETURNING id, task_name AS "taskName", args, max_attempts AS "maxAttempts", attempt`,
+      RETURNING ${this.jobInfoSql}`,
       [
         options.queueName,
         delayFor <= 0 ? JobState.Pending : JobState.Scheduled,
@@ -161,7 +165,7 @@ export class PgBackend extends EventEmitter implements Backend {
       ],
     );
 
-    return (results.rowCount ?? 0) > 0 ? true : false;
+    return results.rows[0];
   }
 
   async cancelJob(id: JobId): Promise<boolean> {
@@ -205,7 +209,7 @@ export class PgBackend extends EventEmitter implements Backend {
     attempt: number,
     result: JobResult,
   ): Promise<boolean> {
-    const results = await this._pool.query<UpdateResult>(
+    const results = await this._pool.query(
       `UPDATE ${JOB_TABLE}
         SET result = $1,
             state = $2,
@@ -213,8 +217,7 @@ export class PgBackend extends EventEmitter implements Backend {
             finished_at = NOW()
       WHERE id = $4
         AND state = '${JobState.Running}'
-        AND attempt = $5
-      RETURNING max_attempts AS "maxAttempts"`,
+        AND attempt = $5`,
       [JSON.stringify(result), state, state === JobState.Succeeded ? 1.0 : null, jobId, attempt],
     );
 
@@ -282,7 +285,7 @@ export class PgBackend extends EventEmitter implements Backend {
         LIMIT 1
         FOR UPDATE SKIP LOCKED
       )
-      RETURNING id, task_name AS "taskName", args, max_attempts AS "maxAttempts", attempt`,
+      RETURNING ${this.jobDescriptorSql}`,
       [workerId, jobId, queueNames, taskNames, minPriority],
     );
     if ((results.rowCount ?? 0) <= 0) return null;
@@ -329,7 +332,7 @@ export class PgBackend extends EventEmitter implements Backend {
       `DELETE FROM ${JOB_TABLE}
       WHERE state IN ('${JobState.Pending}', '${JobState.Scheduled}')
         AND expires_at <= NOW()
-      RETURNING id, task_name AS "taskName", args, max_attempts AS "maxAttempts", attempt`,
+      RETURNING ${this.jobDescriptorSql}`,
     );
 
     // Delete `succeeded` jobs after the expunge period
@@ -337,7 +340,7 @@ export class PgBackend extends EventEmitter implements Backend {
       `DELETE FROM ${JOB_TABLE}
       WHERE state = '${JobState.Succeeded}'
         AND NOW() - finished_at >= $1 * INTERVAL '1 millisecond'
-      RETURNING id, task_name AS "taskName", args, max_attempts AS "maxAttempts", attempt`,
+      RETURNING ${this.jobDescriptorSql}`,
       [expungePeriod],
     );
 
@@ -347,7 +350,7 @@ export class PgBackend extends EventEmitter implements Backend {
         state = '${JobState.Unattended}'
       WHERE state IN ('${JobState.Pending}', '${JobState.Scheduled}')
         AND NOW() - delay_until > $1 * INTERVAL '1 millisecond'
-      RETURNING id, task_name AS "taskName", args, max_attempts AS "maxAttempts", attempt`,
+      RETURNING ${this.jobDescriptorSql}`,
       [unattendedPeriod],
     );
 
@@ -365,7 +368,7 @@ export class PgBackend extends EventEmitter implements Backend {
           WHERE id = j.worker_id
             AND state IN ('${WorkerState.Online}', '${WorkerState.Busy}', '${WorkerState.Idle}')
         )
-      RETURNING id, task_name AS "taskName", args, max_attempts AS "maxAttempts", attempt, worker_id AS "workerId"`,
+      RETURNING ${this.jobDescriptorSql}, worker_id AS "workerId"`,
       [JSON.stringify({ name: 'WorkerGoneError', message: 'Worker went away' }), [this.FOREGROUND_QUEUE]],
     );
 
@@ -383,34 +386,8 @@ export class PgBackend extends EventEmitter implements Backend {
   async getJobInfo<Args extends JobArgs>(jobId: JobId): Promise<JobInfo<Args> | undefined> {
     const results = await this._pool.query<JobInfoRow<Args>>(
       `SELECT
-        id,
-
-        task_name AS "taskName",
-        queue_name AS "queueName",
-        args,
-        result,
-
-        state,
-        priority,
-        progress,
-        max_attempts AS "maxAttempts",
-        attempt,
-
-        parent_job_ids AS "parentJobIds",
+        ${this.jobInfoSql},
         ARRAY(SELECT id FROM ${JOB_TABLE} WHERE parent_job_ids @> ARRAY[j.id]) AS "childJobIds",
-        lax_dependency AS "laxDependency",
-
-        worker_id AS "workerId",
-        metadata,
-
-        delay_until AS "delayUntil",
-        started_at AS "startedAt",
-        retried_at AS "retriedAt",
-        finished_at AS "finishedAt",
-
-        created_at AS "createdAt",
-        expires_at AS "expiresAt",
-
         NOW() AS "time",
         COUNT(*) OVER() AS "total"
       FROM ${JOB_TABLE} AS j
@@ -432,34 +409,8 @@ export class PgBackend extends EventEmitter implements Backend {
   ): Promise<JobInfoList<Args>> {
     const results = await this._pool.query<JobInfoRow<Args>>(
       `SELECT
-        id,
-
-        task_name AS "taskName",
-        queue_name AS "queueName",
-        args,
-        result,
-
-        state,
-        priority,
-        progress,
-        max_attempts AS "maxAttempts",
-        attempt,
-
-        parent_job_ids AS "parentJobIds",
+        ${this.jobInfoSql},
         ARRAY(SELECT id FROM ${JOB_TABLE} WHERE parent_job_ids @> ARRAY[j.id]) AS "childJobIds",
-        lax_dependency AS "laxDependency",
-
-        worker_id AS "workerId",
-        metadata,
-
-        delay_until AS "delayUntil",
-        started_at AS "startedAt",
-        retried_at AS "retriedAt",
-        finished_at AS "finishedAt",
-
-        created_at AS "createdAt",
-        expires_at AS "expiresAt",
-
         NOW() AS "time",
         COUNT(*) OVER() AS "total"
       FROM ${JOB_TABLE} AS j
@@ -745,6 +696,44 @@ export class PgBackend extends EventEmitter implements Backend {
   async end(): Promise<void> {
     if (this.autoclosePool) await this._pool.end();
   }
+
+  protected get jobInfoSql() {
+    return `id,
+
+      task_name AS "taskName",
+      queue_name AS "queueName",
+      args,
+      result,
+
+      state,
+      priority,
+      progress,
+      max_attempts AS "maxAttempts",
+      attempt,
+
+      parent_job_ids AS "parentJobIds",
+      lax_dependency AS "laxDependency",
+
+      worker_id AS "workerId",
+      metadata,
+
+      delay_until AS "delayUntil",
+      started_at AS "startedAt",
+      retried_at AS "retriedAt",
+      finished_at AS "finishedAt",
+
+      created_at AS "createdAt",
+      expires_at AS "expiresAt"`;
+  }
+  protected get jobDescriptorSql() {
+    return `id,
+
+      task_name AS "taskName",
+      args,
+
+      max_attempts AS "maxAttempts",
+      attempt`;
+  }
 }
 
 function removeTotal<T extends Array<{ total?: number }>>(results: T): number {
@@ -899,8 +888,4 @@ interface RegisterWorkerResult {
 
 interface ServerVersionResult {
   server_version_num: number;
-}
-
-interface UpdateResult {
-  maxAttempts: number;
 }

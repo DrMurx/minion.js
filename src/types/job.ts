@@ -38,6 +38,16 @@ export interface RunningJob<Args extends JobArgs> {
 
 export interface Job<Args extends JobArgs> extends RunningJob<Args> {
   /**
+   * Cancel job as long as it hasn't been started.
+   */
+  cancel(): Promise<boolean>;
+
+  /**
+   * Remove job from queue (unless it's `running`).
+   */
+  remove(): Promise<boolean>;
+
+  /**
    * Perform job and wait for it to finish. Note that this method should only be used to implement custom workers.
    */
   perform(worker: RunningWorker<RunningJob<Args>>, throwOnError?: boolean): Promise<void>;
@@ -62,16 +72,6 @@ export interface Job<Args extends JobArgs> extends RunningJob<Args> {
    * Retry a failed job if there are still attempts left.
    */
   retryFailed(): Promise<boolean>;
-
-  /**
-   * Cancel job as long as it hasn't been started.
-   */
-  cancel(): Promise<boolean>;
-
-  /**
-   * Remove job from queue (unless it's `running`).
-   */
-  remove(): Promise<boolean>;
 
   /**
    * Return the backoff delay in ms.

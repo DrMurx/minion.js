@@ -205,7 +205,11 @@ export interface JobBackend {
   /**
    * Transition job back to `pending` state, already `pending` jobs may also be retried to change options.
    */
-  retryJob(jobId: JobId, attempt: number, options: JobRetryOptions): Promise<boolean>;
+  retryJob<Args extends JobArgs>(
+    jobId: JobId,
+    attempt: number,
+    options: JobRetryOptions,
+  ): Promise<JobDescriptor<Args> | undefined>;
 
   /**
    * Cancels a job as long as it hasn't been started.

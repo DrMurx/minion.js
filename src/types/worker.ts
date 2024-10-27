@@ -103,12 +103,33 @@ export interface WorkerOptions {
 }
 
 export interface WorkerConfig {
+  /**
+   * The queues this worker would pick up.
+   */
   queueNames: string[];
-  concurrency: number;
-  prefetchJobs: number;
-  prefetchMinPriority: number;
+  /**
+   * Maximal number of worker slots
+   */
+  maxCapacity: number;
+  /**
+   * Worker can reserve this number of slots.
+   */
+  spareCapacity: number;
+  /**
+   * Minimal priority for the reserved slots.
+   */
+  spareMinPriority: number;
+  /**
+   * Interval at which the worker's lastSeen date is updated.
+   */
   heartbeatInterval: number;
+  /**
+   * Interval at which the worker's command inbox is checked (and lastSeen date is updated).
+   */
   inboxCheckInterval: number;
+  /**
+   * Number of ms the worker waits for a new job before checking other chores.
+   */
   dequeueTimeout: number;
 }
 

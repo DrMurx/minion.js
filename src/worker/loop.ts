@@ -25,6 +25,22 @@ export class WorkerLoop extends EventEmitter {
   }
 
   /**
+   * `true` if the worker's primary capacity is exhausted
+   */
+  get hasSpareCapacity(): boolean {
+    const { maxCapacity, spareCapacity } = this.worker.config;
+    return this.jobs.length >= maxCapacity - spareCapacity;
+  }
+
+  /**
+   * `true` if the worker's primary and spare capacity is exhausted
+   */
+  get hasNoCapacity(): boolean {
+    const { maxCapacity } = this.worker.config;
+    return this.jobs.length >= maxCapacity;
+  }
+
+  /**
    * `true` is a stop of this queue has been requested.
    */
   protected get isStopping(): boolean {
@@ -67,8 +83,7 @@ export class WorkerLoop extends EventEmitter {
    * If `this.jobs` is on its capacity, wait for one of the jobs to finish.
    */
   protected async waitForCapacity(): Promise<void> {
-    const { concurrency, prefetchJobs } = this.worker.config;
-    if (this.jobs.length >= concurrency + prefetchJobs) {
+    if (this.hasNoCapacity) {
       await Promise.race(this.jobs.map((jobStatus) => jobStatus.performPromise));
     }
   }
@@ -77,13 +92,13 @@ export class WorkerLoop extends EventEmitter {
    * Pull another job into the worker for execution. Should not be called when the worker has stopped.
    */
   protected async replenish(): Promise<boolean> {
-    const { dequeueTimeout, queueNames, concurrency, prefetchMinPriority } = this.worker.config;
+    const { dequeueTimeout, queueNames, spareMinPriority } = this.worker.config;
 
     // Dequeue options for pulling the job
     const options: JobDequeueOptions = {
       queueNames,
-      // If regular concurrency slots are occupied, we fetch only jobs with configured min priority
-      minPriority: this.jobs.length > concurrency ? prefetchMinPriority : undefined,
+      // If only spare slots are available, we fetch only jobs with configured min priority
+      minPriority: this.hasSpareCapacity ? spareMinPriority : undefined,
     };
 
     // Pull a job while assign it to current worker

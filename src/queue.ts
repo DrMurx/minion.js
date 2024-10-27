@@ -210,15 +210,15 @@ export class DefaultQueue<BaseJob extends Job<JobArgs> = Job<JobArgs>>
     }
   }
 
-  getNewWorker(options?: WorkerOptions): Worker<BaseJob> {
+  getNewWorker(options: WorkerOptions = {}): Worker<BaseJob> {
     const config = <WorkerConfig>{
       ...DefaultWorker.DEFAULT_CONFIG,
       queueNames: this.options.queueNames,
-      ...(options?.config ?? {}),
+      ...(options.config ?? {}),
     };
-    const metadata = options?.metadata ?? {};
-    const attachments = options?.attachments ?? {};
-    const commands = options?.commands ?? {};
+    const metadata = options.metadata ?? {};
+    const attachments = options.attachments ?? {};
+    const commands = options.commands ?? {};
     return new DefaultWorker(this, this.taskManager, this.backend, config, metadata, attachments, commands);
   }
 

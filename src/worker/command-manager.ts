@@ -43,10 +43,10 @@ export class WorkerCommandManager {
   }
 
   private addDefaultHandlers() {
-    this.addHandler('setConcurrency', async (worker, { concurrency }) => {
+    this.addHandler('setCapacity', async (worker, { capacity }) => {
       // Remote control commands need to validate arguments carefully
-      const jobs = parseInt(concurrency);
-      if (isNaN(jobs) === false) await worker.setConfig({ concurrency: jobs });
+      const jobs = parseInt(capacity);
+      if (isNaN(jobs) === false) await worker.setConfig({ maxCapacity: jobs });
     });
 
     this.addHandler('terminate', async (worker) => {

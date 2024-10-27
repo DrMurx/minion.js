@@ -24,9 +24,9 @@ import { WorkerLoop } from './worker/loop.js';
  */
 export class DefaultWorker<BaseJob extends Job<JobArgs>> implements Worker<BaseJob> {
   public static readonly DEFAULT_CONFIG = Object.freeze(<Partial<WorkerConfig>>{
-    concurrency: 1,
-    prefetchJobs: 0,
-    prefetchMinPriority: 1,
+    maxCapacity: 1,
+    spareCapacity: 0,
+    spareMinPriority: 1,
     heartbeatInterval: 10 * 1000,
     inboxCheckInterval: 60 * 1000,
     dequeueTimeout: 5 * 1000,

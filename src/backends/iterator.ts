@@ -68,10 +68,12 @@ export class BackendIterator<T> {
   }
 
   private async loadNext(): Promise<void> {
-    const results: any =
-      this.name === 'workers'
-        ? await this.backend.getWorkerInfos(0, this.iteratorOptions.chunkSize, this.options)
-        : await this.backend.getJobInfos(0, this.iteratorOptions.chunkSize, this.options);
+    const chunkSize = this.iteratorOptions.chunkSize;
+    const getters = {
+      workers: (options: Readonly<ListWorkersOptions>) => this.backend.getWorkerInfos(0, chunkSize, options),
+      jobs: (options: Readonly<ListJobsOptions>) => this.backend.getJobInfos(0, chunkSize, options),
+    };
+    const results: any = await getters[this.name](this.options);
     const batch = results[this.name];
 
     if (batch.length > 0) {

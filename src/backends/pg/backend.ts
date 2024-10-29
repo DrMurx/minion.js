@@ -7,6 +7,7 @@ import {
   type JobEnqueueOptions,
   type JobInfoList,
   type JobPruneResult,
+  type JobOptions,
   type WorkerInboxOptions,
   type WorkerInfoList,
   type WorkerPruneResult,
@@ -19,7 +20,6 @@ import {
   type JobId,
   type JobInfo,
   type JobResult,
-  type JobRetryOptions,
   JobState,
   type ListJobsOptions,
   type QueueJobStatistics,
@@ -80,9 +80,8 @@ export class PgBackend extends EventEmitter implements Backend {
     return (this._schema = results.rows[0].current_schema);
   }
 
-  async addJob(taskName: string, args: JobArgs, options: JobEnqueueOptions): Promise<JobId> {
-    const delayFor = options.delayFor;
-    const results = await this._pool.query<EnqueueResult>(
+  async addJob<Args extends JobArgs>(taskName: string, args: Args, options: JobEnqueueOptions): Promise<JobInfo<Args>> {
+    const results = await this._pool.query<JobInfo<Args>>(
       `INSERT INTO ${JOB_TABLE} (
         queue_name,
         task_name,
@@ -109,33 +108,37 @@ export class PgBackend extends EventEmitter implements Backend {
         NOW() + $11 * INTERVAL '1 millisecond',
         CASE WHEN $12::BIGINT IS NOT NULL THEN NOW() + $12::BIGINT * INTERVAL '1 millisecond' END
       )
-      RETURNING id`,
+      RETURNING ${this.jobInfoSql}`,
       [
         options.queueName,
         taskName,
         JSON.stringify(args),
-        delayFor <= 0 ? JobState.Pending : JobState.Scheduled,
+        options.delayFor <= 0 ? JobState.Pending : JobState.Scheduled,
         options.priority,
         options.maxAttempts,
         1,
         options.parentJobIds,
         options.laxDependency,
         options.metadata,
-        delayFor,
+        options.delayFor,
         options.expireIn,
       ],
     );
 
-    return results.rows[0].id;
+    const jobInfo = results.rows[0];
+    if (jobInfo !== undefined) {
+      if (jobInfo.parentJobIds.length > 0) jobInfo.parentJobIds = jobInfo.parentJobIds.map(Number);
+    }
+    return jobInfo;
   }
 
   async retryJob<Args extends JobArgs>(
     id: JobId,
     attempt: number,
-    options: JobRetryOptions,
-  ): Promise<JobDescriptor<Args> | undefined> {
+    options: JobOptions,
+  ): Promise<JobInfo<Args> | undefined> {
     const delayFor = options.delayFor ?? 0;
-    const results = await this._pool.query<JobDescriptor<Args>>(
+    const results = await this._pool.query<JobInfo<Args>>(
       `UPDATE ${JOB_TABLE} SET
         queue_name = COALESCE($1, queue_name),
         state = $2,
@@ -145,11 +148,12 @@ export class PgBackend extends EventEmitter implements Backend {
         attempt = attempt + 1,
         parent_job_ids = COALESCE($5, parent_job_ids),
         lax_dependency = COALESCE($6, lax_dependency),
-        delay_until = NOW() + $7 * INTERVAL '1 millisecond',
+        metadata = JSONB_STRIP_NULLS(metadata || $7),
+        delay_until = NOW() + $8 * INTERVAL '1 millisecond',
         retried_at = NOW(),
-        expires_at = CASE WHEN $8::BIGINT IS NULL THEN expires_at ELSE NOW() + $8::BIGINT * INTERVAL '1 millisecond' END
-      WHERE id = $9
-        AND attempt = $10
+        expires_at = CASE WHEN $9::BIGINT IS NULL THEN expires_at ELSE NOW() + $9::BIGINT * INTERVAL '1 millisecond' END
+      WHERE id = $10
+        AND attempt = $11
       RETURNING ${this.jobInfoSql}`,
       [
         options.queueName,
@@ -158,6 +162,7 @@ export class PgBackend extends EventEmitter implements Backend {
         options.maxAttempts,
         options.parentJobIds,
         options.laxDependency,
+        options.metadata ?? {},
         delayFor,
         options.expireIn,
         id,
@@ -165,7 +170,11 @@ export class PgBackend extends EventEmitter implements Backend {
       ],
     );
 
-    return results.rows[0];
+    const jobInfo = results.rows[0];
+    if (jobInfo !== undefined) {
+      if (jobInfo.parentJobIds.length > 0) jobInfo.parentJobIds = jobInfo.parentJobIds.map(Number);
+    }
+    return jobInfo;
   }
 
   async cancelJob(id: JobId): Promise<boolean> {
@@ -865,10 +874,6 @@ const queueDatabaseUpgrades: MigrationStep[] = [
       `,
   },
 ];
-
-interface EnqueueResult {
-  id: JobId;
-}
 
 interface JobInfoRow<Args extends JobArgs> extends JobInfo<Args> {
   total: number;

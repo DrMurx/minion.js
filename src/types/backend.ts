@@ -1,11 +1,10 @@
-import EventEmitter from 'events';
+import type EventEmitter from 'events';
 import {
   type JobArgs,
   type JobDescriptor,
   type JobId,
   type JobInfo,
   type JobResult,
-  type JobRetryOptions,
   JobState,
   type ListJobsOptions,
 } from './job.js';
@@ -38,6 +37,8 @@ export interface JobEnqueueOptions {
   delayFor: number;
   expireIn?: number;
 }
+
+export type JobOptions = Partial<JobEnqueueOptions>;
 
 /**
  * Options used when retrieving a new job for execution
@@ -124,7 +125,7 @@ export interface QueueBackend {
   /**
    * Enqueue a new job with `pending` state.
    */
-  addJob(taskName: string, args: JobArgs, options: JobEnqueueOptions): Promise<JobId>;
+  addJob<Args extends JobArgs>(taskName: string, args: Args, options: JobEnqueueOptions): Promise<JobInfo<Args>>;
 
   /**
    * Prune jobs:
@@ -203,13 +204,15 @@ export interface JobBackend {
   ): Promise<boolean>;
 
   /**
-   * Transition job back to `pending` state, already `pending` jobs may also be retried to change options.
+   * Transition job back to `pending` state, already `pending` jobs may also be retried to change options. Note that
+   * this method will always increase the `attempt` field. The `maxAttempts` field will also be increased by default
+   * unless `options.maxAttempts` is set.
    */
   retryJob<Args extends JobArgs>(
     jobId: JobId,
     attempt: number,
-    options: JobRetryOptions,
-  ): Promise<JobDescriptor<Args> | undefined>;
+    options: JobOptions,
+  ): Promise<JobInfo<Args> | undefined>;
 
   /**
    * Cancels a job as long as it hasn't been started.

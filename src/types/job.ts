@@ -1,4 +1,3 @@
-import { type JobEnqueueOptions } from './backend.js';
 import { type RunningWorker, type WorkerId } from './worker.js';
 
 /**
@@ -8,7 +7,7 @@ export interface RunningJob<Args extends JobArgs> {
   get id(): JobId;
   get taskName(): string;
   get args(): Args;
-  get state(): JobState | undefined;
+  get state(): JobState;
   get progress(): number;
   get maxAttempts(): number;
   get attempt(): number;
@@ -29,24 +28,9 @@ export interface RunningJob<Args extends JobArgs> {
    * Get job information.
    */
   getInfo(): Promise<JobInfo<Args> | undefined>;
-
-  /**
-   * Return all job ids this job depends on.
-   */
-  getParentJobIds(): Promise<JobId[]>;
 }
 
 export interface Job<Args extends JobArgs> extends RunningJob<Args> {
-  /**
-   * Cancel job as long as it hasn't been started.
-   */
-  cancel(): Promise<boolean>;
-
-  /**
-   * Remove job from queue (unless it's `running`).
-   */
-  remove(): Promise<boolean>;
-
   /**
    * Perform job and wait for it to finish. Note that this method should only be used to implement custom workers.
    */
@@ -62,16 +46,6 @@ export interface Job<Args extends JobArgs> extends RunningJob<Args> {
    * transition back to `pending` with a delay based on the backoff policy.
    */
   markFailed(result?: JobResult | Error): Promise<boolean>;
-
-  /**
-   * Transition job back to `pending` or `scheduled` state. Already `pending` jobs may also be retried to change options.
-   */
-  retry(options?: JobRetryOptions): Promise<boolean>;
-
-  /**
-   * Retry a failed job if there are still attempts left.
-   */
-  retryFailed(): Promise<boolean>;
 
   /**
    * Return the backoff delay in ms.
@@ -172,23 +146,19 @@ export interface JobInfo<Args extends JobArgs = JobArgs> extends JobDescriptor<A
   childJobIds: JobId[];
   laxDependency: boolean;
 
-  workerId: WorkerId;
+  workerId?: WorkerId;
   metadata: Record<string, any>;
 
   delayUntil: Date;
-  startedAt: Date;
-  retriedAt: Date;
-  finishedAt: Date;
+  startedAt?: Date;
+  retriedAt?: Date;
+  finishedAt?: Date;
 
   createdAt: Date;
-  expiresAt: Date;
+  expiresAt?: Date;
 
   time: Date;
 }
-
-export type JobAddOptions = Partial<JobEnqueueOptions>;
-
-export type JobRetryOptions = Omit<JobAddOptions, 'metadata'>;
 
 export interface JobResultOptions {
   interval?: number;

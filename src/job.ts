@@ -7,7 +7,6 @@ import {
   type JobId,
   type JobInfo,
   type JobResult,
-  type JobRetryOptions,
   type RunningJob,
 } from './types/job.js';
 import { type RunningWorker } from './types/worker.js';
@@ -16,7 +15,7 @@ import { type RunningWorker } from './types/worker.js';
  * Default job class.
  */
 export class DefaultJob<Args extends JobArgs = JobArgs> implements Job<Args> {
-  private _state?: JobState = JobState.Pending;
+  private _state: JobState = JobState.Pending;
   private _progress: number = 0.0;
 
   private _worker: RunningWorker<RunningJob<Args>> | null = null;
@@ -52,7 +51,7 @@ export class DefaultJob<Args extends JobArgs = JobArgs> implements Job<Args> {
     return this.jobInfo.args;
   }
 
-  get state(): JobState | undefined {
+  get state(): JobState {
     return this._state;
   }
 
@@ -137,34 +136,18 @@ export class DefaultJob<Args extends JobArgs = JobArgs> implements Job<Args> {
     return isUpdated;
   }
 
-  async retry(options: JobRetryOptions = {}): Promise<boolean> {
-    const jobInfo = await this.backend.retryJob<Args>(this.id, this.attempt, options);
-    return !!jobInfo;
-  }
-
-  async retryFailed(): Promise<boolean> {
-    if (this.attempt >= this.maxAttempts) return false;
-    const options = {
-      maxAttempts: this.maxAttempts,
-      delayFor: await this.getBackoffDelay(),
-    };
-    return await this.retry(options);
-  }
-
-  async cancel(): Promise<boolean> {
-    const isUpdated = await this.backend.cancelJob(this.id);
-    if (isUpdated) {
-      this._state = JobState.Canceled;
+  /**
+   * Transition a `failed` job back to `pending` or `scheduled` state if there are still attempts left.
+   */
+  protected async retryFailed(): Promise<void> {
+    if (this.attempt < this.maxAttempts) {
+      const options = {
+        // Set maxAttempt to its current value (otherwise, `Backend.retryJob` increases it)
+        maxAttempts: this.maxAttempts,
+        delayFor: await this.getBackoffDelay(),
+      };
+      await this.backend.retryJob<Args>(this.id, this.attempt, options);
     }
-    return isUpdated;
-  }
-
-  async remove(): Promise<boolean> {
-    const isUpdated = await this.backend.removeJob(this.id);
-    if (isUpdated) {
-      this._state = undefined;
-    }
-    return isUpdated;
   }
 
   async getInfo(): Promise<JobInfo<Args> | undefined> {
@@ -173,11 +156,6 @@ export class DefaultJob<Args extends JobArgs = JobArgs> implements Job<Args> {
       this._state = jobInfo.state;
     }
     return jobInfo;
-  }
-
-  async getParentJobIds(): Promise<JobId[]> {
-    const info = await this.getInfo();
-    return info !== undefined ? info.parentJobIds : [];
   }
 
   async getBackoffDelay(): Promise<number> {

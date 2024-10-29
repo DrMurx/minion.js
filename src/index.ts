@@ -7,7 +7,7 @@ import { type Backend } from './types/backend.js';
 import {
   type InferJobArgs,
   type Job,
-  type JobAddOptions,
+  type JobOptions,
   type JobArgs,
   type JobDescriptor,
   type JobId,
@@ -41,7 +41,7 @@ export {
   type Backend,
   type InferJobArgs,
   type Job,
-  type JobAddOptions,
+  type JobOptions as JobAddOptions,
   type JobArgs,
   type JobDescriptor,
   type JobId,

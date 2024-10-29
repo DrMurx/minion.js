@@ -1,11 +1,10 @@
 import type EventEmitter from 'events';
 import { type BackendIterator } from '../backends/iterator.js';
-import { type JobDequeueOptions } from './backend.js';
+import { type JobDequeueOptions, type JobOptions } from './backend.js';
 import {
   JobError,
   type InferJobArgs,
   type Job,
-  type JobAddOptions,
   type JobArgs,
   type JobDescriptor,
   type JobId,
@@ -16,6 +15,7 @@ import {
   type QueueJobStatistics,
   type RunningJob,
 } from './job.js';
+import { QueuedJob } from './queued-job.js';
 import { type Task, type TaskHandlerFunction } from './task.js';
 import {
   type ListWorkersOptions,
@@ -60,16 +60,16 @@ export interface Queue<BaseJob extends Job<JobArgs> = Job<JobArgs>>
    * @param options.expireIn      - Job becomes invalid/expired after this many milliseconds (from now). If given, the
    *                                job will be deleted once it's expired.
    */
-  addJob<ArgsJob extends BaseJob = BaseJob>(
+  addJob<Args extends InferJobArgs<BaseJob>>(
     taskName: string,
-    args?: InferJobArgs<ArgsJob>,
-    options?: JobAddOptions,
-  ): Promise<ArgsJob>;
+    args?: Args,
+    options?: JobOptions,
+  ): Promise<QueuedJob<Args>>;
 
   addJobWithAck<Args extends InferJobArgs<BaseJob>>(
     taskName: string,
     args?: Args,
-    enqueueOptions?: JobAddOptions,
+    enqueueOptions?: JobOptions,
     resultOptions?: JobResultOptions,
   ): Promise<JobResult>;
 
@@ -82,7 +82,7 @@ export interface Queue<BaseJob extends Job<JobArgs> = Job<JobArgs>>
   /**
    * Retrieve a Job object (without making any changes to the actual job), or return `null` if job does not exist.
    */
-  getJob<ArgsJob extends BaseJob = BaseJob>(id: JobId): Promise<ArgsJob | null>;
+  getJob<Args extends InferJobArgs<BaseJob> = InferJobArgs<BaseJob>>(id: JobId): Promise<QueuedJob<Args> | null>;
 
   /**
    * Get an array ob Job objects according to the specified options.
@@ -167,7 +167,12 @@ export interface StatsReader {
 export interface QueueOptions extends PruneOptions {
   queueNames: string[];
   pruneInterval: number;
+  jobFactory: JobFactoryFunction;
 }
+
+export type JobFactoryFunction<BaseJob extends Job<JobArgs> = Job<JobArgs>> = (
+  jobInfo: JobDescriptor<InferJobArgs<BaseJob>>,
+) => BaseJob;
 
 export interface PruneOptions {
   /**

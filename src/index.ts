@@ -3,11 +3,10 @@ import { createPool } from './backends/pg/factory.js';
 import { DefaultJob } from './job.js';
 import { DefaultQueue } from './queue.js';
 import { DefaultTaskManager } from './task-manager.js';
-import { type Backend } from './types/backend.js';
+import { type Backend, type JobOptions } from './types/backend.js';
 import {
   type InferJobArgs,
   type Job,
-  type JobOptions,
   type JobArgs,
   type JobDescriptor,
   type JobId,
@@ -17,6 +16,7 @@ import {
   type RunningJob,
 } from './types/job.js';
 import { type Queue, type QueueOptions } from './types/queue.js';
+import { type QueuedJob } from './types/queued-job.js';
 import { type Task, type TaskHandlerFunction, type TaskManager } from './types/task.js';
 import {
   type RunningWorker,
@@ -41,13 +41,14 @@ export {
   type Backend,
   type InferJobArgs,
   type Job,
-  type JobOptions as JobAddOptions,
   type JobArgs,
   type JobDescriptor,
   type JobId,
   type JobInfo,
+  type JobOptions,
   type JobResult,
   type Queue,
+  type QueuedJob,
   type QueueOptions,
   type RunningJob,
   type RunningWorker,

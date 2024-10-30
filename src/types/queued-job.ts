@@ -34,6 +34,16 @@ export interface QueuedJob<Args extends JobArgs> {
   get expiresAt(): Date | undefined;
 
   /**
+   * Time of the last update
+   */
+  get time(): Date;
+
+  /**
+   * The children job ids of this job
+   */
+  getChildJobIds(): Promise<JobId[]>;
+
+  /**
    * Transition job back to `pending` or `scheduled` state. Already `pending` jobs may also be retried to change options.
    * If successful, it will return a new `QueueJob` object.
    */

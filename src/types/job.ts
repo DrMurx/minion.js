@@ -11,6 +11,7 @@ export interface RunningJob<Args extends JobArgs> {
   get progress(): number;
   get maxAttempts(): number;
   get attempt(): number;
+
   get abortSignal(): AbortSignal;
 
   /**
@@ -23,11 +24,6 @@ export interface RunningJob<Args extends JobArgs> {
    * will get serialized as JSON.
    */
   amendMetadata(records: Record<string, any>): Promise<boolean>;
-
-  /**
-   * Get job information.
-   */
-  getInfo(): Promise<JobInfo<Args> | undefined>;
 }
 
 export interface Job<Args extends JobArgs> extends RunningJob<Args> {
@@ -46,6 +42,11 @@ export interface Job<Args extends JobArgs> extends RunningJob<Args> {
    * transition back to `pending` with a delay based on the backoff policy.
    */
   markFailed(result?: JobResult | Error): Promise<boolean>;
+
+  /**
+   * Transition a `failed` job back to `pending` or `scheduled` state if there are still attempts left.
+   */
+  retryFailed(): Promise<void>;
 
   /**
    * Return the backoff delay in ms.
@@ -96,7 +97,7 @@ export enum JobState {
    */
   Unattended = 'unattended',
   /**
-   * The job was canceled by the user while it was still pending. It will be requeued.
+   * The job was canceled by the user while it was still pending. It may be requeued.
    */
   Canceled = 'canceled',
 }

@@ -80,14 +80,16 @@ export interface Queue<BaseJob extends Job<JobArgs> = Job<JobArgs>>
   getJobResult(jobId: JobId, options: JobResultOptions): Promise<JobResult>;
 
   /**
-   * Retrieve a Job object (without making any changes to the actual job), or return `null` if job does not exist.
+   * Retrieve a Job control object, or return `null` if job does not exist.
    */
   getJob<Args extends InferJobArgs<BaseJob> = InferJobArgs<BaseJob>>(id: JobId): Promise<QueuedJob<Args> | null>;
 
   /**
-   * Get an array ob Job objects according to the specified options.
+   * Get an array of Job control objects according to the specified options.
    */
-  getJobs<ArgsJob extends BaseJob = BaseJob>(options: ListJobsOptions): Promise<ArgsJob[]>;
+  getJobs<Args extends InferJobArgs<BaseJob> = InferJobArgs<BaseJob>>(
+    options: ListJobsOptions,
+  ): Promise<QueuedJob<Args>[]>;
 
   /**
    * Return iterator object to safely iterate through job information as returned by the backend.

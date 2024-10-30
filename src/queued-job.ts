@@ -96,6 +96,16 @@ export class DefaultQueuedJob<Args extends JobArgs = JobArgs> implements QueuedJ
     return this.jobInfo.expiresAt;
   }
 
+  get time(): Date {
+    return this.jobInfo.time;
+  }
+
+  async getChildJobIds(): Promise<JobId[]> {
+    // Todo: remove childJobIds from regular getJobInfo and move it into dedicated backend method
+    await this.sync();
+    return this.jobInfo.childJobIds;
+  }
+
   async retry(options: JobOptions = {}): Promise<QueuedJob<Args> | null> {
     const jobInfo = await this.backend.retryJob<Args>(this.id, this.attempt, options);
     if (jobInfo) {

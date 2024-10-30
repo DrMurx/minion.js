@@ -1,9 +1,9 @@
 import EventEmitter from 'events';
 import { WorkerPruneResult, type Backend, type JobPruneResult } from '../types/backend.js';
-import { type JobDescriptor } from '../types/job.js';
+import { type Job, type JobArgs, type JobDescriptor } from '../types/job.js';
 import { type JobFactory, type PruneOptions } from '../types/queue.js';
 
-export class QueuePruner {
+export class QueuePruner<BaseJob extends Job<JobArgs>> {
   private enabled: boolean = false;
   private performPromise: Promise<boolean> | undefined;
   private pruneScheduler: NodeJS.Timeout | undefined;
@@ -11,7 +11,7 @@ export class QueuePruner {
 
   constructor(
     private queue: EventEmitter,
-    private jobFactory: JobFactory<any>,
+    private jobFactory: JobFactory<BaseJob>,
     private backend: Backend,
     private pruneInterval: number,
     private options: PruneOptions,
@@ -60,7 +60,7 @@ export class QueuePruner {
         const workerPruneResult = await this.backend.pruneWorkers(options.workerLostTimeout);
         const jobPruneResult = await this.backend.pruneJobs<any>(options.jobUnattendedPeriod, options.jobExpungePeriod);
         this.sendPruneNotifications(workerPruneResult, jobPruneResult);
-        await this.retryFailed(jobPruneResult.abandonedJobs);
+        await this.retryFailedJobs(jobPruneResult.abandonedJobs);
 
         this.lastPruneAt = Date.now();
         return workerPruneResult.lostWorkers.length > 0 || jobPruneResult.expiredJobs.length > 0;
@@ -75,8 +75,8 @@ export class QueuePruner {
     return this.performPromise;
   }
 
-  protected async retryFailed(abandonedJobs: JobDescriptor<any>[]) {
-    for (const jobDescriptor of abandonedJobs) {
+  protected async retryFailedJobs(failedJobs: JobDescriptor<any>[]) {
+    for (const jobDescriptor of failedJobs) {
       const job = this.jobFactory.createJobObject(jobDescriptor);
       await job.retryFailed();
     }

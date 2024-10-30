@@ -15,7 +15,7 @@ import { type RunningWorker } from './types/worker.js';
  * Default job class.
  */
 export class DefaultJob<Args extends JobArgs = JobArgs> implements Job<Args> {
-  private _state: JobState = JobState.Pending;
+  private _state: JobState = JobState.Running;
   private _progress: number = 0.0;
 
   private _worker: RunningWorker<RunningJob<Args>> | null = null;
@@ -136,10 +136,7 @@ export class DefaultJob<Args extends JobArgs = JobArgs> implements Job<Args> {
     return isUpdated;
   }
 
-  /**
-   * Transition a `failed` job back to `pending` or `scheduled` state if there are still attempts left.
-   */
-  protected async retryFailed(): Promise<void> {
+  async retryFailed(): Promise<void> {
     if (this.attempt < this.maxAttempts) {
       const options = {
         // Set maxAttempt to its current value (otherwise, `Backend.retryJob` increases it)
@@ -148,14 +145,6 @@ export class DefaultJob<Args extends JobArgs = JobArgs> implements Job<Args> {
       };
       await this.backend.retryJob<Args>(this.id, this.attempt, options);
     }
-  }
-
-  async getInfo(): Promise<JobInfo<Args> | undefined> {
-    const jobInfo = await this.backend.getJobInfo<Args>(this.id);
-    if (jobInfo && jobInfo.attempt === this.attempt) {
-      this._state = jobInfo.state;
-    }
-    return jobInfo;
   }
 
   async getBackoffDelay(): Promise<number> {

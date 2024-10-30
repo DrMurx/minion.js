@@ -55,7 +55,7 @@ export class DefaultQueue<BaseJob extends Job<JobArgs> = Job<JobArgs>>
   protected taskManager: TaskManager<RunningJob<InferJobArgs<BaseJob>>> = new DefaultTaskManager<
     RunningJob<InferJobArgs<BaseJob>>
   >();
-  protected pruner: QueuePruner;
+  protected pruner: QueuePruner<BaseJob>;
 
   /**
    * @param backend
@@ -70,7 +70,7 @@ export class DefaultQueue<BaseJob extends Job<JobArgs> = Job<JobArgs>>
     if (!Array.isArray(this.options.queueNames) || this.options.queueNames.length === 0) {
       throw new Error('No queue names given');
     }
-    this.pruner = new QueuePruner(this, this, this.backend, this.options.pruneInterval, this.options);
+    this.pruner = new QueuePruner<BaseJob>(this, this, this.backend, this.options.pruneInterval, this.options);
   }
 
   async start(): Promise<void> {
@@ -129,10 +129,12 @@ export class DefaultQueue<BaseJob extends Job<JobArgs> = Job<JobArgs>>
     return new DefaultQueuedJob(this.backend, jobInfo);
   }
 
-  async getJobs<ResultJob extends BaseJob = BaseJob>(options: ListJobsOptions): Promise<ResultJob[]> {
-    const jobs: ResultJob[] = [];
-    for await (const jobInfo of this.listJobInfos<InferJobArgs<ResultJob>>(options)) {
-      jobs.push(this.createJobObject<ResultJob>(jobInfo));
+  async getJobs<Args extends InferJobArgs<BaseJob> = InferJobArgs<BaseJob>>(
+    options: ListJobsOptions,
+  ): Promise<QueuedJob<Args>[]> {
+    const jobs: QueuedJob<Args>[] = [];
+    for await (const jobInfo of this.listJobInfos<Args>(options)) {
+      jobs.push(new DefaultQueuedJob(this.backend, jobInfo));
     }
     return jobs;
   }
@@ -140,7 +142,7 @@ export class DefaultQueue<BaseJob extends Job<JobArgs> = Job<JobArgs>>
   createJobObject<ResultJob extends BaseJob = BaseJob, Args extends InferJobArgs<ResultJob> = InferJobArgs<ResultJob>>(
     jobInfo: JobDescriptor<Args> | JobInfo<Args>,
   ): ResultJob {
-    return new DefaultJob<InferJobArgs<ResultJob>>(this.backend, jobInfo) as unknown as ResultJob;
+    return new DefaultJob<Args>(this.backend, jobInfo) as unknown as ResultJob;
   }
 
   listJobInfos<Args extends InferJobArgs<BaseJob> = InferJobArgs<BaseJob>>(

@@ -27,8 +27,7 @@ t.test('Worker', skip, async (t) => {
   });
 
   await t.test('Register and unregister worker', async (t) => {
-    const worker = queue.getNewWorker();
-    await worker.register();
+    const worker = await queue.getNewWorker().register();
     t.same((await worker.getInfo())!.startedAt instanceof Date, true);
     const lastSeenAt = (await worker.getInfo())!.lastSeenAt!;
     t.same(lastSeenAt instanceof Date, true);
@@ -46,7 +45,7 @@ t.test('Worker', skip, async (t) => {
     t.same(await worker.getInfo(), undefined);
   });
 
-  await t.test('Wait for job results', async (t) => {
+  await t.test('Start worker loop and wait for job results', async (t) => {
     const worker = await queue.getNewWorker().start();
     t.equal(worker.isRunning, true);
     const job = await queue.addJob('test');
@@ -60,6 +59,59 @@ t.test('Worker', skip, async (t) => {
     t.equal(worker.isRunning, true);
     await worker.stop();
     t.equal(worker.isRunning, false);
+  });
+
+  await t.test('Dealing with Worker metadata, and BackendIterator adapting to conditions', async (t) => {
+    await queue.resetQueue();
+
+    const worker1 = await queue.getNewWorker({ metadata: { test: 'one' } }).register();
+    const worker2 = await queue.getNewWorker({ metadata: { test: 'two' } }).register();
+    const worker3 = await queue.getNewWorker({ metadata: { test: 'three' } }).register();
+    const worker4 = await queue.getNewWorker({ metadata: { test: 'four' } }).register();
+    const worker5 = await queue.getNewWorker({ metadata: { test: 'five' } }).register();
+    const workers = queue.listWorkerInfos({}, 2);
+    t.notOk(workers.highestId);
+    t.equal((await workers.next())!.metadata.test, 'one');
+    t.equal(workers.highestId, 2);
+    t.equal((await workers.next())!.metadata.test, 'two');
+    t.equal((await workers.next())!.metadata.test, 'three');
+    t.equal(workers.highestId, 4);
+    t.equal((await workers.next())!.metadata.test, 'four');
+    t.equal((await workers.next())!.metadata.test, 'five');
+    t.equal(workers.highestId, 5);
+
+    t.notOk(await workers.next());
+
+    const workers1 = queue.listWorkerInfos({ ids: [2, 4, 1] });
+    const result1: string[] = [];
+    for await (const worker of workers1) {
+      result1.push(worker.metadata.test);
+    }
+    t.same(result1, ['one', 'two', 'four']);
+
+    const workers2 = queue.listWorkerInfos({ ids: [2, 4, 1] });
+    // workers2.fetch is default
+    t.notOk(workers2.highestId);
+    t.equal((await workers2.next())!.metadata.test, 'one');
+    t.equal(workers2.highestId, 4);
+    t.equal((await workers2.next())!.metadata.test, 'two');
+    t.equal((await workers2.next())!.metadata.test, 'four');
+    t.notOk(await workers2.next());
+
+    const workers3 = queue.listWorkerInfos({}, 2);
+    t.equal((await workers3.next())!.metadata.test, 'one');
+    t.equal((await workers3.next())!.metadata.test, 'two');
+    t.equal(await workers3.numRows(), 5);
+    await worker1.unregister();
+    await worker2.unregister();
+    await worker3.unregister();
+    t.equal((await workers3.next())!.metadata.test, 'four');
+    t.equal((await workers3.next())!.metadata.test, 'five');
+    t.notOk(await workers3.next());
+    t.equal(await workers3.numRows(), 4);
+    t.equal(await queue.listWorkerInfos({}).numRows(), 2);
+    await worker4.unregister();
+    await worker5.unregister();
   });
 
   await t.test('Worker remote control commands', async (t) => {

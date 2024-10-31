@@ -1,6 +1,6 @@
 import EventEmitter from 'events';
 import os from 'os';
-import pg from 'pg';
+import pg, { QueryConfigValues, QueryResult, QueryResultRow } from 'pg';
 import {
   type Backend,
   type JobDequeueOptions,
@@ -14,7 +14,6 @@ import {
   type WorkerRegistrationOptions,
 } from '../../types/backend.js';
 import {
-  type DailyJobHistory,
   type JobArgs,
   type JobDescriptor,
   type JobId,
@@ -22,9 +21,7 @@ import {
   type JobResult,
   JobState,
   type ListJobsOptions,
-  type QueueJobStatistics,
 } from '../../types/job.js';
-import { type QueueStats } from '../../types/queue.js';
 import {
   type ListWorkersOptions,
   type WorkerCommandArg,
@@ -35,6 +32,7 @@ import {
 } from '../../types/worker.js';
 import { createPool } from './factory.js';
 import { Migration, type MigrationStep } from './migration.js';
+import { DailyJobHistory, QueueJobStatistics, QueueStats } from '../../types/queue-stats.js';
 
 export const JOB_TABLE = 'queue_jobs';
 export const WORKER_TABLE = 'queue_workers';
@@ -74,14 +72,21 @@ export class PgBackend extends EventEmitter implements Backend {
     return this._pool;
   }
 
+  protected query<R extends QueryResultRow = any>(
+    sql: string,
+    values?: QueryConfigValues<any>,
+  ): Promise<QueryResult<R>> {
+    return this._pool.query<R>(sql, values);
+  }
+
   protected async getSchema(): Promise<string> {
     if (this._schema) return this._schema;
-    const results = await this._pool.query<{ current_schema: string }>(`SELECT current_schema`);
+    const results = await this.query<{ current_schema: string }>(`SELECT current_schema`);
     return (this._schema = results.rows[0].current_schema);
   }
 
   async addJob<Args extends JobArgs>(taskName: string, args: Args, options: JobEnqueueOptions): Promise<JobInfo<Args>> {
-    const results = await this._pool.query<JobInfo<Args>>(
+    const results = await this.query<JobInfo<Args>>(
       `INSERT INTO ${JOB_TABLE} (
         queue_name,
         task_name,
@@ -138,7 +143,7 @@ export class PgBackend extends EventEmitter implements Backend {
     options: JobOptions,
   ): Promise<JobInfo<Args> | undefined> {
     const delayFor = options.delayFor ?? 0;
-    const results = await this._pool.query<JobInfo<Args>>(
+    const results = await this.query<JobInfo<Args>>(
       `UPDATE ${JOB_TABLE} SET
         queue_name = COALESCE($1, queue_name),
         state = $2,
@@ -178,7 +183,7 @@ export class PgBackend extends EventEmitter implements Backend {
   }
 
   async cancelJob(id: JobId): Promise<boolean> {
-    const results = await this._pool.query(
+    const results = await this.query(
       `UPDATE ${JOB_TABLE} SET
         state = '${JobState.Canceled}'
       WHERE id = $1
@@ -192,7 +197,7 @@ export class PgBackend extends EventEmitter implements Backend {
   }
 
   async amendJobMetadata(id: JobId, records: Record<string, any>): Promise<boolean> {
-    const results = await this._pool.query(
+    const results = await this.query(
       `UPDATE ${JOB_TABLE}
       SET metadata = JSONB_STRIP_NULLS(metadata || $1)
       WHERE id = $2`,
@@ -202,7 +207,7 @@ export class PgBackend extends EventEmitter implements Backend {
   }
 
   async updateJobProgress(id: JobId, attempt: number, progress: number): Promise<boolean> {
-    const results = await this._pool.query(
+    const results = await this.query(
       `UPDATE ${JOB_TABLE}
       SET progress = $1
       WHERE id = $2
@@ -218,7 +223,7 @@ export class PgBackend extends EventEmitter implements Backend {
     attempt: number,
     result: JobResult,
   ): Promise<boolean> {
-    const results = await this._pool.query(
+    const results = await this.query(
       `UPDATE ${JOB_TABLE}
         SET result = $1,
             state = $2,
@@ -257,7 +262,7 @@ export class PgBackend extends EventEmitter implements Backend {
     const minPriority = options.minPriority;
     const queueNames = Array.isArray(options.queueNames) ? options.queueNames : [options.queueNames];
 
-    const results = await this._pool.query<JobDescriptor<Args>>(
+    const results = await this.query<JobDescriptor<Args>>(
       `UPDATE ${JOB_TABLE}
       SET state = '${JobState.Running}',
           progress = 0.0,
@@ -322,7 +327,7 @@ export class PgBackend extends EventEmitter implements Backend {
   }
 
   async removeJob(id: JobId): Promise<boolean> {
-    const results = await this._pool.query(
+    const results = await this.query(
       `DELETE FROM ${JOB_TABLE}
       WHERE id = $1
         AND state != '${JobState.Running}'
@@ -337,7 +342,7 @@ export class PgBackend extends EventEmitter implements Backend {
     expungePeriod: number,
   ): Promise<JobPruneResult<Args>> {
     // Delete `pending`/`scheduled` jobs past expiration date
-    const expiredJobsResult = await this._pool.query<JobDescriptor<Args>>(
+    const expiredJobsResult = await this.query<JobDescriptor<Args>>(
       `DELETE FROM ${JOB_TABLE}
       WHERE state IN ('${JobState.Pending}', '${JobState.Scheduled}')
         AND expires_at <= NOW()
@@ -345,7 +350,7 @@ export class PgBackend extends EventEmitter implements Backend {
     );
 
     // Delete `succeeded` jobs after the expunge period
-    const expungedJobsResult = await this._pool.query<JobDescriptor<Args>>(
+    const expungedJobsResult = await this.query<JobDescriptor<Args>>(
       `DELETE FROM ${JOB_TABLE}
       WHERE state = '${JobState.Succeeded}'
         AND NOW() - finished_at >= $1 * INTERVAL '1 millisecond'
@@ -354,7 +359,7 @@ export class PgBackend extends EventEmitter implements Backend {
     );
 
     // Mark `pending`/`scheduled` jobs as `unattended` if they are due, but in the queue past `unattendedPeriod`.
-    const unattendedJobsResult = await this._pool.query<JobDescriptor<Args>>(
+    const unattendedJobsResult = await this.query<JobDescriptor<Args>>(
       `UPDATE ${JOB_TABLE} SET
         state = '${JobState.Unattended}'
       WHERE state IN ('${JobState.Pending}', '${JobState.Scheduled}')
@@ -364,7 +369,7 @@ export class PgBackend extends EventEmitter implements Backend {
     );
 
     // Mark `running` jobs as `abandoned` if they are assigned to an `offline`, `lost`, or non-existing worker.
-    const abandonedJobsResult = await this._pool.query<JobDescriptor<Args> & { workerId: WorkerId }>(
+    const abandonedJobsResult = await this.query<JobDescriptor<Args> & { workerId: WorkerId }>(
       `UPDATE ${JOB_TABLE} AS j
       SET result = $1,
           state = '${JobState.Abandoned}',
@@ -393,7 +398,7 @@ export class PgBackend extends EventEmitter implements Backend {
    * Returns the information about jobs in batches.
    */
   async getJobInfo<Args extends JobArgs>(jobId: JobId): Promise<JobInfo<Args> | undefined> {
-    const results = await this._pool.query<JobInfoRow<Args>>(
+    const results = await this.query<JobInfoRow<Args>>(
       `SELECT
         ${this.jobInfoSql},
         ARRAY(SELECT id FROM ${JOB_TABLE} WHERE parent_job_ids @> ARRAY[j.id]) AS "childJobIds",
@@ -416,7 +421,7 @@ export class PgBackend extends EventEmitter implements Backend {
     limit: number,
     options: ListJobsOptions,
   ): Promise<JobInfoList<Args>> {
-    const results = await this._pool.query<JobInfoRow<Args>>(
+    const results = await this.query<JobInfoRow<Args>>(
       `SELECT
         ${this.jobInfoSql},
         ARRAY(SELECT id FROM ${JOB_TABLE} WHERE parent_job_ids @> ARRAY[j.id]) AS "childJobIds",
@@ -451,8 +456,177 @@ export class PgBackend extends EventEmitter implements Backend {
     return { total, jobs: results.rows };
   }
 
+  async registerWorker(options: WorkerRegistrationOptions): Promise<WorkerId> {
+    const results = await this.query<RegisterWorkerResult>(
+      `INSERT INTO ${WORKER_TABLE} (
+        config,
+        state,
+        host,
+        pid,
+        finished_job_count,
+        metadata
+      )
+      VALUES (
+        $1, $2, $3, $4, $5, $6
+      )
+      RETURNING id`,
+      [options.config, options.state, this.hostname, process.pid, options.finishedJobCount, options.metadata],
+    );
+    return results.rows[0].id;
+  }
+
+  async updateWorker(workerId: WorkerId, options: WorkerRegistrationOptions): Promise<boolean> {
+    const results = await this.query<ReceiveResult>(
+      `UPDATE ${WORKER_TABLE} AS new
+      SET
+        config = $1,
+        state = $2,
+        finished_job_count = $3,
+        metadata = $4,
+        last_seen_at = NOW()
+      WHERE id = $5`,
+      [options.config, options.state, options.finishedJobCount, options.metadata, workerId],
+    );
+    return (results.rowCount ?? 0) <= 0;
+  }
+
+  async checkWorkerInbox(workerId: WorkerId, options: WorkerInboxOptions): Promise<WorkerCommandDescriptor[]> {
+    const results = await this.query<ReceiveResult>(
+      `UPDATE ${WORKER_TABLE} AS new
+      SET
+        state = $1,
+        finished_job_count = $2,
+        inbox = '[]',
+        last_seen_at = NOW()
+      FROM (
+        SELECT id, inbox
+        FROM ${WORKER_TABLE}
+        WHERE id = $3
+        FOR UPDATE
+      ) AS old
+      WHERE new.id = old.id
+      RETURNING old.inbox AS "inbox"`,
+      [options.state, options.finishedJobCount, workerId],
+    );
+    if ((results.rowCount ?? 0) <= 0) return [];
+    return results.rows[0].inbox ?? [];
+  }
+
+  async unregisterWorker(id: WorkerId): Promise<boolean> {
+    const results = await this.query(`UPDATE ${WORKER_TABLE} SET state = '${WorkerState.Offline}' WHERE id = $1`, [id]);
+    return (results.rowCount ?? 0) > 0;
+  }
+
+  async pruneWorkers(lostTimeout: number): Promise<WorkerPruneResult> {
+    const lostWorkersResult = await this.query<WorkerInfo>(
+      `UPDATE ${WORKER_TABLE}
+      SET state = '${WorkerState.Lost}'
+      WHERE state IN ('${WorkerState.Online}', '${WorkerState.Idle}', '${WorkerState.Busy}')
+        AND NOW() - last_seen_at > $1 * INTERVAL '1 millisecond'
+      RETURNING
+        id,
+        config,
+        state,
+        host,
+        pid,
+        finished_job_count AS "finishedJobCount",
+        metadata,
+        started_at AS "startedAt",
+        last_seen_at AS "lastSeenAt",
+        '[]'::JSONB AS "jobs"`,
+      [lostTimeout],
+    );
+
+    return {
+      lostWorkers: lostWorkersResult.rows,
+    };
+  }
+
+  async getWorkerInfo(workerId: WorkerId): Promise<WorkerInfo | undefined> {
+    const results = await this.query<WorkerInfoRow>(
+      `SELECT
+        id,
+
+        config,
+        state,
+        host,
+        pid,
+
+        finished_job_count AS "finishedJobCount",
+        metadata,
+
+        started_at AS "startedAt",
+        last_seen_at AS "lastSeenAt",
+
+        ARRAY(
+          SELECT id
+          FROM ${JOB_TABLE}
+          WHERE state = '${JobState.Running}'
+            AND worker_id = w.id
+        ) AS "jobIds"
+      FROM ${WORKER_TABLE} w
+      WHERE id = $1`,
+      [workerId],
+    );
+    const workerInfo = results.rows[0];
+    if (workerInfo.jobIds.length) workerInfo.jobIds = workerInfo.jobIds.map(Number);
+    return workerInfo;
+  }
+
+  async getWorkerInfos(offset: number, limit: number, options: ListWorkersOptions): Promise<WorkerInfoList> {
+    const results = await this.query<WorkerInfoRow>(
+      `SELECT
+        id,
+
+        config,
+        state,
+        host,
+        pid,
+
+        finished_job_count AS "finishedJobCount",
+        metadata,
+
+        started_at AS "startedAt",
+        last_seen_at AS "lastSeenAt",
+
+        ARRAY(
+          SELECT id
+          FROM ${JOB_TABLE}
+          WHERE state = '${JobState.Running}'
+            AND worker_id = w.id
+        ) AS "jobIds",
+        COUNT(*) OVER() AS "total"
+      FROM ${WORKER_TABLE} w
+      WHERE (id > $1 OR $1 IS NULL)
+        AND (id = ANY ($2) OR $2 IS NULL)
+        AND (state = ANY ($3) OR $3 IS NULL)
+        AND (metadata ? ANY ($4) OR $4 IS NULL)
+      ORDER BY id ASC
+      LIMIT $5 OFFSET $6`,
+      [options.afterId, options.ids, options.state, options.metadata, limit, offset],
+    );
+    const total = removeTotal(results.rows);
+    results.rows.forEach((workerInfo) => {
+      if (workerInfo.jobIds.length) workerInfo.jobIds = workerInfo.jobIds.map(Number);
+    });
+    return { total, workers: results.rows };
+  }
+
+  async sendWorkerCommand(command: string, arg: WorkerCommandArg, options: ListWorkersOptions): Promise<boolean> {
+    const descriptor: WorkerCommandDescriptor = { command, arg };
+    const results = await this.query(
+      `UPDATE ${WORKER_TABLE} SET inbox = inbox || $1::JSONB
+      WHERE (id > $2 OR $2 IS NULL)
+        AND (id = ANY ($3) OR $3 IS NULL)
+        AND (state = ANY ($4) OR $4 IS NULL)
+        AND (metadata ? ANY ($5) OR $5 IS NULL)`,
+      [JSON.stringify([descriptor]), options.afterId, options.ids, options.state, options.metadata],
+    );
+    return (results.rowCount ?? 0) > 0;
+  }
+
   async getJobHistory(): Promise<QueueJobStatistics> {
-    const results = await this._pool.query<DailyJobHistory>(
+    const results = await this.query<DailyJobHistory>(
       `SELECT
         EXTRACT(EPOCH FROM ts) AS "epoch",
         COALESCE(succeeded_jobs, 0) AS "succeededJobs",
@@ -488,175 +662,8 @@ export class PgBackend extends EventEmitter implements Backend {
     return { daily: results.rows };
   }
 
-  async registerWorker(options: WorkerRegistrationOptions): Promise<WorkerId> {
-    const results = await this._pool.query<RegisterWorkerResult>(
-      `INSERT INTO ${WORKER_TABLE} (
-        config,
-        state,
-        host,
-        pid,
-        finished_job_count,
-        metadata
-      )
-      VALUES (
-        $1, $2, $3, $4, $5, $6
-      )
-      RETURNING id`,
-      [options.config, options.state, this.hostname, process.pid, options.finishedJobCount, options.metadata],
-    );
-    return results.rows[0].id;
-  }
-
-  async updateWorker(workerId: WorkerId, options: WorkerRegistrationOptions): Promise<boolean> {
-    const results = await this._pool.query<ReceiveResult>(
-      `UPDATE ${WORKER_TABLE} AS new
-      SET
-        config = $1,
-        state = $2,
-        finished_job_count = $3,
-        metadata = $4,
-        last_seen_at = NOW()
-      WHERE id = $5`,
-      [options.config, options.state, options.finishedJobCount, options.metadata, workerId],
-    );
-    return (results.rowCount ?? 0) <= 0;
-  }
-
-  async checkWorkerInbox(workerId: WorkerId, options: WorkerInboxOptions): Promise<WorkerCommandDescriptor[]> {
-    const results = await this._pool.query<ReceiveResult>(
-      `UPDATE ${WORKER_TABLE} AS new
-      SET
-        state = $1,
-        finished_job_count = $2,
-        inbox = '[]',
-        last_seen_at = NOW()
-      FROM (
-        SELECT id, inbox
-        FROM ${WORKER_TABLE}
-        WHERE id = $3
-        FOR UPDATE
-      ) AS old
-      WHERE new.id = old.id
-      RETURNING old.inbox AS "inbox"`,
-      [options.state, options.finishedJobCount, workerId],
-    );
-    if ((results.rowCount ?? 0) <= 0) return [];
-    return results.rows[0].inbox ?? [];
-  }
-
-  async unregisterWorker(id: WorkerId): Promise<boolean> {
-    const results = await this._pool.query(
-      `UPDATE ${WORKER_TABLE} SET state = '${WorkerState.Offline}' WHERE id = $1`,
-      [id],
-    );
-    return (results.rowCount ?? 0) > 0;
-  }
-
-  async pruneWorkers(lostTimeout: number): Promise<WorkerPruneResult> {
-    const lostWorkersResult = await this._pool.query<WorkerInfo>(
-      `UPDATE ${WORKER_TABLE}
-      SET state = '${WorkerState.Lost}'
-      WHERE state IN ('${WorkerState.Online}', '${WorkerState.Idle}', '${WorkerState.Busy}')
-        AND NOW() - last_seen_at > $1 * INTERVAL '1 millisecond'
-      RETURNING
-        id,
-        config,
-        state,
-        host,
-        pid,
-        finished_job_count AS "finishedJobCount",
-        metadata,
-        started_at AS "startedAt",
-        last_seen_at AS "lastSeenAt",
-        '[]'::JSONB AS "jobs"`,
-      [lostTimeout],
-    );
-
-    return {
-      lostWorkers: lostWorkersResult.rows,
-    };
-  }
-
-  async getWorkerInfo(workerId: WorkerId): Promise<WorkerInfo | undefined> {
-    const results = await this._pool.query<WorkerInfoRow>(
-      `SELECT
-        id,
-
-        config,
-        state,
-        host,
-        pid,
-
-        finished_job_count AS "finishedJobCount",
-        metadata,
-
-        started_at AS "startedAt",
-        last_seen_at AS "lastSeenAt",
-
-        ARRAY(
-          SELECT id
-          FROM ${JOB_TABLE}
-          WHERE state = '${JobState.Running}'
-            AND worker_id = w.id
-        ) AS "jobs"
-      FROM ${WORKER_TABLE} w
-      WHERE id = $1`,
-      [workerId],
-    );
-    return results.rows[0];
-  }
-
-  async getWorkerInfos(offset: number, limit: number, options: ListWorkersOptions): Promise<WorkerInfoList> {
-    const results = await this._pool.query<WorkerInfoRow>(
-      `SELECT
-        id,
-
-        config,
-        state,
-        host,
-        pid,
-
-        finished_job_count AS "finishedJobCount",
-        metadata,
-
-        started_at AS "startedAt",
-        last_seen_at AS "lastSeenAt",
-
-        ARRAY(
-          SELECT id
-          FROM ${JOB_TABLE}
-          WHERE state = '${JobState.Running}'
-            AND worker_id = w.id
-        ) AS "jobs",
-        COUNT(*) OVER() AS "total"
-      FROM ${WORKER_TABLE} w
-      WHERE (id > $1 OR $1 IS NULL)
-        AND (id = ANY ($2) OR $2 IS NULL)
-        AND (state = ANY ($3) OR $3 IS NULL)
-        AND (metadata ? ANY ($4) OR $4 IS NULL)
-      ORDER BY id ASC
-      LIMIT $5 OFFSET $6`,
-      [options.afterId, options.ids, options.state, options.metadata, limit, offset],
-    );
-    const total = removeTotal(results.rows);
-    return { total, workers: results.rows };
-  }
-
-  async sendWorkerCommand(command: string, arg: WorkerCommandArg, options: ListWorkersOptions): Promise<boolean> {
-    const descriptor: WorkerCommandDescriptor = { command, arg };
-    const results = await this._pool.query(
-      `UPDATE ${WORKER_TABLE} SET inbox = inbox || $1::JSONB
-      WHERE (id > $2 OR $2 IS NULL)
-        AND (id = ANY ($3) OR $3 IS NULL)
-        AND (state = ANY ($4) OR $4 IS NULL)
-        AND (metadata ? ANY ($5) OR $5 IS NULL)`,
-      [JSON.stringify([descriptor]), options.afterId, options.ids, options.state, options.metadata],
-    );
-    return (results.rowCount ?? 0) > 0;
-  }
-
   async getStats(): Promise<QueueStats> {
-    const results = await this._pool.query<QueueStats>(
+    const results = await this.query<QueueStats>(
       `SELECT
         (SELECT CASE WHEN is_called THEN last_value ELSE 0 END FROM ${JOB_TABLE}_id_seq) AS "enqueuedJobs",
         (SELECT COUNT(*) FROM ${JOB_TABLE} WHERE state IN ('${JobState.Pending}', '${JobState.Scheduled}') AND (expires_at IS NULL OR expires_at > NOW())) AS "pendingJobs",
@@ -686,7 +693,7 @@ export class PgBackend extends EventEmitter implements Backend {
   }
 
   async updateSchema(): Promise<void> {
-    const version = (await this._pool.query<ServerVersionResult>('SHOW server_version_num')).rows[0].server_version_num;
+    const version = (await this.query<ServerVersionResult>('SHOW server_version_num')).rows[0].server_version_num;
     if (version < 90500) throw new Error('PostgreSQL 9.5 or later is required');
 
     const conn = await this._pool.connect();
@@ -699,7 +706,7 @@ export class PgBackend extends EventEmitter implements Backend {
   }
 
   async reset(): Promise<void> {
-    await this._pool.query(`TRUNCATE ${JOB_TABLE}, ${WORKER_TABLE} RESTART IDENTITY`);
+    await this.query(`TRUNCATE ${JOB_TABLE}, ${WORKER_TABLE} RESTART IDENTITY`);
   }
 
   async end(): Promise<void> {

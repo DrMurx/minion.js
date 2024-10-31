@@ -16,11 +16,10 @@ import {
   type JobResultOptions,
   JobState,
   type ListJobsOptions,
-  type QueueJobStatistics,
   type RunningJob,
   unsuccessfulJobStates,
 } from './types/job.js';
-import { type PruneOptions, type Queue, QueueEvents, type QueueOptions, type QueueStats } from './types/queue.js';
+import { type PruneOptions, type Queue, QueueEvents, type QueueOptions } from './types/queue.js';
 import { QueuedJob } from './types/queued-job.js';
 import { isTask, type Task, type TaskHandlerFunction, type TaskManager } from './types/task.js';
 import {
@@ -34,6 +33,7 @@ import {
 } from './types/worker.js';
 import { version } from './version.js';
 import { DefaultWorker } from './worker.js';
+import { QueueJobStatistics, QueueStats } from './types/queue-stats.js';
 
 /**
  * Job queue class.
@@ -50,16 +50,12 @@ export class DefaultQueue<BaseJob extends Job<JobArgs> = Job<JobArgs>>
     jobUnattendedPeriod: 2 * 24 * 60 * 60 * 1000,
   });
 
-  private options: QueueOptions;
-
-  protected taskManager: TaskManager<RunningJob<InferJobArgs<BaseJob>>> = new DefaultTaskManager<
-    RunningJob<InferJobArgs<BaseJob>>
-  >();
+  protected options: QueueOptions;
+  protected taskManager: TaskManager<RunningJob<InferJobArgs<BaseJob>>>;
   protected pruner: QueuePruner<BaseJob>;
 
   /**
-   * @param backend
-   * @param options
+   * Constructor
    */
   constructor(
     protected backend: Backend,
@@ -70,6 +66,7 @@ export class DefaultQueue<BaseJob extends Job<JobArgs> = Job<JobArgs>>
     if (!Array.isArray(this.options.queueNames) || this.options.queueNames.length === 0) {
       throw new Error('No queue names given');
     }
+    this.taskManager = new DefaultTaskManager<RunningJob<InferJobArgs<BaseJob>>>();
     this.pruner = new QueuePruner<BaseJob>(this, this, this.backend, this.options.pruneInterval, this.options);
   }
 
@@ -119,10 +116,6 @@ export class DefaultQueue<BaseJob extends Job<JobArgs> = Job<JobArgs>>
     return new Promise((resolve, reject) => this.waitForResult(id, interval, signal, resolve, reject));
   }
 
-  async cancelJob(id: JobId): Promise<void> {
-    this.backend.cancelJob(id);
-  }
-
   async getJob<Args extends InferJobArgs<BaseJob> = InferJobArgs<BaseJob>>(id: JobId): Promise<QueuedJob<Args> | null> {
     const jobInfo = await this.backend.getJobInfo<Args>(id);
     if (jobInfo === undefined) return null;
@@ -150,10 +143,6 @@ export class DefaultQueue<BaseJob extends Job<JobArgs> = Job<JobArgs>>
     chunkSize: number = 10,
   ): BackendIterator<JobInfo<Args>> {
     return new BackendIterator<JobInfo<Args>>('jobs', this.backend, options, { chunkSize });
-  }
-
-  async getJobStatistics(): Promise<QueueJobStatistics> {
-    return await this.backend.getJobHistory();
   }
 
   async runJob(jobId: number): Promise<boolean> {
@@ -236,6 +225,10 @@ export class DefaultQueue<BaseJob extends Job<JobArgs> = Job<JobArgs>>
 
   async prune(extraOptions: Partial<PruneOptions> = {}): Promise<boolean> {
     return await this.pruner.perform(true, extraOptions);
+  }
+
+  async getJobStatistics(): Promise<QueueJobStatistics> {
+    return await this.backend.getJobHistory();
   }
 
   async getStatistics(): Promise<QueueStats> {

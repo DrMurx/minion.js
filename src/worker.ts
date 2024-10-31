@@ -168,9 +168,9 @@ export class DefaultWorker<BaseJob extends Job<JobArgs>> implements Worker<BaseJ
       ...options,
     };
     const taskNames = this.taskManager.getTaskNames();
-    const dequeueJobInfo = await this.backend.assignNextJob<InferJobArgs<BaseJob>>(this.id, taskNames, wait, _options);
-    if (dequeueJobInfo === null) return null;
-    return this.jobFactory.createJobObject<ResultJob>(dequeueJobInfo);
+    const jobInfo = await this.backend.assignNextJob<InferJobArgs<BaseJob>>(this.id, taskNames, wait, _options);
+    if (jobInfo === null) return null;
+    return this.jobFactory.createJobObject<ResultJob>(jobInfo);
   }
 
   async terminate(reason?: string): Promise<void> {

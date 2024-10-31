@@ -162,5 +162,5 @@ export interface WorkerInfo {
   startedAt: Date;
   lastSeenAt?: Date;
 
-  jobs: JobId[];
+  jobIds: JobId[];
 }

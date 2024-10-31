@@ -17,6 +17,7 @@ import {
   type WorkerInfo,
   WorkerState,
 } from './worker.js';
+import { QueueJobStatistics } from './queue-stats.js';
 
 export type JobInfoList<Args extends JobArgs> = {
   jobs: JobInfo<Args>[];
@@ -149,7 +150,7 @@ export interface QueueBackend {
   /**
    * Get history information for job queue.
    */
-  getJobHistory(): Promise<any>;
+  getJobHistory(): Promise<QueueJobStatistics>;
 
   /**
    * Get statistics for the job queue.

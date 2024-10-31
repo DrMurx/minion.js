@@ -7,7 +7,6 @@ export interface RunningJob<Args extends JobArgs> {
   get id(): JobId;
   get taskName(): string;
   get args(): Args;
-  get state(): JobState;
   get progress(): number;
   get maxAttempts(): number;
   get attempt(): number;
@@ -27,6 +26,8 @@ export interface RunningJob<Args extends JobArgs> {
 }
 
 export interface Job<Args extends JobArgs> extends RunningJob<Args> {
+  get state(): JobState;
+
   /**
    * Perform job and wait for it to finish. Note that this method should only be used to implement custom workers.
    */
@@ -54,14 +55,12 @@ export interface Job<Args extends JobArgs> extends RunningJob<Args> {
   getBackoffDelay(): Promise<number>;
 }
 
-export type InferJobArgs<J extends Job<JobArgs>> = J extends Job<infer A> ? A : never;
-
 export type JobId = number;
-
 export type JobArgs = Record<string, any> & { [Symbol.iterator]?: never };
-
 export type JobResult = Record<string, any>;
 export type JobError = Record<string, any> | Error;
+
+export type InferJobArgs<J extends Job<JobArgs>> = J extends Job<infer A> ? A : never;
 
 export enum JobState {
   /**
@@ -110,15 +109,6 @@ export const unsuccessfulJobStates = [
   JobState.Canceled,
 ];
 
-export interface ListJobsOptions {
-  ids?: JobId[];
-  afterId?: number;
-  queueNames?: string[];
-  taskNames?: string[];
-  states?: JobState[];
-  metadata?: string[];
-}
-
 export interface JobDescriptor<Args extends JobArgs = JobArgs> {
   id: JobId;
 
@@ -161,20 +151,16 @@ export interface JobInfo<Args extends JobArgs = JobArgs> extends JobDescriptor<A
   time: Date;
 }
 
+export interface ListJobsOptions {
+  ids?: JobId[];
+  afterId?: number;
+  queueNames?: string[];
+  taskNames?: string[];
+  states?: JobState[];
+  metadata?: string[];
+}
+
 export interface JobResultOptions {
   interval?: number;
   signal?: AbortSignal;
-}
-
-export interface QueueJobStatistics {
-  daily: DailyJobHistory[];
-}
-
-export interface DailyJobHistory {
-  epoch: number;
-  succeededJobs: number;
-  failedJobs: number;
-  abortedJobs: number;
-  abandonedJobs: number;
-  unattendedJobs: number;
 }

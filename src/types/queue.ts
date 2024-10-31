@@ -12,10 +12,10 @@ import {
   type JobResult,
   type JobResultOptions,
   type ListJobsOptions,
-  type QueueJobStatistics,
   type RunningJob,
 } from './job.js';
-import { QueuedJob } from './queued-job.js';
+import { type StatsReader } from './queue-stats.js';
+import { type QueuedJob } from './queued-job.js';
 import { type Task, type TaskHandlerFunction } from './task.js';
 import {
   type ListWorkersOptions,
@@ -30,7 +30,7 @@ import {
  */
 export interface Queue<BaseJob extends Job<JobArgs> = Job<JobArgs>>
   extends JobFactory<BaseJob>,
-    JobExecutor,
+    QuickWorker,
     WorkerManager<BaseJob>,
     StatsReader,
     EventEmitter<QueueEvents<BaseJob>> {
@@ -123,19 +123,6 @@ export interface Queue<BaseJob extends Job<JobArgs> = Job<JobArgs>>
   resetQueue(): Promise<void>;
 }
 
-export interface JobExecutor {
-  /**
-   * Retry job in a foreground queue, then perform it right away with a temporary worker in this process,
-   * very useful for debugging.
-   */
-  runJob(id: number): Promise<boolean>;
-
-  /**
-   * Perform all jobs with a temporary worker, very useful for testing.
-   */
-  runJobs(options?: Partial<JobDequeueOptions>): Promise<void>;
-}
-
 export interface JobFactory<BaseJob extends Job<JobArgs>> {
   createJobObject<ResultJob extends BaseJob = BaseJob>(
     jobInfo: JobDescriptor<InferJobArgs<ResultJob>> | JobInfo<InferJobArgs<ResultJob>>,
@@ -154,27 +141,18 @@ export interface WorkerManager<BaseJob extends Job<JobArgs>> {
   listWorkerInfos(options?: ListWorkersOptions, chunkSize?: number): BackendIterator<WorkerInfo>;
 }
 
-export interface StatsReader {
+export interface QuickWorker {
   /**
-   * Get history information for job queue.
+   * Retry job in a foreground queue, then perform it right away with a temporary worker in this process,
+   * very useful for debugging.
    */
-  getJobStatistics(): Promise<QueueJobStatistics>;
+  runJob(id: number): Promise<boolean>;
 
   /**
-   * Get statistics for the job queue.
+   * Perform all jobs with a temporary worker, very useful for testing.
    */
-  getStatistics(): Promise<QueueStats>;
+  runJobs(options?: Partial<JobDequeueOptions>): Promise<void>;
 }
-
-export interface QueueOptions extends PruneOptions {
-  queueNames: string[];
-  pruneInterval: number;
-  jobFactory: JobFactoryFunction;
-}
-
-export type JobFactoryFunction<BaseJob extends Job<JobArgs> = Job<JobArgs>> = (
-  jobInfo: JobDescriptor<InferJobArgs<BaseJob>>,
-) => BaseJob;
 
 export interface PruneOptions {
   /**
@@ -196,6 +174,19 @@ export interface PruneOptions {
   jobUnattendedPeriod: number;
 }
 
+export interface QueueOptions extends PruneOptions {
+  /**
+   * Names of the queues
+   */
+  queueNames: string[];
+  pruneInterval: number;
+  jobFactory: JobFactoryFunction;
+}
+
+export type JobFactoryFunction<BaseJob extends Job<JobArgs> = Job<JobArgs>> = (
+  jobInfo: JobDescriptor<InferJobArgs<BaseJob>>,
+) => BaseJob;
+
 export interface QueueEvents<BaseJob extends Job<JobArgs>> {
   job_started: [{ job: JobDescriptor<InferJobArgs<BaseJob>> }];
   job_succeeded: [{ job: JobDescriptor<InferJobArgs<BaseJob>>; result: JobResult }];
@@ -205,29 +196,4 @@ export interface QueueEvents<BaseJob extends Job<JobArgs>> {
   job_abandoned: [{ job: JobDescriptor<InferJobArgs<BaseJob>> }];
   job_unattended: [{ job: JobDescriptor<InferJobArgs<BaseJob>> }];
   worker_lost: [{ worker: Worker<BaseJob> }];
-}
-
-export interface QueueStats {
-  enqueuedJobs: number;
-  pendingJobs: number;
-  scheduledJobs: number;
-  runningJobs: number;
-  succeededJobs: number;
-  failedJobs: number;
-  abortedJobs: number;
-  abandonedJobs: number;
-  unattendedJobs: number;
-  canceledJobs: number;
-
-  offlineWorkers: number;
-  onlineWorkers: number;
-  idleWorkers: number;
-  busyWorkers: number;
-  lostWorkers: number;
-
-  queueboneVersion: string;
-
-  backendName: string;
-  backendVersion: string;
-  backendUptime: number;
 }

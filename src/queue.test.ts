@@ -37,7 +37,7 @@ t.test('Queue with PostgreSQL backend', skip, async (t) => {
     return { added: first + second };
   });
 
-  await t.test('Nothing to prune', async (t) => {
+  await t.test('Nothing to prune initially', async (t) => {
     t.notOk(await queue.prune());
   });
 
@@ -145,7 +145,7 @@ t.test('Queue with PostgreSQL backend', skip, async (t) => {
     t.same(queuedJob1.result, { name: 'WorkerGoneError', message: 'Worker went away' });
     t.equal((await queue.getStatistics()).abandonedJobs, 1);
     await worker1.unregister();
-    // don't unregister worker2 here for a listWorker test
+    await worker2.unregister();
   });
 
   await t.test('Repair abandoned job', async (t) => {
@@ -249,212 +249,86 @@ t.test('Queue with PostgreSQL backend', skip, async (t) => {
     await worker.unregister();
   });
 
-  await t.test('Dealing with Worker metadata, and BackendIterator adapting to conditions', async (t) => {
+  await t.test('List jobs', async (t) => {
     await queue.resetQueue();
-
-    const worker1 = await queue.getNewWorker({ metadata: { test: 'one' } }).register();
-    const worker2 = await queue.getNewWorker({ metadata: { test: 'two' } }).register();
-    const worker3 = await queue.getNewWorker({ metadata: { test: 'three' } }).register();
-    const worker4 = await queue.getNewWorker({ metadata: { test: 'four' } }).register();
-    const worker5 = await queue.getNewWorker({ metadata: { test: 'five' } }).register();
-    const workers = queue.listWorkerInfos({}, 2);
-    t.notOk(workers.highestId);
-    t.equal((await workers.next())!.metadata.test, 'one');
-    t.equal(workers.highestId, 2);
-    t.equal((await workers.next())!.metadata.test, 'two');
-    t.equal((await workers.next())!.metadata.test, 'three');
-    t.equal(workers.highestId, 4);
-    t.equal((await workers.next())!.metadata.test, 'four');
-    t.equal((await workers.next())!.metadata.test, 'five');
-    t.equal(workers.highestId, 5);
-
-    t.notOk(await workers.next());
-
-    const workers1 = queue.listWorkerInfos({ ids: [2, 4, 1] });
-    const result1: string[] = [];
-    for await (const worker of workers1) {
-      result1.push(worker.metadata.test);
-    }
-    t.same(result1, ['one', 'two', 'four']);
-
-    const workers2 = queue.listWorkerInfos({ ids: [2, 4, 1] });
-    // workers2.fetch is default
-    t.notOk(workers2.highestId);
-    t.equal((await workers2.next())!.metadata.test, 'one');
-    t.equal(workers2.highestId, 4);
-    t.equal((await workers2.next())!.metadata.test, 'two');
-    t.equal((await workers2.next())!.metadata.test, 'four');
-    t.notOk(await workers2.next());
-
-    const workers3 = queue.listWorkerInfos({}, 2);
-    t.equal((await workers3.next())!.metadata.test, 'one');
-    t.equal((await workers3.next())!.metadata.test, 'two');
-    t.equal(await workers3.numRows(), 5);
-    await worker1.unregister();
-    await worker2.unregister();
-    await worker3.unregister();
-    t.equal((await workers3.next())!.metadata.test, 'four');
-    t.equal((await workers3.next())!.metadata.test, 'five');
-    t.notOk(await workers3.next());
-    t.equal(await workers3.numRows(), 4);
-    t.equal(await queue.listWorkerInfos({}).numRows(), 2);
-    await worker4.unregister();
-    await worker5.unregister();
-  });
-
-  await t.test('Reset (all)', async (t) => {
-    await queue.addJob('test');
-    await queue.getNewWorker().register();
-    t.equal(await queue.listJobInfos().numRows(), 1);
-    t.equal(await queue.listWorkerInfos().numRows(), 1);
-
-    await queue.resetQueue();
-
-    t.equal(await queue.listJobInfos().numRows(), 0);
-    t.equal(await queue.listWorkerInfos().numRows(), 0);
-  });
-
-  await t.test('Stats', async (t) => {
-    const stats1 = await queue.getStatistics();
-    t.equal(stats1.enqueuedJobs, 0);
-    t.equal(stats1.pendingJobs, 0);
-    t.equal(stats1.scheduledJobs, 0);
-    t.equal(stats1.runningJobs, 0);
-    t.equal(stats1.succeededJobs, 0);
-    t.equal(stats1.failedJobs, 0);
-    t.equal(stats1.abandonedJobs, 0);
-    t.equal(stats1.canceledJobs, 0);
-    t.equal(stats1.onlineWorkers, 0);
-    t.equal(stats1.busyWorkers, 0);
-    t.equal(stats1.idleWorkers, 0);
-    t.equal(stats1.queueboneVersion, '0.4.1');
-    t.equal(stats1.backendName, 'Pg');
-    t.match(stats1.backendVersion, /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/);
-    t.ok(stats1.backendUptime);
 
     const worker = await queue.getNewWorker().register();
-    t.equal((await queue.getStatistics()).onlineWorkers, 1);
-    t.equal((await queue.getStatistics()).idleWorkers, 1);
-    const queuedJob1 = await queue.addJob('fail');
-    t.equal((await queue.getStatistics()).enqueuedJobs, 1);
-    const queuedJob2 = await queue.addJob('fail');
-    t.equal((await queue.getStatistics()).enqueuedJobs, 2);
-    t.equal((await queue.getStatistics()).pendingJobs, 2);
+    const queuedJob1 = await queue.addJob('test');
+    const queuedJob2 = await queue.addJob('test');
+    const queuedJob3 = await queue.addJob('test');
+    const queuedJob4 = await queue.addJob('test');
+    const queuedJob5 = await queue.addJob('test');
 
     const job1 = (await worker.assignNextJob(0))!;
-    t.equal(job1.id, queuedJob1.id);
-    const stats2 = await queue.getStatistics();
-    t.equal(stats2.pendingJobs, 1);
-    t.equal(stats2.runningJobs, 1);
-    t.equal(stats2.onlineWorkers, 1);
-    t.equal(stats2.busyWorkers, 1);
-
-    const queuedJob3 = await queue.addJob('fail');
-    const job2 = (await worker.assignNextJob())!;
-    t.equal(job2.id, queuedJob2.id);
-    const stats3 = await queue.getStatistics();
-    t.equal(stats3.pendingJobs, 1);
-    t.equal(stats3.runningJobs, 2);
-    t.equal(stats3.busyWorkers, 1);
-
+    const job2 = (await worker.assignNextJob(0))!;
     t.same(await job2.markSucceeded(), true);
     t.same(await job1.markSucceeded(), true);
-    t.equal((await queue.getStatistics()).succeededJobs, 2);
-    const job3 = (await worker.assignNextJob())!;
-    t.equal(job3.id, queuedJob3.id);
+    const job3 = (await worker.assignNextJob(0))!;
     t.same(await job3.markFailed(), true);
-    t.equal((await queue.getStatistics()).failedJobs, 1);
     t.ok(await queuedJob3.retry());
-    t.equal((await queue.getStatistics()).failedJobs, 0);
-
-    const job4 = (await worker.assignNextJob())!;
-    await job4.markSucceeded(['works']);
+    const job3a = (await worker.assignNextJob(0))!;
+    await job3a.markSucceeded({ it: 'works' });
+    await worker.assignNextJob(0);
     await worker.unregister();
-    const stats4 = await queue.getStatistics();
-    t.equal(stats4.pendingJobs, 0);
-    t.equal(stats4.runningJobs, 0);
-    t.equal(stats4.succeededJobs, 3);
-    t.equal(stats4.failedJobs, 0);
-    t.equal(stats4.abandonedJobs, 0);
-    t.equal(stats4.canceledJobs, 0);
-    t.equal(stats4.offlineWorkers, 1);
-    t.equal(stats4.onlineWorkers, 0);
-    t.equal(stats4.busyWorkers, 0);
-    t.equal(stats4.idleWorkers, 0);
 
-    await worker.unregister();
-  });
+    await t.test('Simple list with default chunk size', async (t) => {
+      const jobs1 = queue.listJobInfos();
+      t.equal(await jobs1.numRows(), 5);
+      t.equal((await jobs1.next())!.id, queuedJob1.id);
+      t.equal(jobs1.highestId, queuedJob5.id);
+      t.equal((await jobs1.next())!.id, queuedJob2.id);
+      t.equal((await jobs1.next())!.id, queuedJob3.id);
+      t.equal((await jobs1.next())!.id, queuedJob4.id);
+      t.equal((await jobs1.next())!.id, queuedJob5.id);
+      t.notOk(await jobs1.next());
+    });
 
-  await t.test('History', async (t) => {
-    await queue.addJob('fail');
-    const worker = await queue.getNewWorker().register();
-    const job = (await worker.assignNextJob())!;
-    t.ok(await job.markFailed());
-    await worker.unregister();
-    const history = await queue.getJobStatistics();
-    t.equal(history.daily.length, 24);
-    t.equal(history.daily[23].succeededJobs + history.daily[22].succeededJobs, 3);
-    t.equal(history.daily[23].failedJobs + history.daily[22].failedJobs, 1);
-    t.equal(history.daily[0].succeededJobs, 0);
-    t.equal(history.daily[0].failedJobs, 0);
-    t.ok(history.daily[0].epoch);
-    t.ok(history.daily[1].epoch);
-    t.ok(history.daily[12].epoch);
-    t.ok(history.daily[23].epoch);
-  });
+    await t.test('List with filters', async (t) => {
+      const jobs2 = queue.listJobInfos({ states: [JobState.Pending] });
+      t.equal(await jobs2.numRows(), 1);
+      t.equal((await jobs2.next())!.id, queuedJob5.id);
+      t.notOk(await jobs2.next());
 
-  await t.test('List jobs', async (t) => {
-    const queuedJob1 = await queue.addJob('add');
+      const jobs3 = queue.listJobInfos({ states: [JobState.Running] });
+      t.equal(await jobs3.numRows(), 1);
+      t.equal((await jobs3.next())!.id, queuedJob4.id);
+      t.notOk(await jobs3.next());
+    });
 
-    const jobs1 = queue.listJobInfos();
-    t.equal((await jobs1.next())!.taskName, 'fail');
-    t.equal(jobs1.highestId, 5);
-    t.equal((await jobs1.next())!.taskName, 'fail');
-    t.equal((await jobs1.next())!.taskName, 'fail');
-    t.equal((await jobs1.next())!.taskName, 'fail');
-    t.equal((await jobs1.next())!.taskName, 'add');
-    t.notOk(await jobs1.next());
-    t.equal(await jobs1.numRows(), 5);
-
-    const jobs2 = queue.listJobInfos({ states: [JobState.Pending] });
-    t.equal(await jobs2.numRows(), 1);
-    t.equal((await jobs2.next())!.taskName, 'add');
-    t.notOk(await jobs2.next());
-
-    const jobs3 = queue.listJobInfos({ states: [JobState.Running] });
-    t.notOk(await jobs3.next());
-
-    const jobs4 = queue.listJobInfos({}, 2);
-    t.notOk(jobs4.highestId);
-    t.equal((await jobs4.next())!.taskName, 'fail');
-    t.equal(jobs4.highestId, 2);
-    t.equal((await jobs4.next())!.taskName, 'fail');
-    t.equal(jobs4.highestId, 2);
-    t.equal((await jobs4.next())!.taskName, 'fail');
-    t.equal(jobs4.highestId, 4);
-    t.equal((await jobs4.next())!.taskName, 'fail');
-    t.equal(jobs4.highestId, 4);
-    t.equal((await jobs4.next())!.taskName, 'add');
-    t.equal(jobs4.highestId, 5);
-    t.notOk(await jobs4.next());
-    t.equal(await jobs4.numRows(), 5);
-
-    await queuedJob1.remove();
+    await t.test('List with small chunk size', async (t) => {
+      const jobs4 = queue.listJobInfos({}, 2);
+      t.notOk(jobs4.highestId);
+      t.equal((await jobs4.next())!.id, queuedJob1.id);
+      t.equal(jobs4.highestId, queuedJob2.id);
+      t.equal((await jobs4.next())!.id, queuedJob2.id);
+      t.equal(jobs4.highestId, queuedJob2.id);
+      t.equal((await jobs4.next())!.id, queuedJob3.id);
+      t.equal(jobs4.highestId, queuedJob4.id);
+      t.equal((await jobs4.next())!.id, queuedJob4.id);
+      t.equal(jobs4.highestId, queuedJob4.id);
+      t.equal((await jobs4.next())!.id, queuedJob5.id);
+      t.equal(jobs4.highestId, queuedJob5.id);
+      t.notOk(await jobs4.next());
+      t.equal(await jobs4.numRows(), 5);
+    });
   });
 
   await t.test('Enqueue, dequeue and perform', async (t) => {
+    await queue.resetQueue();
+
     t.notOk(await queue.getJob(12345));
+
     const queuedJob1 = await queue.addJob('add', { first: 2, second: 2 });
-    const queuedJob1a = (await queue.getJob(queuedJob1.id))!;
-    t.same(queuedJob1a.args, { first: 2, second: 2 });
-    t.equal(queuedJob1a.state, JobState.Pending);
-    t.equal(queuedJob1a.priority, 0);
+    t.same(queuedJob1.args, { first: 2, second: 2 });
+    t.equal(queuedJob1.state, JobState.Pending);
+    t.equal(queuedJob1.priority, 0);
 
     const worker = queue.getNewWorker();
     t.same(await worker.assignNextJob(), null);
+
     await worker.register();
     const job1 = (await worker.assignNextJob())!;
-    t.same((await worker.getInfo())!.jobs, [queuedJob1.id]);
+    t.same((await worker.getInfo())!.jobIds, [queuedJob1.id]);
     t.equal(job1.taskName, 'add');
     t.equal(job1.attempt, 1);
     t.same(job1.args, { first: 2, second: 2 });
@@ -467,7 +341,7 @@ t.test('Queue with PostgreSQL backend', skip, async (t) => {
     t.same(queuedJob1.time instanceof Date, true);
 
     await job1.perform(worker);
-    t.same((await worker.getInfo())!.jobs, []);
+    t.same((await worker.getInfo())!.jobIds, []);
     t.ok(await queuedJob1.sync());
     t.equal(queuedJob1.state, JobState.Succeeded);
     t.same(queuedJob1.result, { added: 4 });
@@ -1190,6 +1064,109 @@ t.test('Queue with PostgreSQL backend', skip, async (t) => {
     t.equal(queuedJob4.state, JobState.Failed);
     t.equal(queuedJob4.queueName, backend.FOREGROUND_QUEUE);
     t.match(queuedJob4.result, { message: /Intentional failure/ });
+  });
+
+  await t.test('Reset (all)', async (t) => {
+    await queue.resetQueue();
+    await queue.addJob('test');
+    await queue.getNewWorker().register();
+    t.equal(await queue.listJobInfos().numRows(), 1);
+    t.equal(await queue.listWorkerInfos().numRows(), 1);
+
+    await queue.resetQueue();
+    t.equal(await queue.listJobInfos().numRows(), 0);
+    t.equal(await queue.listWorkerInfos().numRows(), 0);
+  });
+
+  await t.test('Stats', async (t) => {
+    await queue.resetQueue();
+
+    const stats1 = await queue.getStatistics();
+    t.equal(stats1.enqueuedJobs, 0);
+    t.equal(stats1.pendingJobs, 0);
+    t.equal(stats1.scheduledJobs, 0);
+    t.equal(stats1.runningJobs, 0);
+    t.equal(stats1.succeededJobs, 0);
+    t.equal(stats1.failedJobs, 0);
+    t.equal(stats1.abandonedJobs, 0);
+    t.equal(stats1.canceledJobs, 0);
+    t.equal(stats1.onlineWorkers, 0);
+    t.equal(stats1.busyWorkers, 0);
+    t.equal(stats1.idleWorkers, 0);
+    t.equal(stats1.queueboneVersion, '0.4.1');
+    t.equal(stats1.backendName, 'Pg');
+    t.match(stats1.backendVersion, /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/);
+    t.ok(stats1.backendUptime);
+
+    const worker = await queue.getNewWorker().register();
+    t.equal((await queue.getStatistics()).onlineWorkers, 1);
+    t.equal((await queue.getStatistics()).idleWorkers, 1);
+    const queuedJob1 = await queue.addJob('fail');
+    t.equal((await queue.getStatistics()).enqueuedJobs, 1);
+    const queuedJob2 = await queue.addJob('fail');
+    t.equal((await queue.getStatistics()).enqueuedJobs, 2);
+    t.equal((await queue.getStatistics()).pendingJobs, 2);
+
+    const job1 = (await worker.assignNextJob(0))!;
+    t.equal(job1.id, queuedJob1.id);
+    const stats2 = await queue.getStatistics();
+    t.equal(stats2.pendingJobs, 1);
+    t.equal(stats2.runningJobs, 1);
+    t.equal(stats2.onlineWorkers, 1);
+    t.equal(stats2.busyWorkers, 1);
+
+    const queuedJob3 = await queue.addJob('fail');
+    const job2 = (await worker.assignNextJob())!;
+    t.equal(job2.id, queuedJob2.id);
+    const stats3 = await queue.getStatistics();
+    t.equal(stats3.pendingJobs, 1);
+    t.equal(stats3.runningJobs, 2);
+    t.equal(stats3.busyWorkers, 1);
+
+    t.same(await job2.markSucceeded(), true);
+    t.same(await job1.markSucceeded(), true);
+    t.equal((await queue.getStatistics()).succeededJobs, 2);
+    const job3 = (await worker.assignNextJob())!;
+    t.equal(job3.id, queuedJob3.id);
+    t.same(await job3.markFailed(), true);
+    t.equal((await queue.getStatistics()).failedJobs, 1);
+    t.ok(await queuedJob3.retry());
+    t.equal((await queue.getStatistics()).failedJobs, 0);
+
+    const job4 = (await worker.assignNextJob())!;
+    await job4.markSucceeded({ it: 'works' });
+    await worker.unregister();
+    const stats4 = await queue.getStatistics();
+    t.equal(stats4.pendingJobs, 0);
+    t.equal(stats4.runningJobs, 0);
+    t.equal(stats4.succeededJobs, 3);
+    t.equal(stats4.failedJobs, 0);
+    t.equal(stats4.abandonedJobs, 0);
+    t.equal(stats4.canceledJobs, 0);
+    t.equal(stats4.offlineWorkers, 1);
+    t.equal(stats4.onlineWorkers, 0);
+    t.equal(stats4.busyWorkers, 0);
+    t.equal(stats4.idleWorkers, 0);
+
+    await worker.unregister();
+  });
+
+  await t.test('Job history', async (t) => {
+    await queue.addJob('fail');
+    const worker = await queue.getNewWorker().register();
+    const job = (await worker.assignNextJob())!;
+    t.ok(await job.markFailed());
+    await worker.unregister();
+    const history = await queue.getJobStatistics();
+    t.equal(history.daily.length, 24);
+    t.equal(history.daily[23].succeededJobs + history.daily[22].succeededJobs, 3);
+    t.equal(history.daily[23].failedJobs + history.daily[22].failedJobs, 1);
+    t.equal(history.daily[0].succeededJobs, 0);
+    t.equal(history.daily[0].failedJobs, 0);
+    t.ok(history.daily[0].epoch);
+    t.ok(history.daily[1].epoch);
+    t.ok(history.daily[12].epoch);
+    t.ok(history.daily[23].epoch);
   });
 
   await queue.stop();

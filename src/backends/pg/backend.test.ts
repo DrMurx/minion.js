@@ -86,7 +86,7 @@ t.test('PostgreSQL backend', skip, async (t) => {
     const addedJob1 = await queue.addJob('add');
     const addedJob2 = await queue.addJob('fail', {}, { maxAttempts: 5 });
     const addedJob3 = await queue.addJob('test', {}, { queueName: 'another_queue' });
-    await worker1.assignNextJob();
+    await worker1.getNextExecutor();
 
     const results1 = await backend.getJobInfos(0, 10, {});
     const batch1 = results1.jobs;

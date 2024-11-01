@@ -9,16 +9,15 @@ import {
   type InferJobArgs,
   type Job,
   type JobArgs,
-  type JobDescriptor,
   type JobId,
   type JobInfo,
   type JobResult,
   type JobResultOptions,
   JobState,
   type ListJobsOptions,
-  type RunningJob,
   unsuccessfulJobStates,
 } from './types/job.js';
+import { type QueueJobStatistics, type QueueStats } from './types/queue-stats.js';
 import { type PruneOptions, type Queue, QueueEvents, type QueueOptions } from './types/queue.js';
 import { QueuedJob } from './types/queued-job.js';
 import { isTask, type Task, type TaskHandlerFunction, type TaskManager } from './types/task.js';
@@ -33,7 +32,7 @@ import {
 } from './types/worker.js';
 import { version } from './version.js';
 import { DefaultWorker } from './worker.js';
-import { QueueJobStatistics, QueueStats } from './types/queue-stats.js';
+import { Executor } from './worker/executor.js';
 
 /**
  * Job queue class.
@@ -51,8 +50,8 @@ export class DefaultQueue<BaseJob extends Job<JobArgs> = Job<JobArgs>>
   });
 
   protected options: QueueOptions;
-  protected taskManager: TaskManager<RunningJob<InferJobArgs<BaseJob>>>;
-  protected pruner: QueuePruner<BaseJob>;
+  protected taskManager: TaskManager<BaseJob>;
+  protected pruner: QueuePruner;
 
   /**
    * Constructor
@@ -66,8 +65,14 @@ export class DefaultQueue<BaseJob extends Job<JobArgs> = Job<JobArgs>>
     if (!Array.isArray(this.options.queueNames) || this.options.queueNames.length === 0) {
       throw new Error('No queue names given');
     }
-    this.taskManager = new DefaultTaskManager<RunningJob<InferJobArgs<BaseJob>>>();
-    this.pruner = new QueuePruner<BaseJob>(this, this, this.backend, this.options.pruneInterval, this.options);
+    this.taskManager = new DefaultTaskManager<BaseJob>();
+    this.pruner = new QueuePruner(this, this.backend, this.options.pruneInterval, this.options);
+    this.on('job_abandoned', ({ job: jobInfo }) => {
+      const executor = new Executor(jobInfo, JobState.Abandoned, this, this.backend);
+      executor.retryFailed().catch((e) => {
+        console.error(e);
+      });
+    });
   }
 
   async start(): Promise<void> {
@@ -132,10 +137,8 @@ export class DefaultQueue<BaseJob extends Job<JobArgs> = Job<JobArgs>>
     return jobs;
   }
 
-  createJobObject<ResultJob extends BaseJob = BaseJob, Args extends InferJobArgs<ResultJob> = InferJobArgs<ResultJob>>(
-    jobInfo: JobDescriptor<Args> | JobInfo<Args>,
-  ): ResultJob {
-    return new DefaultJob<Args>(this.backend, jobInfo) as unknown as ResultJob;
+  createJobObject<ResultJob extends BaseJob = BaseJob>(executor: Executor<ResultJob>): ResultJob {
+    return new DefaultJob(executor) as unknown as ResultJob;
   }
 
   listJobInfos<Args extends InferJobArgs<BaseJob> = InferJobArgs<BaseJob>>(
@@ -153,9 +156,9 @@ export class DefaultQueue<BaseJob extends Job<JobArgs> = Job<JobArgs>>
 
     const worker = await this.getNewWorker({ config: { queueNames: [queueName] } }).register();
     try {
-      const job = await worker.assignNextJob(0, { id: jobId });
-      if (job === null) return false;
-      await job.perform(worker, true);
+      const executor = await worker.getNextExecutor(0, { id: jobId });
+      if (executor === null) return false;
+      await executor.perform(worker, true);
       return true;
     } finally {
       await worker.unregister();
@@ -167,23 +170,20 @@ export class DefaultQueue<BaseJob extends Job<JobArgs> = Job<JobArgs>>
     try {
       while (true) {
         await worker.heartbeat();
-        const job = await worker.assignNextJob(0, options);
-        if (!job) break;
-        await job.perform(worker);
+        const executor = await worker.getNextExecutor(0, options);
+        if (executor === null) break;
+        await executor.perform(worker);
       }
     } finally {
       await worker.unregister();
     }
   }
 
-  registerTask(
-    task: Task<RunningJob<InferJobArgs<BaseJob>>> | string,
-    taskFn?: TaskHandlerFunction<RunningJob<InferJobArgs<BaseJob>>>,
-  ): void {
+  registerTask(task: Task<BaseJob> | string, taskFn?: TaskHandlerFunction<BaseJob>): void {
     if (typeof task === 'string' && taskFn !== undefined) {
       const taskName = task;
       const handlerFunction = taskFn;
-      const t = new (class implements Task<RunningJob<InferJobArgs<BaseJob>>> {
+      const t = new (class implements Task<BaseJob> {
         name = taskName;
         handle = handlerFunction;
       })();
@@ -204,7 +204,16 @@ export class DefaultQueue<BaseJob extends Job<JobArgs> = Job<JobArgs>>
     const metadata = options.metadata ?? {};
     const attachments = options.attachments ?? {};
     const commands = options.commands ?? {};
-    return new DefaultWorker(this, this.taskManager, this.backend, config, metadata, attachments, commands);
+    return new DefaultWorker(
+      config,
+      this,
+      this.taskManager,
+      this.backend,
+      this.backend,
+      metadata,
+      attachments,
+      commands,
+    );
   }
 
   listWorkerInfos(options: ListWorkersOptions = {}, chunkSize: number = 10): BackendIterator<WorkerInfo> {

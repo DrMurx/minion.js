@@ -8,6 +8,7 @@ import {
   JobState,
   type ListJobsOptions,
 } from './job.js';
+import { type QueueJobStatistics } from './queue-stats.js';
 import {
   type ListWorkersOptions,
   type WorkerCommandArg,
@@ -17,7 +18,6 @@ import {
   type WorkerInfo,
   WorkerState,
 } from './worker.js';
-import { QueueJobStatistics } from './queue-stats.js';
 
 export type JobInfoList<Args extends JobArgs> = {
   jobs: JobInfo<Args>[];

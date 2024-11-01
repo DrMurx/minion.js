@@ -1,22 +1,24 @@
 import {
+  JobBackend,
   type JobDequeueOptions,
   type WorkerBackend,
   type WorkerInboxOptions,
   type WorkerRegistrationOptions,
 } from './types/backend.js';
-import { type InferJobArgs, type Job, type JobArgs, type RunningJob } from './types/job.js';
+import { JobState, type InferJobArgs, type Job, type JobArgs } from './types/job.js';
 import { type JobFactory } from './types/queue.js';
 import { type Task, type TaskManager } from './types/task.js';
 import {
+  WorkerState,
   type Worker,
   type WorkerCommandHandler,
   type WorkerConfig,
   type WorkerId,
   type WorkerInfo,
-  WorkerState,
 } from './types/worker.js';
 import { WorkerCommandManager } from './worker/command-manager.js';
 import { WorkerTerminationError } from './worker/errors.js';
+import { Executor } from './worker/executor.js';
 import { WorkerLoop } from './worker/loop.js';
 
 /**
@@ -43,20 +45,21 @@ export class DefaultWorker<BaseJob extends Job<JobArgs>> implements Worker<BaseJ
   private lastHeartbeatAt = 0;
 
   private _state: WorkerState = WorkerState.Offline;
-  private workerLoop: WorkerLoop | null = null;
-  protected abortController = new AbortController();
+  private workerLoop: WorkerLoop<BaseJob> | null = null;
+  private abortController = new AbortController();
 
-  protected commandManager: WorkerCommandManager;
+  private commandManager: WorkerCommandManager;
 
   private _id: number | undefined = undefined;
 
   constructor(
-    protected jobFactory: JobFactory<BaseJob>,
-    protected taskManager: TaskManager<RunningJob<InferJobArgs<BaseJob>>>,
-    protected backend: WorkerBackend,
-    protected _config: WorkerConfig,
+    private _config: WorkerConfig,
+    private jobFactory: JobFactory<BaseJob>,
+    private taskManager: TaskManager<BaseJob>,
+    private workerBackend: WorkerBackend,
+    private jobBackend: JobBackend,
     metadata: Record<string, any>,
-    protected attachments: Record<string, any>,
+    private attachments: Record<string, any>,
     defaultCommands: Record<string, WorkerCommandHandler>,
   ) {
     this._metadata = { ...metadata };
@@ -73,7 +76,7 @@ export class DefaultWorker<BaseJob extends Job<JobArgs>> implements Worker<BaseJ
 
   async getInfo(): Promise<WorkerInfo | undefined> {
     if (this._id === undefined) return undefined;
-    return await this.backend.getWorkerInfo(this._id);
+    return await this.workerBackend.getWorkerInfo(this._id);
   }
 
   get config(): Readonly<WorkerConfig> {
@@ -132,7 +135,7 @@ export class DefaultWorker<BaseJob extends Job<JobArgs>> implements Worker<BaseJ
   async start(): Promise<this> {
     if (!this.workerLoop) {
       this.abortController = new AbortController();
-      const workerLoop = (this.workerLoop = new WorkerLoop(this));
+      const workerLoop = (this.workerLoop = new WorkerLoop<BaseJob>(this));
       workerLoop.on('finished', (finished) => (this.finishedJobCount += finished));
 
       await this.register();
@@ -158,19 +161,16 @@ export class DefaultWorker<BaseJob extends Job<JobArgs>> implements Worker<BaseJ
     }
   }
 
-  async assignNextJob<ResultJob extends BaseJob = BaseJob>(
-    wait = 0,
-    options: Partial<JobDequeueOptions> = {},
-  ): Promise<ResultJob | null> {
+  async getNextExecutor(wait = 0, options: Partial<JobDequeueOptions> = {}): Promise<Executor<BaseJob> | null> {
     if (this.id === undefined) return null;
     const _options = <JobDequeueOptions>{
       queueNames: this._config.queueNames,
       ...options,
     };
     const taskNames = this.taskManager.getTaskNames();
-    const jobInfo = await this.backend.assignNextJob<InferJobArgs<BaseJob>>(this.id, taskNames, wait, _options);
+    const jobInfo = await this.workerBackend.assignNextJob<InferJobArgs<BaseJob>>(this.id, taskNames, wait, _options);
     if (jobInfo === null) return null;
-    return this.jobFactory.createJobObject<ResultJob>(jobInfo);
+    return new Executor(jobInfo, JobState.Running, this.jobFactory, this.jobBackend);
   }
 
   async terminate(reason?: string): Promise<void> {
@@ -184,7 +184,7 @@ export class DefaultWorker<BaseJob extends Job<JobArgs>> implements Worker<BaseJ
     return this.abortController.signal;
   }
 
-  getTask(taskName: string): Task<RunningJob<JobArgs>> {
+  getTask(taskName: string): Task<Job<JobArgs>> {
     return this.taskManager.getTask(taskName);
   }
 
@@ -196,7 +196,7 @@ export class DefaultWorker<BaseJob extends Job<JobArgs>> implements Worker<BaseJ
         finishedJobCount: this.finishedJobCount,
         metadata: this._metadata,
       };
-      this._id = await this.backend.registerWorker(options);
+      this._id = await this.workerBackend.registerWorker(options);
       this._state = WorkerState.Online;
       this.lastHeartbeatAt = Date.now();
     } else {
@@ -214,7 +214,7 @@ export class DefaultWorker<BaseJob extends Job<JobArgs>> implements Worker<BaseJ
         finishedJobCount: this.finishedJobCount,
         metadata: this._metadata,
       };
-      await this.backend.updateWorker(this._id!, options);
+      await this.workerBackend.updateWorker(this._id!, options);
       this.lastHeartbeatAt = Date.now();
     }
     return this;
@@ -226,7 +226,7 @@ export class DefaultWorker<BaseJob extends Job<JobArgs>> implements Worker<BaseJ
         state: this.state,
         finishedJobCount: this.finishedJobCount,
       };
-      const commands = await this.backend.checkWorkerInbox(this._id!, options);
+      const commands = await this.workerBackend.checkWorkerInbox(this._id!, options);
       this.lastInboxCheck = this.lastHeartbeatAt = Date.now();
       await this.commandManager.runCommands(commands);
     }
@@ -235,7 +235,7 @@ export class DefaultWorker<BaseJob extends Job<JobArgs>> implements Worker<BaseJ
 
   async unregister(): Promise<this> {
     if (this._id !== undefined) {
-      await this.backend.unregisterWorker(this._id);
+      await this.workerBackend.unregisterWorker(this._id);
       this._state = WorkerState.Offline;
       this._id = undefined;
     }

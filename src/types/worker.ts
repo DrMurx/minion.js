@@ -1,8 +1,9 @@
+import { Executor } from '../worker/executor.js';
 import { type JobDequeueOptions } from './backend.js';
-import { type Job, type JobArgs, type JobId, type RunningJob } from './job.js';
+import { type Job, type JobArgs, type JobId } from './job.js';
 import { type Task } from './task.js';
 
-export interface RunningWorker<BaseJob extends RunningJob<JobArgs>> {
+export interface RunningWorker<BaseJob extends Job<JobArgs>> {
   /**
    * Worker id.
    */
@@ -17,7 +18,7 @@ export interface RunningWorker<BaseJob extends RunningJob<JobArgs>> {
   get abortSignal(): AbortSignal;
 
   /**
-   * Returns the given task (throws if it doesn't exist)
+   * Returns the given task (throws if it doesn't exist).
    */
   getTask(taskName: string): Task<BaseJob>;
 
@@ -63,10 +64,7 @@ export interface Worker<BaseJob extends Job<JobArgs>> extends RunningWorker<Base
    * Wait a given amount of time in milliseconds for a job, dequeue job object and transition from `pending` to
    * `running` state for the given worker, or return `null` if queues were empty.
    */
-  assignNextJob<ResultJob extends BaseJob>(
-    wait?: number,
-    options?: Partial<JobDequeueOptions>,
-  ): Promise<ResultJob | null>;
+  getNextExecutor(wait?: number, options?: Partial<JobDequeueOptions>): Promise<Executor<BaseJob> | null>;
 
   /**
    * Register this worker in the backend (if not yet registered, otherwise just update its data).

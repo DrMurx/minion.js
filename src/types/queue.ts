@@ -1,5 +1,6 @@
 import type EventEmitter from 'events';
 import { type BackendIterator } from '../backends/iterator.js';
+import { Executor } from '../worker/executor.js';
 import { type JobDequeueOptions, type JobOptions } from './backend.js';
 import {
   JobError,
@@ -12,7 +13,6 @@ import {
   type JobResult,
   type JobResultOptions,
   type ListJobsOptions,
-  type RunningJob,
 } from './job.js';
 import { type StatsReader } from './queue-stats.js';
 import { type QueuedJob } from './queued-job.js';
@@ -102,8 +102,8 @@ export interface Queue<BaseJob extends Job<JobArgs> = Job<JobArgs>>
   /**
    * Register a task.
    */
-  registerTask(task: Task<RunningJob<InferJobArgs<BaseJob>>>): void;
-  registerTask(taskName: string, fn: TaskHandlerFunction<RunningJob<InferJobArgs<BaseJob>>>): void;
+  registerTask(task: Task<BaseJob>): void;
+  registerTask(taskName: string, fn: TaskHandlerFunction<BaseJob>): void;
 
   /**
    * Broadcast remote control command to one or more workers. Unless `option.state` is specified, commands
@@ -124,9 +124,7 @@ export interface Queue<BaseJob extends Job<JobArgs> = Job<JobArgs>>
 }
 
 export interface JobFactory<BaseJob extends Job<JobArgs>> {
-  createJobObject<ResultJob extends BaseJob = BaseJob>(
-    jobInfo: JobDescriptor<InferJobArgs<ResultJob>> | JobInfo<InferJobArgs<ResultJob>>,
-  ): ResultJob;
+  createJobObject<ResultJob extends BaseJob = BaseJob>(executor: Executor<ResultJob>): ResultJob;
 }
 
 export interface WorkerManager<BaseJob extends Job<JobArgs>> {
@@ -153,6 +151,8 @@ export interface QuickWorker {
    */
   runJobs(options?: Partial<JobDequeueOptions>): Promise<void>;
 }
+
+// --------------------------------------------------------------
 
 export interface PruneOptions {
   /**

@@ -1,15 +1,15 @@
-import { type RunningWorker, type WorkerId } from './worker.js';
+import { type WorkerId } from './worker.js';
 
 /**
  * A limited interface for a running `Job` when it is passed to a `Task` handler
  */
-export interface RunningJob<Args extends JobArgs> {
+export interface Job<Args extends JobArgs> {
   get id(): JobId;
   get taskName(): string;
   get args(): Args;
   get progress(): number;
-  get maxAttempts(): number;
   get attempt(): number;
+  get state(): JobState;
 
   get abortSignal(): AbortSignal;
 
@@ -23,31 +23,6 @@ export interface RunningJob<Args extends JobArgs> {
    * will get serialized as JSON.
    */
   amendMetadata(records: Record<string, any>): Promise<boolean>;
-}
-
-export interface Job<Args extends JobArgs> extends RunningJob<Args> {
-  get state(): JobState;
-
-  /**
-   * Perform job and wait for it to finish. Note that this method should only be used to implement custom workers.
-   */
-  perform(worker: RunningWorker<RunningJob<Args>>, throwOnError?: boolean): Promise<void>;
-
-  /**
-   * Transition from `running` to `succeeded` state with or without a result.
-   */
-  markSucceeded(result?: JobResult): Promise<boolean>;
-
-  /**
-   * Transition from `running` to `failed` state with or without a result, and if there are attempts remaining,
-   * transition back to `pending` with a delay based on the backoff policy.
-   */
-  markFailed(result?: JobResult | Error): Promise<boolean>;
-
-  /**
-   * Transition a `failed` job back to `pending` or `scheduled` state if there are still attempts left.
-   */
-  retryFailed(): Promise<void>;
 
   /**
    * Return the backoff delay in ms.
@@ -119,7 +94,7 @@ export interface JobDescriptor<Args extends JobArgs = JobArgs> {
   attempt: number;
 }
 
-export interface JobInfo<Args extends JobArgs = JobArgs> extends JobDescriptor<Args> {
+export interface JobInfo<Args extends JobArgs = JobArgs> {
   id: JobId;
 
   queueName: string;

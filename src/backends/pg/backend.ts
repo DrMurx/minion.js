@@ -6,8 +6,8 @@ import {
   type JobDequeueOptions,
   type JobEnqueueOptions,
   type JobInfoList,
-  type JobPruneResult,
   type JobOptions,
+  type JobPruneResult,
   type WorkerInboxOptions,
   type WorkerInfoList,
   type WorkerPruneResult,
@@ -22,6 +22,7 @@ import {
   JobState,
   type ListJobsOptions,
 } from '../../types/job.js';
+import { type DailyJobHistory, type QueueJobStatistics, type QueueStats } from '../../types/queue-stats.js';
 import {
   type ListWorkersOptions,
   type WorkerCommandArg,
@@ -32,7 +33,6 @@ import {
 } from '../../types/worker.js';
 import { createPool } from './factory.js';
 import { Migration, type MigrationStep } from './migration.js';
-import { DailyJobHistory, QueueJobStatistics, QueueStats } from '../../types/queue-stats.js';
 
 export const JOB_TABLE = 'queue_jobs';
 export const WORKER_TABLE = 'queue_workers';
@@ -207,14 +207,19 @@ export class PgBackend extends EventEmitter implements Backend {
   }
 
   async updateJobProgress(id: JobId, attempt: number, progress: number): Promise<boolean> {
-    const results = await this.query(
+    const results = await this.query<UpdateJobProgressResult>(
       `UPDATE ${JOB_TABLE}
       SET progress = $1
       WHERE id = $2
-        AND attempt = $3`,
+        AND attempt = $3
+      RETURNING worker_id AS workerId`,
       [progress, id, attempt],
     );
-    return (results.rowCount ?? 0) > 0;
+    if (results.rowCount === 0) return false;
+    // if (results.rows[0].workerId) {
+    //   this.emit('worker_', { workerId: results.rows[0].workerId });
+    // }
+    return true;
   }
 
   async markJobFinished(
@@ -896,6 +901,10 @@ interface ReceiveResult {
 
 interface RegisterWorkerResult {
   id: WorkerId;
+}
+
+interface UpdateJobProgressResult {
+  workerId: WorkerId;
 }
 
 interface ServerVersionResult {

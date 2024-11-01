@@ -2,18 +2,19 @@ import EventEmitter from 'events';
 import { type JobDequeueOptions } from '../types/backend.js';
 import { type Job, type JobArgs } from '../types/job.js';
 import { type Worker } from '../types/worker.js';
+import { type Executor } from './executor.js';
 
 /**
  * Encapsulates the management of all currently running jobs of a worker.
  */
-export class WorkerLoop extends EventEmitter {
+export class WorkerLoop<BaseJob extends Job<JobArgs>> extends EventEmitter {
   /**
    * A list of currently running (or just finished) jobs
    */
-  private jobs: JobStatus[] = [];
+  private jobs: JobStatus<BaseJob>[] = [];
   private stopPromises: Array<() => void> = [];
 
-  constructor(protected worker: Worker<any>) {
+  constructor(protected worker: Worker<BaseJob>) {
     super();
   }
 
@@ -102,13 +103,13 @@ export class WorkerLoop extends EventEmitter {
     };
 
     // Pull a job while assign it to current worker
-    const job = await this.worker.assignNextJob(dequeueTimeout, options);
-    if (job === null) return false;
+    const executor = await this.worker.getNextExecutor(dequeueTimeout, options);
+    if (executor === null) return false;
 
     // Construct the jobStatus object - the promise on `Job.perform` will update its status after it has finished
-    const performPromise = job.perform(this.worker, false);
-    const jobStatus: JobStatus = {
-      job,
+    const performPromise = executor.perform(this.worker, false);
+    const jobStatus: JobStatus<BaseJob> = {
+      job: executor,
       performPromise,
       isRunning: true,
     };
@@ -130,8 +131,8 @@ export class WorkerLoop extends EventEmitter {
   }
 }
 
-interface JobStatus {
-  job: Job<JobArgs>;
+interface JobStatus<BaseJob extends Job<JobArgs>> {
+  job: Executor<BaseJob>;
   performPromise: Promise<void>;
   isRunning: boolean;
 }

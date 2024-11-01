@@ -13,7 +13,6 @@ import {
   type JobInfo,
   type JobResult,
   JobState,
-  type RunningJob,
 } from './types/job.js';
 import { type Queue, type QueueOptions } from './types/queue.js';
 import { type QueuedJob } from './types/queued-job.js';
@@ -50,7 +49,6 @@ export {
   type Queue,
   type QueuedJob,
   type QueueOptions,
-  type RunningJob,
   type RunningWorker,
   type Task,
   type TaskHandlerFunction,

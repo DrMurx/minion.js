@@ -1,150 +1,49 @@
-import { type JobBackend } from './types/backend.js';
-import {
-  JobState,
-  type Job,
-  type JobArgs,
-  type JobDescriptor,
-  type JobId,
-  type JobInfo,
-  type JobResult,
-  type RunningJob,
-} from './types/job.js';
+import { JobState, type Job, type JobArgs, type JobId } from './types/job.js';
 import { type RunningWorker } from './types/worker.js';
+import { type Executor } from './worker/executor.js';
 
 /**
  * Default job class.
  */
 export class DefaultJob<Args extends JobArgs = JobArgs> implements Job<Args> {
-  private _state: JobState = JobState.Running;
-  private _progress: number = 0.0;
+  public worker: RunningWorker<Job<Args>> | null = null;
 
-  private _worker: RunningWorker<RunningJob<Args>> | null = null;
-  private _abortController: AbortController = new AbortController();
-  private jobInfo: JobDescriptor<Args>;
-
-  /**
-   * @param backend Queue backend
-   * @param jobInfo Simplified JobInfo object
-   */
-  constructor(
-    private backend: JobBackend,
-    jobInfo: JobDescriptor<Args> | JobInfo<Args>,
-  ) {
-    this.jobInfo = { ...jobInfo };
-    if ('state' in jobInfo) {
-      this._state = jobInfo.state;
-    }
-    if ('progress' in jobInfo) {
-      this._progress = jobInfo.progress;
-    }
-  }
+  constructor(private executor: Executor<Job<Args>>) {}
 
   get id(): JobId {
-    return this.jobInfo.id;
+    return this.executor.id;
   }
 
   get taskName(): string {
-    return this.jobInfo.taskName;
+    return this.executor.taskName;
   }
 
   get args(): Args {
-    return this.jobInfo.args;
-  }
-
-  get state(): JobState {
-    return this._state;
+    return this.executor.args;
   }
 
   get progress(): number {
-    return this._progress;
-  }
-
-  get maxAttempts(): number {
-    return this.jobInfo.maxAttempts;
+    return this.executor.progress;
   }
 
   get attempt(): number {
-    return this.jobInfo.attempt;
+    return this.executor.attempt;
+  }
+
+  get state(): JobState {
+    return this.executor.state;
   }
 
   get abortSignal(): AbortSignal {
-    return this._abortController.signal;
-  }
-
-  async perform(worker: RunningWorker<RunningJob<Args>>, throwOnError: boolean = false): Promise<void> {
-    if (this._state !== JobState.Pending && this._state !== JobState.Scheduled && this._state !== JobState.Running) {
-      throw new Error(`Try to perform job with state ${this._state}: ${this.id}`);
-    }
-
-    const abortEventHandler = (event: Event) => {
-      if (event.type === 'abort') {
-        this._abortController.abort(worker.abortSignal.reason);
-      }
-    };
-
-    this._state = JobState.Running;
-    this._progress = 0.0;
-    this._worker = worker;
-
-    try {
-      worker.abortSignal.throwIfAborted();
-      worker.abortSignal.addEventListener('abort', abortEventHandler);
-
-      const task = worker.getTask(this.taskName);
-      const result = await task.handle(this, worker);
-      await this.markSucceeded(result ?? {});
-    } catch (error: any) {
-      await this.markFailed(error);
-      if (throwOnError) throw error;
-    } finally {
-      worker.abortSignal.removeEventListener('abort', abortEventHandler);
-      this._worker = null;
-    }
+    return this.executor.abortSignal;
   }
 
   async updateProgress(progress: number): Promise<boolean> {
-    const isUpdated = await this.backend.updateJobProgress(this.id, this.attempt, progress);
-    if (isUpdated) {
-      this._progress = progress;
-      await this._worker?.heartbeat();
-    }
-    return isUpdated;
+    return this.executor.updateProgress(progress);
   }
 
   async amendMetadata(records: Record<string, any>): Promise<boolean> {
-    return await this.backend.amendJobMetadata(this.id, records);
-  }
-
-  async markSucceeded(result?: JobResult): Promise<boolean> {
-    const isUpdated = await this.backend.markJobFinished(JobState.Succeeded, this.id, this.attempt, result ?? {});
-    if (isUpdated) {
-      this._state = JobState.Succeeded;
-      this._progress = 1.0;
-    }
-    return isUpdated;
-  }
-
-  async markFailed(result: JobResult | Error = new Error('Unknown error')): Promise<boolean> {
-    if (result instanceof Error) {
-      result = { name: result.name, message: result.message, stack: result.stack };
-    }
-    const isUpdated = await this.backend.markJobFinished(JobState.Failed, this.id, this.attempt, result);
-    if (isUpdated) {
-      this._state = JobState.Failed;
-      await this.retryFailed();
-    }
-    return isUpdated;
-  }
-
-  async retryFailed(): Promise<void> {
-    if (this.attempt < this.maxAttempts) {
-      const options = {
-        // Set maxAttempt to its current value (otherwise, `Backend.retryJob` increases it)
-        maxAttempts: this.maxAttempts,
-        delayFor: await this.getBackoffDelay(),
-      };
-      await this.backend.retryJob<Args>(this.id, this.attempt, options);
-    }
+    return await this.executor.amendMetadata(records);
   }
 
   async getBackoffDelay(): Promise<number> {

@@ -1,7 +1,7 @@
-import { type JobArgs, type RunningJob } from './types/job.js';
+import { type Job, type JobArgs } from './types/job.js';
 import { type Task, type TaskManager } from './types/task.js';
 
-export class DefaultTaskManager<BaseJob extends RunningJob<JobArgs>> implements TaskManager<BaseJob> {
+export class DefaultTaskManager<BaseJob extends Job<JobArgs>> implements TaskManager<BaseJob> {
   private tasks: TaskList<BaseJob> = new Map();
 
   registerTask(task: Task<BaseJob>): void {
@@ -20,4 +20,4 @@ export class DefaultTaskManager<BaseJob extends RunningJob<JobArgs>> implements 
   }
 }
 
-type TaskList<TaskJob extends RunningJob<JobArgs>> = Map<string, Task<TaskJob>>;
+type TaskList<TaskJob extends Job<JobArgs>> = Map<string, Task<TaskJob>>;

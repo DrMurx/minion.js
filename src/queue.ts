@@ -25,7 +25,6 @@ import {
   type ListWorkersOptions,
   type Worker,
   type WorkerCommandArg,
-  type WorkerConfig,
   type WorkerInfo,
   type WorkerOptions,
   WorkerState,
@@ -154,7 +153,7 @@ export class DefaultQueue<BaseJob extends Job<JobArgs> = Job<JobArgs>>
     if (jobCtrl === null) return false;
     if ((await jobCtrl.retry({ queueName, maxAttempts: jobCtrl.maxAttempts + 1 })) === null) return false;
 
-    const worker = await this.getNewWorker({ config: { queueNames: [queueName] } }).register();
+    const worker = await this.getNewWorker({ queueNames: [queueName] }).register();
     try {
       const executor = await worker.getNextExecutor(0, { id: jobId });
       if (executor === null) return false;
@@ -195,25 +194,13 @@ export class DefaultQueue<BaseJob extends Job<JobArgs> = Job<JobArgs>>
     }
   }
 
-  getNewWorker(options: WorkerOptions = {}): Worker<BaseJob> {
-    const config = <WorkerConfig>{
+  getNewWorker(options: Partial<WorkerOptions> = {}): Worker<BaseJob> {
+    const _options = <WorkerOptions>{
       ...DefaultWorker.DEFAULT_CONFIG,
       queueNames: this.options.queueNames,
-      ...(options.config ?? {}),
+      ...options,
     };
-    const metadata = options.metadata ?? {};
-    const attachments = options.attachments ?? {};
-    const commands = options.commands ?? {};
-    return new DefaultWorker(
-      config,
-      this,
-      this.taskManager,
-      this.backend,
-      this.backend,
-      metadata,
-      attachments,
-      commands,
-    );
+    return new DefaultWorker(_options, this.taskManager, this, this.backend, this.backend);
   }
 
   listWorkerInfos(options: ListWorkersOptions = {}, chunkSize: number = 10): BackendIterator<WorkerInfo> {

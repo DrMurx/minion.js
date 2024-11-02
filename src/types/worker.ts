@@ -93,8 +93,7 @@ export type WorkerCommandArg = Record<string, any> & { [Symbol.iterator]?: never
 export type WorkerCommandHandler = (worker: Worker<any>, arg: WorkerCommandArg) => Promise<void>;
 export type WorkerCommandDescriptor = { command: string; arg: WorkerCommandArg };
 
-export interface WorkerOptions {
-  config?: Partial<WorkerConfig>;
+export interface WorkerOptions extends WorkerConfig {
   metadata?: Record<string, any>;
   attachments?: Record<string, any>;
   commands?: Record<string, WorkerCommandHandler>;

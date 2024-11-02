@@ -15,6 +15,7 @@ import {
   type WorkerConfig,
   type WorkerId,
   type WorkerInfo,
+  type WorkerOptions,
 } from './types/worker.js';
 import { WorkerCommandManager } from './worker/command-manager.js';
 import { WorkerTerminationError } from './worker/errors.js';
@@ -35,35 +36,47 @@ export class DefaultWorker<BaseJob extends Job<JobArgs>> implements Worker<BaseJ
   });
 
   /**
-   * Additional metadata
+   * ID of the worker, if registered
    */
-  private _metadata: Record<string, any> = {};
-
-  private finishedJobCount = 0;
-
-  private lastInboxCheck = 0;
-  private lastHeartbeatAt = 0;
+  private _id: number | undefined = undefined;
 
   private _state: WorkerState = WorkerState.Offline;
+
+  /**
+   * Worker configuration
+   */
+  private _config: WorkerConfig;
+
+  /**
+   * Additional metadata (stored in database)
+   */
+  private _metadata: Record<string, any>;
+
+  /**
+   * Additional attachments (only available at runtime)
+   */
+  private attachments: Record<string, any>;
+
   private workerLoop: WorkerLoop<BaseJob> | null = null;
   private abortController = new AbortController();
 
+  private lastHeartbeatAt = 0;
+  private lastInboxCheck = 0;
   private commandManager: WorkerCommandManager;
 
-  private _id: number | undefined = undefined;
+  private finishedJobCount = 0;
 
   constructor(
-    private _config: WorkerConfig,
-    private jobFactory: JobFactory<BaseJob>,
+    options: WorkerOptions,
     private taskManager: TaskManager<BaseJob>,
-    private workerBackend: WorkerBackend,
+    private jobFactory: JobFactory<BaseJob>,
     private jobBackend: JobBackend,
-    metadata: Record<string, any>,
-    private attachments: Record<string, any>,
-    defaultCommands: Record<string, WorkerCommandHandler>,
+    private workerBackend: WorkerBackend,
   ) {
-    this._metadata = { ...metadata };
-    this.commandManager = new WorkerCommandManager(this, defaultCommands);
+    this._config = { ...options };
+    this._metadata = { ...options.metadata };
+    this.attachments = options.attachments ?? {};
+    this.commandManager = new WorkerCommandManager(this, options.commands ?? {});
   }
 
   get id(): WorkerId | undefined {

@@ -131,7 +131,7 @@ export interface WorkerManager<BaseJob extends Job<JobArgs>> {
   /**
    * Build worker object.
    */
-  getNewWorker(options?: WorkerOptions): Worker<BaseJob>;
+  getNewWorker(options?: Partial<WorkerOptions>): Worker<BaseJob>;
 
   /**
    * Return iterator object to safely iterate through worker information.
@@ -180,12 +180,7 @@ export interface QueueOptions extends PruneOptions {
    */
   queueNames: string[];
   pruneInterval: number;
-  jobFactory: JobFactoryFunction;
 }
-
-export type JobFactoryFunction<BaseJob extends Job<JobArgs> = Job<JobArgs>> = (
-  jobInfo: JobDescriptor<InferJobArgs<BaseJob>>,
-) => BaseJob;
 
 export interface QueueEvents<BaseJob extends Job<JobArgs>> {
   job_started: [{ job: JobDescriptor<InferJobArgs<BaseJob>> }];

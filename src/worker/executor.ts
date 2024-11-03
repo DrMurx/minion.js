@@ -6,15 +6,17 @@ import {
   type Job,
   type JobArgs,
   type JobDescriptor,
+  type JobError,
   type JobId,
   type JobResult,
 } from '../types/job.js';
-import { type JobFactory } from '../types/queue.js';
+import { type JobFactory, type QueueEventEmitter } from '../types/queue.js';
 import { type RunningWorker } from '../types/worker.js';
 
 export class Executor<BaseJob extends Job<JobArgs>> {
   private _jobInfo: JobDescriptor<InferJobArgs<BaseJob>>;
   private _state: JobState;
+  private _startTime: number = 0;
   private _progress: number = 0.0;
 
   private _job?: BaseJob;
@@ -22,10 +24,11 @@ export class Executor<BaseJob extends Job<JobArgs>> {
   private _abortController: AbortController = new AbortController();
 
   constructor(
+    private backend: JobBackend,
     jobInfo: JobDescriptor<InferJobArgs<BaseJob>>,
     initialState: JobState,
     private jobFactory: JobFactory<BaseJob>,
-    private backend: JobBackend,
+    private notifier: QueueEventEmitter<BaseJob>,
   ) {
     this._jobInfo = jobInfo;
     this._state = initialState;
@@ -38,7 +41,7 @@ export class Executor<BaseJob extends Job<JobArgs>> {
     return this._job;
   }
 
-  get jobInfo(): JobDescriptor<InferJobArgs<BaseJob>> {
+  get jobInfo(): Readonly<JobDescriptor<InferJobArgs<BaseJob>>> {
     return this._jobInfo;
   }
 
@@ -54,20 +57,20 @@ export class Executor<BaseJob extends Job<JobArgs>> {
     return this._jobInfo.args;
   }
 
-  get maxAttempts(): number {
-    return this._jobInfo.maxAttempts;
-  }
-
-  get attempt(): number {
-    return this._jobInfo.attempt;
-  }
-
   get state(): JobState {
     return this._state;
   }
 
   get progress(): number {
     return this._progress;
+  }
+
+  get maxAttempts(): number {
+    return this._jobInfo.maxAttempts;
+  }
+
+  get attempt(): number {
+    return this._jobInfo.attempt;
   }
 
   get abortSignal(): AbortSignal {
@@ -78,6 +81,16 @@ export class Executor<BaseJob extends Job<JobArgs>> {
     const isUpdated = await this.backend.updateJobProgress(this.id, this.attempt, progress);
     if (isUpdated) {
       this._progress = progress;
+
+      if (this.notifier.listenerCount('job_progress') > 0) {
+        const event = {
+          job: this.job,
+          progress,
+          duration: Date.now() - this._startTime,
+        };
+        this.notifier.emit('job_progress', event);
+      }
+
       if (this._worker) await this._worker.heartbeat();
     }
     return isUpdated;
@@ -102,7 +115,15 @@ export class Executor<BaseJob extends Job<JobArgs>> {
     };
 
     this._state = JobState.Running;
+    this._startTime = Date.now();
     this._worker = worker;
+
+    if (this.notifier.listenerCount('job_started') > 0) {
+      const event = {
+        job: this.job,
+      };
+      this.notifier.emit('job_started', event);
+    }
 
     try {
       worker.abortSignal.throwIfAborted();
@@ -115,8 +136,17 @@ export class Executor<BaseJob extends Job<JobArgs>> {
       await this.markFailed(error);
       if (throwOnError) throw error;
     } finally {
-      this._worker = undefined;
       worker.abortSignal.removeEventListener('abort', abortEventHandler);
+      this._worker = undefined;
+
+      if (this.notifier.listenerCount('job_finished') > 0) {
+        const event = {
+          job: this.job,
+          state: this.state,
+          duration: Date.now() - this._startTime,
+        };
+        this.notifier.emit('job_finished', event);
+      }
     }
   }
 
@@ -128,6 +158,14 @@ export class Executor<BaseJob extends Job<JobArgs>> {
     if (isUpdated) {
       this._progress = 1.0;
       this._state = JobState.Succeeded;
+      if (this.notifier.listenerCount('job_succeeded') > 0) {
+        const event = {
+          job: this.job,
+          result: { ...result },
+          duration: Date.now() - this._startTime,
+        };
+        this.notifier.emit('job_succeeded', event);
+      }
     }
     return isUpdated;
   }
@@ -136,13 +174,23 @@ export class Executor<BaseJob extends Job<JobArgs>> {
    * Transition from `running` to `failed` state with or without a result, and if there are attempts remaining,
    * transition back to `pending` with a delay based on the backoff policy.
    */
-  async markFailed(result: JobResult | Error = new Error('Unknown error')): Promise<boolean> {
+  async markFailed(result: JobError = new Error('Unknown error')): Promise<boolean> {
     if (result instanceof Error) {
       result = { name: result.name, message: result.message, stack: result.stack };
     }
     const isUpdated = await this.backend.markJobFinished(JobState.Failed, this.id, this.attempt, result);
     if (isUpdated) {
       this._state = JobState.Failed;
+
+      if (this.notifier.listenerCount('job_failed') > 0) {
+        const event = {
+          job: this.job,
+          result: { ...result },
+          duration: Date.now() - this._startTime,
+        };
+        this.notifier.emit('job_failed', event);
+      }
+
       await this.retryFailed();
     }
     return isUpdated;

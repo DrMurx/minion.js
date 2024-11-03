@@ -19,7 +19,14 @@ t.test('Queue with PostgreSQL backend', skip, async (t) => {
   await pool.query('CREATE SCHEMA queue_test');
 
   const backend: Backend = new PgBackend(pool);
-  const queue: Queue = new DefaultQueue(backend);
+  const queue: Queue = new DefaultQueue(backend, {
+    // Register at some simple tasks for further tests
+    tasks: {
+      fail: () => {
+        throw new Error('Intentional failure!');
+      },
+    },
+  });
   await queue.start();
 
   // Register at some simple tasks for further tests
@@ -29,9 +36,6 @@ t.test('Queue with PostgreSQL backend', skip, async (t) => {
       async handle() {}
     })(),
   );
-  queue.registerTask('fail', async () => {
-    throw new Error('Intentional failure!');
-  });
   queue.registerTask('add', async (job) => {
     const { first, second } = job.args as any;
     return { added: first + second };

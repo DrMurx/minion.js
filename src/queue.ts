@@ -36,7 +36,7 @@ import { Executor } from './worker/executor.js';
 /**
  * Job queue class.
  */
-export class DefaultQueue<BaseJob extends Job<JobArgs> = Job<JobArgs>>
+export class DefaultQueue<BaseJob extends Job<JobArgs> = DefaultJob<JobArgs>>
   extends EventEmitter<QueueEvents<BaseJob>>
   implements Queue<BaseJob>
 {
@@ -48,7 +48,7 @@ export class DefaultQueue<BaseJob extends Job<JobArgs> = Job<JobArgs>>
     jobUnattendedPeriod: 2 * 24 * 60 * 60 * 1000,
   });
 
-  protected options: QueueOptions;
+  protected _options: Readonly<QueueOptions>;
   protected taskManager: TaskManager<BaseJob>;
   protected pruner: QueuePruner;
 
@@ -60,18 +60,31 @@ export class DefaultQueue<BaseJob extends Job<JobArgs> = Job<JobArgs>>
     options: Partial<QueueOptions> = {},
   ) {
     super();
-    this.options = { ...DefaultQueue.DEFAULT_OPTIONS, ...options };
-    if (!Array.isArray(this.options.queueNames) || this.options.queueNames.length === 0) {
+
+    // Assemble and freeze options
+    const _options: QueueOptions = { ...DefaultQueue.DEFAULT_OPTIONS, ...options };
+    delete _options.tasks;
+    if (!Array.isArray(_options.queueNames) || _options.queueNames.length === 0) {
       throw new Error('No queue names given');
     }
-    this.taskManager = new DefaultTaskManager<BaseJob>();
-    this.pruner = new QueuePruner(this, this.backend, this.options.pruneInterval, this.options);
-    this.on('job_abandoned', ({ job: jobInfo }) => {
-      const executor = new Executor(jobInfo, JobState.Abandoned, this, this.backend);
+    Object.freeze(_options.queueNames);
+    this._options = Object.freeze(_options);
+
+    // Plug in some event handlers
+    this.on('job_abandoned', ({ jobInfo }) => {
+      const executor = new Executor(this.backend, jobInfo, JobState.Abandoned, this, this);
       executor.retryFailed().catch((e) => {
         console.error(e);
       });
     });
+
+    // Create other objects
+    this.taskManager = new DefaultTaskManager<BaseJob>(options.tasks);
+    this.pruner = new QueuePruner(this.backend, this._options, this);
+  }
+
+  get options(): Readonly<QueueOptions> {
+    return this._options;
   }
 
   async start(): Promise<void> {
@@ -91,7 +104,7 @@ export class DefaultQueue<BaseJob extends Job<JobArgs> = Job<JobArgs>>
   ): Promise<QueuedJob<Args>> {
     const _args = args ?? ({} as Args);
     const _options = <JobEnqueueOptions>{
-      queueName: this.options.queueNames[0],
+      queueName: this._options.queueNames[0],
       priority: 0,
       maxAttempts: 1,
       parentJobIds: [],
@@ -136,7 +149,7 @@ export class DefaultQueue<BaseJob extends Job<JobArgs> = Job<JobArgs>>
     return jobs;
   }
 
-  createJobObject<ResultJob extends BaseJob = BaseJob>(executor: Executor<ResultJob>): ResultJob {
+  createJobObject<ResultJob extends BaseJob>(executor: Executor<ResultJob>): ResultJob {
     return new DefaultJob(executor) as unknown as ResultJob;
   }
 
@@ -180,13 +193,7 @@ export class DefaultQueue<BaseJob extends Job<JobArgs> = Job<JobArgs>>
 
   registerTask(task: Task<BaseJob> | string, taskFn?: TaskHandlerFunction<BaseJob>): void {
     if (typeof task === 'string' && taskFn !== undefined) {
-      const taskName = task;
-      const handlerFunction = taskFn;
-      const t = new (class implements Task<BaseJob> {
-        name = taskName;
-        handle = handlerFunction;
-      })();
-      this.taskManager.registerTask(t);
+      this.taskManager.registerTaskFunction(task, taskFn);
     } else if (isTask(task)) {
       this.taskManager.registerTask(task);
     } else {
@@ -197,10 +204,10 @@ export class DefaultQueue<BaseJob extends Job<JobArgs> = Job<JobArgs>>
   getNewWorker(options: Partial<WorkerOptions> = {}): Worker<BaseJob> {
     const _options = <WorkerOptions>{
       ...DefaultWorker.DEFAULT_CONFIG,
-      queueNames: this.options.queueNames,
+      queueNames: this._options.queueNames,
       ...options,
     };
-    return new DefaultWorker(_options, this.taskManager, this, this.backend, this.backend);
+    return new DefaultWorker(this.backend, _options, this.taskManager, this, this.backend, this);
   }
 
   listWorkerInfos(options: ListWorkersOptions = {}, chunkSize: number = 10): BackendIterator<WorkerInfo> {

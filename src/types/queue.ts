@@ -4,6 +4,7 @@ import { Executor } from '../worker/executor.js';
 import { type JobDequeueOptions, type JobOptions } from './backend.js';
 import {
   JobError,
+  JobState,
   type InferJobArgs,
   type Job,
   type JobArgs,
@@ -33,7 +34,12 @@ export interface Queue<BaseJob extends Job<JobArgs> = Job<JobArgs>>
     QuickWorker,
     WorkerManager<BaseJob>,
     StatsReader,
-    EventEmitter<QueueEvents<BaseJob>> {
+    QueueEventEmitter<BaseJob> {
+  /**
+   * Access to the queue options
+   */
+  get options(): Readonly<QueueOptions>;
+
   /**
    * Starts the queue and ensure that backend schema is updated to the latest version.
    */
@@ -124,7 +130,7 @@ export interface Queue<BaseJob extends Job<JobArgs> = Job<JobArgs>>
 }
 
 export interface JobFactory<BaseJob extends Job<JobArgs>> {
-  createJobObject<ResultJob extends BaseJob = BaseJob>(executor: Executor<ResultJob>): ResultJob;
+  createJobObject<ResultJob extends BaseJob>(executor: Executor<ResultJob>): ResultJob;
 }
 
 export interface WorkerManager<BaseJob extends Job<JobArgs>> {
@@ -155,6 +161,8 @@ export interface QuickWorker {
 // --------------------------------------------------------------
 
 export interface PruneOptions {
+  pruneInterval: number;
+
   /**
    * Amount of time in milliseconds after which workers without contact will be considered `lost` and marked as
    * such.
@@ -179,16 +187,24 @@ export interface QueueOptions extends PruneOptions {
    * Names of the queues
    */
   queueNames: string[];
-  pruneInterval: number;
+
+  tasks?: Task[] | { [taskName: string]: TaskHandlerFunction };
 }
 
-export interface QueueEvents<BaseJob extends Job<JobArgs>> {
-  job_started: [{ job: JobDescriptor<InferJobArgs<BaseJob>> }];
-  job_succeeded: [{ job: JobDescriptor<InferJobArgs<BaseJob>>; result: JobResult }];
-  job_failed: [{ job: JobDescriptor<InferJobArgs<BaseJob>>; result: JobError }];
-  job_expired: [{ job: JobDescriptor<InferJobArgs<BaseJob>> }];
-  job_expunged: [{ job: JobDescriptor<InferJobArgs<BaseJob>> }];
-  job_abandoned: [{ job: JobDescriptor<InferJobArgs<BaseJob>> }];
-  job_unattended: [{ job: JobDescriptor<InferJobArgs<BaseJob>> }];
-  worker_lost: [{ worker: Worker<BaseJob> }];
+export type QueueEventEmitter<BaseJob extends Job<JobArgs>> = EventEmitter<QueueEvents<BaseJob>>;
+
+export interface QueueEvents<
+  BaseJob extends Job<JobArgs>,
+  JobDescriptorRO = Readonly<JobDescriptor<InferJobArgs<BaseJob>>>,
+> {
+  job_started: [{ job: BaseJob }];
+  job_progress: [{ job: BaseJob; progress: number; duration: number }];
+  job_finished: [{ job: BaseJob; state: JobState; duration: number }];
+  job_succeeded: [{ job: BaseJob; result: Readonly<JobResult>; duration: number }];
+  job_failed: [{ job: BaseJob; result: Readonly<JobError>; duration: number }];
+  job_expired: [{ jobInfo: JobDescriptorRO }];
+  job_expunged: [{ jobInfo: JobDescriptorRO }];
+  job_abandoned: [{ jobInfo: JobDescriptorRO }];
+  job_unattended: [{ jobInfo: JobDescriptorRO }];
+  worker_lost: [{ workerInfo: Readonly<WorkerInfo> }];
 }

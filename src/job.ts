@@ -5,7 +5,7 @@ import { type Executor } from './worker/executor.js';
 /**
  * Default job class.
  */
-export class DefaultJob<Args extends JobArgs = JobArgs> implements Job<Args> {
+export class DefaultJob<Args extends JobArgs> implements Job<Args> {
   public worker: RunningWorker<Job<Args>> | null = null;
 
   constructor(private executor: Executor<Job<Args>>) {}

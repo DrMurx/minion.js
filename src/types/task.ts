@@ -22,6 +22,11 @@ export interface TaskManager<BaseJob extends Job<JobArgs>> {
   registerTask(task: Task<BaseJob>): void;
 
   /**
+   * Registers a new task handler given as function.
+   */
+  registerTaskFunction(taskName: string, taskFn: TaskHandlerFunction<BaseJob>): void;
+
+  /**
    * Retrieve a task handler.
    * @throws When task unknown
    */

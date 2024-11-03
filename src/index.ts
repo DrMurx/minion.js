@@ -26,6 +26,7 @@ import {
   WorkerState,
 } from './types/worker.js';
 import { version } from './version.js';
+import { Executor } from './worker/executor.js';
 
 export default DefaultQueue;
 export {
@@ -38,6 +39,7 @@ export {
   version,
   WorkerState,
   type Backend,
+  type Executor,
   type InferJobArgs,
   type Job,
   type JobArgs,

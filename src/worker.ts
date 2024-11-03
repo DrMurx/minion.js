@@ -6,7 +6,7 @@ import {
   type WorkerRegistrationOptions,
 } from './types/backend.js';
 import { JobState, type InferJobArgs, type Job, type JobArgs } from './types/job.js';
-import { type JobFactory } from './types/queue.js';
+import { type JobFactory, type QueueEventEmitter } from './types/queue.js';
 import { type Task, type TaskManager } from './types/task.js';
 import {
   WorkerState,
@@ -67,11 +67,12 @@ export class DefaultWorker<BaseJob extends Job<JobArgs>> implements Worker<BaseJ
   private finishedJobCount = 0;
 
   constructor(
+    private workerBackend: WorkerBackend,
     options: WorkerOptions,
     private taskManager: TaskManager<BaseJob>,
     private jobFactory: JobFactory<BaseJob>,
     private jobBackend: JobBackend,
-    private workerBackend: WorkerBackend,
+    private notifier: QueueEventEmitter<BaseJob>,
   ) {
     this._config = { ...options };
     this._metadata = { ...options.metadata };
@@ -183,7 +184,7 @@ export class DefaultWorker<BaseJob extends Job<JobArgs>> implements Worker<BaseJ
     const taskNames = this.taskManager.getTaskNames();
     const jobInfo = await this.workerBackend.assignNextJob<InferJobArgs<BaseJob>>(this.id, taskNames, wait, _options);
     if (jobInfo === null) return null;
-    return new Executor(jobInfo, JobState.Running, this.jobFactory, this.jobBackend);
+    return new Executor(this.jobBackend, jobInfo, JobState.Running, this.jobFactory, this.notifier);
   }
 
   async terminate(reason?: string): Promise<void> {

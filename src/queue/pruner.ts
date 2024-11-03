@@ -1,6 +1,5 @@
-import EventEmitter from 'events';
 import { type Backend, type JobPruneResult, type WorkerPruneResult } from '../types/backend.js';
-import { type PruneOptions } from '../types/queue.js';
+import { type QueueEventEmitter, type PruneOptions } from '../types/queue.js';
 
 export class QueuePruner {
   private enabled: boolean = false;
@@ -9,10 +8,9 @@ export class QueuePruner {
   private lastPruneAt: number = 0;
 
   constructor(
-    private queue: EventEmitter,
     private backend: Backend,
-    private pruneInterval: number,
-    private options: PruneOptions,
+    private options: Readonly<PruneOptions>,
+    private notifier: QueueEventEmitter<any>,
   ) {}
 
   /**
@@ -43,7 +41,7 @@ export class QueuePruner {
   }
 
   protected get needsPrune(): boolean {
-    return this.lastPruneAt + this.pruneInterval < Date.now();
+    return this.lastPruneAt + this.options.pruneInterval < Date.now();
   }
 
   async perform(force: boolean, extraOptions: Partial<PruneOptions> = {}): Promise<boolean> {
@@ -66,7 +64,7 @@ export class QueuePruner {
         return false;
       } finally {
         this.performPromise = undefined;
-        if (this.enabled) this.scheduleNext(Date.now() - this.lastPruneAt + this.pruneInterval + 1);
+        if (this.enabled) this.scheduleNext(Date.now() - this.lastPruneAt + this.options.pruneInterval + 1);
       }
     })();
     return this.performPromise;
@@ -74,31 +72,31 @@ export class QueuePruner {
 
   protected sendPruneNotifications(workerPruneResult: WorkerPruneResult, jobPruneResult: JobPruneResult<any>) {
     const { lostWorkers } = workerPruneResult;
-    if (this.queue.listenerCount('worker_lost') > 0) {
+    if (this.notifier.listenerCount('worker_lost') > 0) {
       for (const lostWorker of lostWorkers) {
-        this.queue.emit('worker_lost', { worker: lostWorker });
+        this.notifier.emit('worker_lost', { workerInfo: lostWorker });
       }
     }
 
     const { expiredJobs, expungedJobs, abandonedJobs, unattendedJobs } = jobPruneResult;
-    if (this.queue.listenerCount('job_expired') > 0) {
-      for (const job of expiredJobs) {
-        this.queue.emit('job_expired', { job });
+    if (this.notifier.listenerCount('job_expired') > 0) {
+      for (const jobInfo of expiredJobs) {
+        this.notifier.emit('job_expired', { jobInfo });
       }
     }
-    if (this.queue.listenerCount('job_expunged') > 0) {
-      for (const job of expungedJobs) {
-        this.queue.emit('job_expunged', { job });
+    if (this.notifier.listenerCount('job_expunged') > 0) {
+      for (const jobInfo of expungedJobs) {
+        this.notifier.emit('job_expunged', { jobInfo });
       }
     }
-    if (this.queue.listenerCount('job_abandoned') > 0) {
-      for (const job of abandonedJobs) {
-        this.queue.emit('job_abandoned', { job });
+    if (this.notifier.listenerCount('job_abandoned') > 0) {
+      for (const jobInfo of abandonedJobs) {
+        this.notifier.emit('job_abandoned', { jobInfo });
       }
     }
-    if (this.queue.listenerCount('job_unattended') > 0) {
-      for (const job of unattendedJobs) {
-        this.queue.emit('job_unattended', { job });
+    if (this.notifier.listenerCount('job_unattended') > 0) {
+      for (const jobInfo of unattendedJobs) {
+        this.notifier.emit('job_unattended', { jobInfo });
       }
     }
   }

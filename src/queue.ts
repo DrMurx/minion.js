@@ -72,7 +72,7 @@ export class DefaultQueue<BaseJob extends Job<JobArgs> = DefaultJob<JobArgs>>
 
     // Plug in some event handlers
     this.on('job_abandoned', ({ jobInfo }) => {
-      const executor = new Executor(this.backend, jobInfo, JobState.Abandoned, this, this);
+      const executor = new Executor(this.backend, jobInfo, this, this);
       executor.retryFailed().catch((e) => {
         console.error(e);
       });
@@ -117,20 +117,23 @@ export class DefaultQueue<BaseJob extends Job<JobArgs> = DefaultJob<JobArgs>>
     return new DefaultQueuedJob(this.backend, jobInfo);
   }
 
-  async addJobWithAck<Args extends InferJobArgs<BaseJob>>(
+  async addJobWithAck<Result extends JobResult = JobResult, Args extends InferJobArgs<BaseJob> = InferJobArgs<BaseJob>>(
     taskName: string,
     args?: Args,
     enqueueOptions?: JobOptions,
     resultOptions?: JobResultOptions,
-  ): Promise<JobResult> {
+  ): Promise<Result | null> {
     const job = await this.addJob(taskName, args, enqueueOptions);
-    return await this.getJobResult(job.id, resultOptions ?? {});
+    return await this.getJobResult<Result>(job.id, resultOptions ?? {});
   }
 
-  async getJobResult(id: JobId, options: JobResultOptions = {}): Promise<JobResult> {
+  async getJobResult<Result extends JobResult = JobResult>(
+    id: JobId,
+    options: JobResultOptions = {},
+  ): Promise<Result | null> {
     const interval = options.interval ?? 3000;
     const signal = options.signal ?? null;
-    return new Promise((resolve, reject) => this.waitForResult(id, interval, signal, resolve, reject));
+    return new Promise<Result | null>((resolve, reject) => this.waitForResult(id, interval, signal, resolve, reject));
   }
 
   async getJob<Args extends InferJobArgs<BaseJob> = InferJobArgs<BaseJob>>(id: JobId): Promise<QueuedJob<Args> | null> {
@@ -247,11 +250,11 @@ export class DefaultQueue<BaseJob extends Job<JobArgs> = DefaultJob<JobArgs>>
     await this.backend.reset();
   }
 
-  protected async waitForResult(
+  protected async waitForResult<Result extends JobResult>(
     jobId: JobId,
     interval: number,
     signal: AbortSignal | null,
-    resolve: (value?: any) => void,
+    resolve: (value: Result | null) => void,
     reject: (reason?: any) => void,
   ) {
     const rerun = () => this.waitForResult(jobId, interval, signal, resolve, reject);
@@ -260,7 +263,7 @@ export class DefaultQueue<BaseJob extends Job<JobArgs> = DefaultJob<JobArgs>>
       if (info === undefined) {
         resolve(null);
       } else if (info.state === JobState.Succeeded) {
-        resolve(info.result);
+        resolve(info.result as Result);
       } else if (unsuccessfulJobStates.includes(info.state)) {
         reject(info);
       } else if (signal !== null && signal.aborted === true) {

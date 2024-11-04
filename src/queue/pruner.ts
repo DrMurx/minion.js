@@ -18,7 +18,7 @@ export class QueuePruner {
    */
   start(): this {
     this.enabled = true;
-    this.scheduleNext(0);
+    this.scheduleNext(true);
     return this;
   }
 
@@ -35,7 +35,15 @@ export class QueuePruner {
     return this.enabled;
   }
 
-  protected scheduleNext(ms: number): void {
+  protected scheduleNext(immediate?: boolean): void {
+    if (!this.enabled) return;
+
+    let ms = 1;
+    if (!immediate) {
+      const extraOffset = this.lastPruneAt === 0 ? 0 : Date.now() - this.lastPruneAt;
+      ms = Math.max(1, this.options.pruneInterval - extraOffset + 1);
+    }
+
     clearTimeout(this.pruneScheduler);
     this.pruneScheduler = setTimeout(() => this.perform(false), ms);
   }
@@ -46,17 +54,22 @@ export class QueuePruner {
 
   async perform(force: boolean, extraOptions: Partial<PruneOptions> = {}): Promise<boolean> {
     if (this.performPromise) return this.performPromise;
+
     clearTimeout(this.pruneScheduler);
+
+    if (!force && !this.needsPrune) {
+      this.scheduleNext();
+      return false;
+    }
+
+    const options = { ...this.options, ...extraOptions };
+    this.notifier.emit('prune_run', { force, options });
 
     this.performPromise = (async (): Promise<boolean> => {
       try {
-        if (!force && !this.needsPrune) return false;
-
-        const options = { ...this.options, ...extraOptions };
         const workerPruneResult = await this.backend.pruneWorkers(options.workerLostTimeout);
         const jobPruneResult = await this.backend.pruneJobs<any>(options.jobUnattendedPeriod, options.jobExpungePeriod);
         this.sendPruneNotifications(workerPruneResult, jobPruneResult);
-
         this.lastPruneAt = Date.now();
         return workerPruneResult.lostWorkers.length > 0 || jobPruneResult.expiredJobs.length > 0;
       } catch (error) {
@@ -64,9 +77,10 @@ export class QueuePruner {
         return false;
       } finally {
         this.performPromise = undefined;
-        if (this.enabled) this.scheduleNext(Date.now() - this.lastPruneAt + this.options.pruneInterval + 1);
+        this.scheduleNext();
       }
     })();
+
     return this.performPromise;
   }
 

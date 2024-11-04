@@ -5,7 +5,7 @@ import {
   type WorkerInboxOptions,
   type WorkerRegistrationOptions,
 } from './types/backend.js';
-import { JobState, type InferJobArgs, type Job, type JobArgs } from './types/job.js';
+import { type InferJobArgs, type Job, type JobArgs } from './types/job.js';
 import { type JobFactory, type QueueEventEmitter } from './types/queue.js';
 import { type Task, type TaskManager } from './types/task.js';
 import {
@@ -184,7 +184,7 @@ export class DefaultWorker<BaseJob extends Job<JobArgs>> implements Worker<BaseJ
     const taskNames = this.taskManager.getTaskNames();
     const jobInfo = await this.workerBackend.assignNextJob<InferJobArgs<BaseJob>>(this.id, taskNames, wait, _options);
     if (jobInfo === null) return null;
-    return new Executor(this.jobBackend, jobInfo, JobState.Running, this.jobFactory, this.notifier);
+    return new Executor(this.jobBackend, jobInfo, this.jobFactory, this.notifier);
   }
 
   async terminate(reason?: string): Promise<void> {

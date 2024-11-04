@@ -355,11 +355,11 @@ export class PgBackend extends EventEmitter implements Backend {
     );
 
     // Delete `succeeded` jobs after the expunge period
-    const expungedJobsResult = await this.query<JobDescriptor<Args>>(
+    const expungedJobsResult = await this.query<JobInfo<Args>>(
       `DELETE FROM ${JOB_TABLE}
       WHERE state = '${JobState.Succeeded}'
         AND NOW() - finished_at >= $1 * INTERVAL '1 millisecond'
-      RETURNING ${this.jobDescriptorSql}`,
+      RETURNING ${this.jobInfoSql}`,
       [expungePeriod],
     );
 
@@ -374,7 +374,7 @@ export class PgBackend extends EventEmitter implements Backend {
     );
 
     // Mark `running` jobs as `abandoned` if they are assigned to an `offline`, `lost`, or non-existing worker.
-    const abandonedJobsResult = await this.query<JobDescriptor<Args> & { workerId: WorkerId }>(
+    const abandonedJobsResult = await this.query<JobInfo<Args>>(
       `UPDATE ${JOB_TABLE} AS j
       SET result = $1,
           state = '${JobState.Abandoned}',
@@ -387,7 +387,7 @@ export class PgBackend extends EventEmitter implements Backend {
           WHERE id = j.worker_id
             AND state IN ('${WorkerState.Online}', '${WorkerState.Busy}', '${WorkerState.Idle}')
         )
-      RETURNING ${this.jobDescriptorSql}, worker_id AS "workerId"`,
+      RETURNING ${this.jobInfoSql}`,
       [JSON.stringify({ name: 'WorkerGoneError', message: 'Worker went away' }), [this.FOREGROUND_QUEUE]],
     );
 

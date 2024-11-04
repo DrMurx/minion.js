@@ -1,4 +1,4 @@
-import { JobState, type Job, type JobArgs, type JobId } from './types/job.js';
+import { JobResult, JobState, type Job, type JobArgs, type JobId } from './types/job.js';
 import { type RunningWorker } from './types/worker.js';
 import { type Executor } from './worker/executor.js';
 
@@ -20,6 +20,10 @@ export class DefaultJob<Args extends JobArgs> implements Job<Args> {
 
   get args(): Args {
     return this.executor.args;
+  }
+
+  get result(): JobResult | undefined {
+    return this.executor.result;
   }
 
   get progress(): number {

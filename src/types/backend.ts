@@ -84,11 +84,11 @@ export type JobPruneResult<Args extends JobArgs = JobArgs> = {
   /**
    * Jobs finished as `succeeded` but are beyond expunge period. Have been deleted.
    */
-  expungedJobs: JobDescriptor<Args>[];
+  expungedJobs: JobInfo<Args>[];
   /**
    * Jobs that have been picked up by a worker, but the worker faded away. Can be rescheduled.
    */
-  abandonedJobs: JobDescriptor<Args>[];
+  abandonedJobs: JobInfo<Args>[];
   /**
    * Jobs that are overdue but haven't been picked up for a given time. Can be rescheduled.
    */

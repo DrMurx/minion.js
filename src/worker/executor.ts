@@ -8,30 +8,32 @@ import {
   type JobDescriptor,
   type JobError,
   type JobId,
+  type JobInfo,
   type JobResult,
 } from '../types/job.js';
 import { type JobFactory, type QueueEventEmitter } from '../types/queue.js';
 import { type RunningWorker } from '../types/worker.js';
 
 export class Executor<BaseJob extends Job<JobArgs>> {
-  private _jobInfo: JobDescriptor<InferJobArgs<BaseJob>>;
-  private _state: JobState;
-  private _startTime: number = 0;
-  private _progress: number = 0.0;
+  private jobInfo: ExecutorJobInfo<InferJobArgs<BaseJob>>;
 
   private _job?: BaseJob;
-  private _worker?: RunningWorker<BaseJob>;
-  private _abortController: AbortController = new AbortController();
+  private worker?: RunningWorker<BaseJob>;
+  private abortController: AbortController = new AbortController();
 
   constructor(
     private backend: JobBackend,
-    jobInfo: JobDescriptor<InferJobArgs<BaseJob>>,
-    initialState: JobState,
+    jobInfo: JobDescriptor<InferJobArgs<BaseJob>> | JobInfo<InferJobArgs<BaseJob>>,
     private jobFactory: JobFactory<BaseJob>,
     private notifier: QueueEventEmitter<BaseJob>,
   ) {
-    this._jobInfo = jobInfo;
-    this._state = initialState;
+    this.jobInfo = {
+      result: {},
+      state: JobState.Running,
+      progress: 0.0,
+      metadata: {},
+      ...jobInfo,
+    };
   }
 
   get job(): BaseJob {
@@ -41,57 +43,65 @@ export class Executor<BaseJob extends Job<JobArgs>> {
     return this._job;
   }
 
-  get jobInfo(): Readonly<JobDescriptor<InferJobArgs<BaseJob>>> {
-    return this._jobInfo;
-  }
-
   get id(): JobId {
-    return this._jobInfo.id;
+    return this.jobInfo.id;
   }
 
   get taskName(): string {
-    return this._jobInfo.taskName;
+    return this.jobInfo.taskName;
   }
 
   get args(): InferJobArgs<BaseJob> {
-    return this._jobInfo.args;
+    return this.jobInfo.args;
+  }
+
+  get result(): JobResult | undefined {
+    return this.jobInfo.result;
   }
 
   get state(): JobState {
-    return this._state;
+    return this.jobInfo.state;
   }
 
   get progress(): number {
-    return this._progress;
+    return this.jobInfo.progress;
   }
 
   get maxAttempts(): number {
-    return this._jobInfo.maxAttempts;
+    return this.jobInfo.maxAttempts;
   }
 
   get attempt(): number {
-    return this._jobInfo.attempt;
+    return this.jobInfo.attempt;
+  }
+
+  get startedAt(): Date | undefined {
+    return this.jobInfo.startedAt;
+  }
+
+  get finishedAt(): Date | undefined {
+    return this.jobInfo.finishedAt;
   }
 
   get abortSignal(): AbortSignal {
-    return this._abortController.signal;
+    return this.abortController.signal;
   }
 
   async updateProgress(progress: number): Promise<boolean> {
     const isUpdated = await this.backend.updateJobProgress(this.id, this.attempt, progress);
     if (isUpdated) {
-      this._progress = progress;
+      this.jobInfo.progress = progress;
 
       if (this.notifier.listenerCount('job_progress') > 0) {
         const event = {
           job: this.job,
           progress,
-          duration: Date.now() - this._startTime,
+          duration: Date.now() - this.startedAt!.getTime(),
         };
         this.notifier.emit('job_progress', event);
       }
 
-      if (this._worker) await this._worker.heartbeat();
+      if (this.worker) await this.worker.heartbeat();
     }
     return isUpdated;
   }
@@ -104,19 +114,19 @@ export class Executor<BaseJob extends Job<JobArgs>> {
    * Perform job and wait for it to finish.
    */
   async perform(worker: RunningWorker<BaseJob>, throwOnError: boolean = false): Promise<void> {
-    if (this._state !== JobState.Pending && this._state !== JobState.Scheduled && this._state !== JobState.Running) {
-      throw new Error(`Try to perform job with state ${this._state}: ${this.id}`);
+    if (![JobState.Pending, JobState.Scheduled, JobState.Running].includes(this.state)) {
+      throw new Error(`Try to perform job with state ${this.state}: ${this.id}`);
     }
 
     const abortEventHandler = (event: Event) => {
       if (event.type === 'abort') {
-        this._abortController.abort(worker.abortSignal.reason);
+        this.abortController.abort(worker.abortSignal.reason);
       }
     };
 
-    this._state = JobState.Running;
-    this._startTime = Date.now();
-    this._worker = worker;
+    this.jobInfo.state = JobState.Running;
+    this.jobInfo.startedAt = new Date();
+    this.worker = worker;
 
     if (this.notifier.listenerCount('job_started') > 0) {
       const event = {
@@ -129,7 +139,7 @@ export class Executor<BaseJob extends Job<JobArgs>> {
       worker.abortSignal.throwIfAborted();
       worker.abortSignal.addEventListener('abort', abortEventHandler);
 
-      const task = worker.getTask(this._jobInfo.taskName);
+      const task = worker.getTask(this.taskName);
       const result = await task.handle(this.job, worker);
       await this.markSucceeded(result ?? {});
     } catch (error: any) {
@@ -137,13 +147,13 @@ export class Executor<BaseJob extends Job<JobArgs>> {
       if (throwOnError) throw error;
     } finally {
       worker.abortSignal.removeEventListener('abort', abortEventHandler);
-      this._worker = undefined;
+      this.worker = undefined;
 
       if (this.notifier.listenerCount('job_finished') > 0) {
         const event = {
           job: this.job,
           state: this.state,
-          duration: Date.now() - this._startTime,
+          duration: Date.now() - this.startedAt!.getTime(),
         };
         this.notifier.emit('job_finished', event);
       }
@@ -156,13 +166,14 @@ export class Executor<BaseJob extends Job<JobArgs>> {
   async markSucceeded(result?: JobResult): Promise<boolean> {
     const isUpdated = await this.backend.markJobFinished(JobState.Succeeded, this.id, this.attempt, result ?? {});
     if (isUpdated) {
-      this._progress = 1.0;
-      this._state = JobState.Succeeded;
+      this.jobInfo.state = JobState.Succeeded;
+      this.jobInfo.progress = 1.0;
+      this.jobInfo.finishedAt = new Date();
       if (this.notifier.listenerCount('job_succeeded') > 0) {
         const event = {
           job: this.job,
           result: { ...result },
-          duration: Date.now() - this._startTime,
+          duration: this.finishedAt!.getTime() - this.startedAt!.getTime(),
         };
         this.notifier.emit('job_succeeded', event);
       }
@@ -180,13 +191,13 @@ export class Executor<BaseJob extends Job<JobArgs>> {
     }
     const isUpdated = await this.backend.markJobFinished(JobState.Failed, this.id, this.attempt, result);
     if (isUpdated) {
-      this._state = JobState.Failed;
-
+      this.jobInfo.state = JobState.Failed;
+      this.jobInfo.finishedAt = new Date();
       if (this.notifier.listenerCount('job_failed') > 0) {
         const event = {
           job: this.job,
           result: { ...result },
-          duration: Date.now() - this._startTime,
+          duration: this.finishedAt!.getTime() - this.startedAt!.getTime(),
         };
         this.notifier.emit('job_failed', event);
       }
@@ -200,7 +211,7 @@ export class Executor<BaseJob extends Job<JobArgs>> {
    * Transition a `failed` job back to `pending` or `scheduled` state if there are still attempts left.
    */
   async retryFailed(): Promise<void> {
-    if (unsuccessfulJobStates.includes(this._state) && this.attempt < this.maxAttempts) {
+    if (unsuccessfulJobStates.includes(this.state) && this.attempt < this.maxAttempts) {
       const options = {
         // Set maxAttempt to its current value (otherwise, `Backend.retryJob` increases it)
         maxAttempts: this.maxAttempts,
@@ -209,4 +220,22 @@ export class Executor<BaseJob extends Job<JobArgs>> {
       await this.backend.retryJob<InferJobArgs<BaseJob>>(this.id, this.attempt, options);
     }
   }
+}
+
+interface ExecutorJobInfo<Args extends JobArgs = JobArgs> {
+  id: JobId;
+
+  taskName: string;
+  args: Args;
+  result: JobResult;
+
+  state: JobState;
+  progress: number;
+  maxAttempts: number;
+  attempt: number;
+
+  metadata: Record<string, any>;
+
+  startedAt?: Date;
+  finishedAt?: Date;
 }

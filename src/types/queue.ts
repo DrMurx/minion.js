@@ -3,12 +3,12 @@ import { type BackendIterator } from '../backends/iterator.js';
 import { Executor } from '../worker/executor.js';
 import { type JobDequeueOptions, type JobOptions } from './backend.js';
 import {
-  JobError,
   JobState,
   type InferJobArgs,
   type Job,
   type JobArgs,
   type JobDescriptor,
+  type JobError,
   type JobId,
   type JobInfo,
   type JobResult,
@@ -72,18 +72,18 @@ export interface Queue<BaseJob extends Job<JobArgs> = Job<JobArgs>>
     options?: JobOptions,
   ): Promise<QueuedJob<Args>>;
 
-  addJobWithAck<Args extends InferJobArgs<BaseJob>>(
+  addJobWithAck<Result extends JobResult = JobResult, Args extends InferJobArgs<BaseJob> = InferJobArgs<BaseJob>>(
     taskName: string,
     args?: Args,
     enqueueOptions?: JobOptions,
     resultOptions?: JobResultOptions,
-  ): Promise<JobResult>;
+  ): Promise<Result | null>;
 
   /**
    * Return a promise for the future result of a job. The state `succeeded` will result in the promise being
    * `fullfilled`, and the state `failed` in the promise being `rejected`.
    */
-  getJobResult(jobId: JobId, options: JobResultOptions): Promise<JobResult>;
+  getJobResult<Result extends JobResult = JobResult>(jobId: JobId, options: JobResultOptions): Promise<Result | null>;
 
   /**
    * Retrieve a Job control object, or return `null` if job does not exist.
@@ -196,6 +196,7 @@ export type QueueEventEmitter<BaseJob extends Job<JobArgs>> = EventEmitter<Queue
 export interface QueueEvents<
   BaseJob extends Job<JobArgs>,
   JobDescriptorRO = Readonly<JobDescriptor<InferJobArgs<BaseJob>>>,
+  JobInfoRO = Readonly<JobInfo<InferJobArgs<BaseJob>>>,
 > {
   job_started: [{ job: BaseJob }];
   job_progress: [{ job: BaseJob; progress: number; duration: number }];
@@ -204,7 +205,8 @@ export interface QueueEvents<
   job_failed: [{ job: BaseJob; result: Readonly<JobError>; duration: number }];
   job_expired: [{ jobInfo: JobDescriptorRO }];
   job_expunged: [{ jobInfo: JobDescriptorRO }];
-  job_abandoned: [{ jobInfo: JobDescriptorRO }];
+  job_abandoned: [{ jobInfo: JobInfoRO }];
   job_unattended: [{ jobInfo: JobDescriptorRO }];
   worker_lost: [{ workerInfo: Readonly<WorkerInfo> }];
+  prune_run: [{ force: boolean; options: PruneOptions }];
 }

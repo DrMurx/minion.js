@@ -814,7 +814,7 @@ const queueDatabaseUpgrades: MigrationStep[] = [
       );
 
       CREATE TABLE ${JOB_TABLE} (
-        id             BIGSERIAL NOT NULL PRIMARY KEY,
+        id             BIGSERIAL NOT NULL,
 
         queue_name     TEXT NOT NULL,
         task_name      TEXT NOT NULL,
@@ -843,12 +843,26 @@ const queueDatabaseUpgrades: MigrationStep[] = [
         CONSTRAINT state_pending_scheduled CHECK (
           NOT (state = 'pending' AND delay_until > NOW())
         )
-      );
+      ) PARTITION BY LIST (state);
+      ALTER TABLE ${JOB_TABLE} ADD PRIMARY KEY (id, state);
       CREATE INDEX ON ${JOB_TABLE} (state, priority DESC, id);
       CREATE INDEX ON ${JOB_TABLE} USING GIN (parent_job_ids);
       CREATE INDEX ON ${JOB_TABLE} USING GIN (metadata);
       CREATE INDEX ON ${JOB_TABLE} (expires_at);
       CREATE INDEX ON ${JOB_TABLE} (finished_at, state);
+      CREATE TABLE ${JOB_TABLE}_active PARTITION OF ${JOB_TABLE} FOR VALUES IN (
+        '${JobState.Pending}',
+        '${JobState.Scheduled}',
+        '${JobState.Running}'
+      );
+      CREATE TABLE ${JOB_TABLE}_finished PARTITION OF ${JOB_TABLE} FOR VALUES IN (
+        '${JobState.Succeeded}',
+        '${JobState.Failed}',
+        '${JobState.Aborted}',
+        '${JobState.Abandoned}',
+        '${JobState.Unattended}',
+        '${JobState.Canceled}'
+      );
       CREATE FUNCTION ${JOB_NOTIFICATION_FUNCTION}() RETURNS trigger AS $$
         BEGIN
           IF new.delay_until <= NOW() THEN

@@ -22,6 +22,7 @@ import {
   type ListWorkersOptions,
   type Worker,
   type WorkerCommandArg,
+  type WorkerId,
   type WorkerInfo,
   type WorkerOptions,
 } from './worker.js';
@@ -138,6 +139,11 @@ export interface WorkerManager<BaseJob extends Job<JobArgs>> {
    * Build worker object.
    */
   getNewWorker(options?: Partial<WorkerOptions>): Worker<BaseJob>;
+
+  /**
+   * Get worker information.
+   */
+  getWorkerInfo(worker: WorkerId | Worker<BaseJob>): Promise<WorkerInfo | undefined>;
 
   /**
    * Return iterator object to safely iterate through worker information.

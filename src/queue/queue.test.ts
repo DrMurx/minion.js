@@ -138,7 +138,7 @@ t.test('Queue with PostgreSQL backend', skip, async (t) => {
     t.equal(queuedJob1.state, JobState.Running);
     const workerId = worker2.id;
     const lostAfter = DefaultQueue.DEFAULT_OPTIONS.workerLostTimeout + 1;
-    t.ok(await worker2.getInfo());
+    t.ok(await queue.getWorkerInfo(worker2));
 
     await pool.query(`UPDATE ${WORKER_TABLE} SET last_seen_at = NOW() - $1 * INTERVAL '1 millisecond' WHERE id = $2`, [
       lostAfter,
@@ -146,7 +146,7 @@ t.test('Queue with PostgreSQL backend', skip, async (t) => {
     ]);
 
     await queue.prune();
-    t.equal((await worker2.getInfo())!.state, WorkerState.Lost);
+    t.equal((await queue.getWorkerInfo(worker2))!.state, WorkerState.Lost);
     await queuedJob1.sync();
     t.equal(queuedJob1.state, JobState.Abandoned);
     t.same(queuedJob1.result, { name: 'WorkerGoneError', message: 'Worker went away' });
@@ -336,7 +336,7 @@ t.test('Queue with PostgreSQL backend', skip, async (t) => {
     await worker.register();
     const executor1 = (await worker.getNextExecutor())!;
     const job1 = executor1.job;
-    t.same((await worker.getInfo())!.jobIds, [queuedJob1.id]);
+    t.same((await queue.getWorkerInfo(worker))!.jobIds, [queuedJob1.id]);
     t.equal(job1.taskName, 'add');
     t.equal(job1.attempt, 1);
     t.same(executor1.job.args, { first: 2, second: 2 });
@@ -349,7 +349,7 @@ t.test('Queue with PostgreSQL backend', skip, async (t) => {
     t.same(queuedJob1.time instanceof Date, true);
 
     await executor1.perform(worker);
-    t.same((await worker.getInfo())!.jobIds, []);
+    t.same((await queue.getWorkerInfo(worker))!.jobIds, []);
     t.ok(await queuedJob1.sync());
     t.equal(queuedJob1.state, JobState.Succeeded);
     t.same(queuedJob1.result, { added: 4 });

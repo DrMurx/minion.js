@@ -58,6 +58,11 @@ export interface QueueBackend {
   pruneJobs<Args extends JobArgs>(unattendedPeriod: number, expungePeriod: number): Promise<JobPruneResult<Args>>;
 
   /**
+   * Returns information about a worker.
+   */
+  getWorkerInfo(id: WorkerId): Promise<WorkerInfo | undefined>;
+
+  /**
    * Prune workers without heartbeat after the given timeout
    */
   pruneWorkers(listTimeout: number): Promise<WorkerPruneResult>;
@@ -186,11 +191,6 @@ export interface WorkerBackend {
    * Unregister worker.
    */
   unregisterWorker(id: WorkerId): Promise<boolean>;
-
-  /**
-   * Returns information about a worker.
-   */
-  getWorkerInfo(id: WorkerId): Promise<WorkerInfo | undefined>;
 }
 
 export type JobInfoList<Args extends JobArgs> = {

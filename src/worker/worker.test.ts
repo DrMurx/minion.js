@@ -6,7 +6,7 @@ import { DefaultQueue } from '../queue/queue.js';
 import { type Backend } from '../types/backend.js';
 import { type Job, type JobArgs, JobState } from '../types/job.js';
 import { type Queue } from '../types/queue.js';
-import { Task } from '../types/task.js';
+import { type Task } from '../types/task.js';
 
 const skip = process.env.TEST_ONLINE === undefined ? { skip: 'set TEST_ONLINE to enable this test' } : {};
 
@@ -34,21 +34,21 @@ t.test('Worker', skip, async (t) => {
 
   await t.test('Register and unregister worker', async (t) => {
     const worker = await queue.getNewWorker().register();
-    t.same((await worker.getInfo())!.startedAt instanceof Date, true);
-    const lastSeenAt = (await worker.getInfo())!.lastSeenAt!;
+    t.same((await queue.getWorkerInfo(worker))!.startedAt instanceof Date, true);
+    const lastSeenAt = (await queue.getWorkerInfo(worker))!.lastSeenAt!;
     t.same(lastSeenAt instanceof Date, true);
     const id = worker.id;
     await worker.register();
     await new Promise((resolve) => setTimeout(resolve, 500));
     await worker.register();
-    t.same((await worker.getInfo())!.lastSeenAt! > lastSeenAt, true);
+    t.same((await queue.getWorkerInfo(worker))!.lastSeenAt! > lastSeenAt, true);
     await worker.unregister();
-    t.same(await worker.getInfo(), undefined);
+    t.same(await queue.getWorkerInfo(worker), undefined);
     await worker.register();
     t.not(worker.id, id);
-    t.equal((await worker.getInfo())!.host, os.hostname());
+    t.equal((await queue.getWorkerInfo(worker))!.host, os.hostname());
     await worker.unregister();
-    t.same(await worker.getInfo(), undefined);
+    t.same(await queue.getWorkerInfo(worker), undefined);
   });
 
   await t.test('Start worker loop and wait for job results', async (t) => {

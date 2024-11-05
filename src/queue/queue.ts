@@ -21,6 +21,7 @@ import {
   type ListWorkersOptions,
   type Worker,
   type WorkerCommandArg,
+  type WorkerId,
   type WorkerInfo,
   type WorkerOptions,
   WorkerState,
@@ -211,6 +212,12 @@ export class DefaultQueue<BaseJob extends Job<JobArgs> = DefaultJob<JobArgs>>
       ...options,
     };
     return new DefaultWorker(this.backend, _options, this.taskManager, this, this.backend, this);
+  }
+
+  async getWorkerInfo(worker: WorkerId | Worker<BaseJob>): Promise<WorkerInfo | undefined> {
+    const id = typeof worker === 'number' ? worker : worker.id;
+    if (id === undefined) return undefined;
+    return await this.backend.getWorkerInfo(id);
   }
 
   listWorkerInfos(options: ListWorkersOptions = {}, chunkSize: number = 10): BackendIterator<WorkerInfo> {

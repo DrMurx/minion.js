@@ -14,7 +14,6 @@ import {
   type WorkerCommandHandler,
   type WorkerConfig,
   type WorkerId,
-  type WorkerInfo,
   type WorkerOptions,
 } from '../types/worker.js';
 import { WorkerCommandManager } from './command-manager.js';
@@ -86,11 +85,6 @@ export class DefaultWorker<BaseJob extends Job<JobArgs>> implements Worker<BaseJ
 
   protected get isRegistered(): boolean {
     return this._id !== undefined;
-  }
-
-  async getInfo(): Promise<WorkerInfo | undefined> {
-    if (this._id === undefined) return undefined;
-    return await this.workerBackend.getWorkerInfo(this._id);
   }
 
   get config(): Readonly<WorkerConfig> {

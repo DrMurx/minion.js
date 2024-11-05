@@ -29,10 +29,6 @@ export interface RunningWorker<BaseJob extends Job<JobArgs>> {
 }
 
 export interface Worker<BaseJob extends Job<JobArgs>> extends RunningWorker<BaseJob> {
-  /**
-   * Get worker information.
-   */
-  getInfo(): Promise<WorkerInfo | undefined>;
   get config(): Readonly<WorkerConfig>;
   setConfig(config: Partial<WorkerConfig>): Promise<void>;
   setMetadata(key: string, value: any): Promise<void>;

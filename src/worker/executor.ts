@@ -22,8 +22,8 @@ export class Executor<BaseJob extends Job<JobArgs>> {
   private abortController: AbortController = new AbortController();
 
   constructor(
-    private backend: JobBackend,
     jobInfo: JobDescriptor<InferJobArgs<BaseJob>> | JobInfo<InferJobArgs<BaseJob>>,
+    private backend: JobBackend,
     private jobFactory: JobFactory<BaseJob>,
     private notifier: QueueEventEmitter<BaseJob>,
   ) {

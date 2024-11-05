@@ -72,7 +72,7 @@ export class DefaultQueue<BaseJob extends Job<JobArgs> = DefaultJob<JobArgs>>
 
     // Plug in some event handlers
     this.on('job_abandoned', ({ jobInfo }) => {
-      const executor = new Executor(this.backend, jobInfo, this, this);
+      const executor = new Executor(jobInfo, this.backend, this, this);
       executor.retryFailed().catch((e) => {
         console.error(e);
       });

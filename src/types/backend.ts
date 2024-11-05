@@ -19,87 +19,7 @@ import {
   WorkerState,
 } from './worker.js';
 
-export type JobInfoList<Args extends JobArgs> = {
-  jobs: JobInfo<Args>[];
-  total: number;
-};
-
-export interface JobEnqueueOptions {
-  queueName: string;
-
-  priority: number;
-  maxAttempts: number;
-
-  metadata: Record<string, any>;
-
-  parentJobIds: JobId[];
-  laxDependency: boolean;
-
-  delayFor: number;
-  expireIn?: number;
-}
-
-export type JobOptions = Partial<JobEnqueueOptions>;
-
-/**
- * Options used when retrieving a new job for execution
- */
-export interface JobDequeueOptions {
-  /**
-   * Pick this specific job
-   */
-  id?: JobId;
-  /**
-   * Select a job from the given queue(s)
-   */
-  queueNames: string | string[];
-  /**
-   * Select a job of at least this priority
-   */
-  minPriority?: number;
-}
-
-export type WorkerInfoList = {
-  workers: WorkerInfo[];
-  total: number;
-};
-
-export type WorkerRegistrationOptions = {
-  config: WorkerConfig;
-  state: WorkerState;
-  finishedJobCount: number;
-  metadata: Record<string, any>;
-};
-
-export type WorkerInboxOptions = {
-  state: WorkerState;
-  finishedJobCount: number;
-};
-
-export type JobPruneResult<Args extends JobArgs = JobArgs> = {
-  /**
-   * Jobs pending beyond their `expireAt` time, so they are no longer needed. Have been deleted.
-   */
-  expiredJobs: JobDescriptor<Args>[];
-  /**
-   * Jobs finished as `succeeded` but are beyond expunge period. Have been deleted.
-   */
-  expungedJobs: JobInfo<Args>[];
-  /**
-   * Jobs that have been picked up by a worker, but the worker faded away. Can be rescheduled.
-   */
-  abandonedJobs: JobInfo<Args>[];
-  /**
-   * Jobs that are overdue but haven't been picked up for a given time. Can be rescheduled.
-   */
-  unattendedJobs: JobDescriptor<Args>[];
-};
-
-export type WorkerPruneResult = {
-  lostWorkers: WorkerInfo[];
-};
-
-export interface Backend extends QueueBackend, IteratorBackend, JobBackend, WorkerBackend, EventEmitter {
+export interface Backend extends QueueBackend, IteratorBackend, QueuedJobBackend, WorkerBackend, EventEmitter {
   readonly FOREGROUND_QUEUE: string;
   readonly name: string;
 
@@ -179,11 +99,6 @@ export interface IteratorBackend {
  */
 export interface JobBackend {
   /**
-   * Returns the information about a specific job.
-   */
-  getJobInfo<Args extends JobArgs>(jobId: JobId): Promise<JobInfo<Args> | undefined>;
-
-  /**
    * Change one or more metadata fields for a job. Setting a value to `null` will remove the field.
    */
   amendJobMetadata(jobId: JobId, records: Record<string, any>): Promise<boolean>;
@@ -214,6 +129,16 @@ export interface JobBackend {
     attempt: number,
     options: JobOptions,
   ): Promise<JobInfo<Args> | undefined>;
+}
+
+/**
+ * The backend methods a `QueuedJob` object needs
+ */
+export interface QueuedJobBackend extends JobBackend {
+  /**
+   * Returns the information about a specific job.
+   */
+  getJobInfo<Args extends JobArgs>(jobId: JobId): Promise<JobInfo<Args> | undefined>;
 
   /**
    * Cancels a job as long as it hasn't been started.
@@ -221,7 +146,7 @@ export interface JobBackend {
   cancelJob(id: JobId): Promise<boolean>;
 
   /**
-   * Remove `failed`, `succeeded` or `pending` job from queue.
+   * Remove a job currently not in `running` state from the queue.
    */
   removeJob(jobId: JobId): Promise<boolean>;
 }
@@ -267,3 +192,83 @@ export interface WorkerBackend {
    */
   getWorkerInfo(id: WorkerId): Promise<WorkerInfo | undefined>;
 }
+
+export type JobInfoList<Args extends JobArgs> = {
+  jobs: JobInfo<Args>[];
+  total: number;
+};
+
+export interface JobEnqueueOptions {
+  queueName: string;
+
+  priority: number;
+  maxAttempts: number;
+
+  metadata: Record<string, any>;
+
+  parentJobIds: JobId[];
+  laxDependency: boolean;
+
+  delayFor: number;
+  expireIn?: number;
+}
+
+export type JobOptions = Partial<JobEnqueueOptions>;
+
+/**
+ * Options used when retrieving a new job for execution
+ */
+export interface JobDequeueOptions {
+  /**
+   * Pick this specific job
+   */
+  id?: JobId;
+  /**
+   * Select a job from the given queue(s)
+   */
+  queueNames: string | string[];
+  /**
+   * Select a job of at least this priority
+   */
+  minPriority?: number;
+}
+
+export type WorkerInfoList = {
+  workers: WorkerInfo[];
+  total: number;
+};
+
+export type WorkerRegistrationOptions = {
+  config: WorkerConfig;
+  state: WorkerState;
+  finishedJobCount: number;
+  metadata: Record<string, any>;
+};
+
+export type WorkerInboxOptions = {
+  state: WorkerState;
+  finishedJobCount: number;
+};
+
+export type JobPruneResult<Args extends JobArgs = JobArgs> = {
+  /**
+   * Jobs pending beyond their `expireAt` time, so they are no longer needed. Have been deleted.
+   */
+  expiredJobs: JobDescriptor<Args>[];
+  /**
+   * Jobs finished as `succeeded` but are beyond expunge period. Have been deleted.
+   */
+  expungedJobs: JobInfo<Args>[];
+  /**
+   * Jobs that have been picked up by a worker, but the worker faded away. Can be rescheduled.
+   */
+  abandonedJobs: JobInfo<Args>[];
+  /**
+   * Jobs that are overdue but haven't been picked up for a given time. Can be rescheduled.
+   */
+  unattendedJobs: JobDescriptor<Args>[];
+};
+
+export type WorkerPruneResult = {
+  lostWorkers: WorkerInfo[];
+};

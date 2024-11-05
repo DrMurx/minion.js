@@ -1,4 +1,4 @@
-import { type JobBackend, type JobOptions } from '../types/backend.js';
+import { type JobOptions, type QueuedJobBackend } from '../types/backend.js';
 import { JobState, type JobArgs, type JobId, type JobInfo, type JobResult } from '../types/job.js';
 import { type QueuedJob } from '../types/queued-job.js';
 import { type WorkerId } from '../types/worker.js';
@@ -10,7 +10,7 @@ export class DefaultQueuedJob<Args extends JobArgs = JobArgs> implements QueuedJ
   private jobInfo: JobInfo<Args>;
 
   constructor(
-    private backend: JobBackend,
+    private backend: QueuedJobBackend,
     jobInfo: JobInfo<Args>,
   ) {
     this.jobInfo = { ...jobInfo };

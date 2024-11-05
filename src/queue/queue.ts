@@ -27,8 +27,8 @@ import {
 } from '../types/worker.js';
 import { version } from '../version.js';
 import { Executor } from '../worker/executor.js';
+import { DefaultJob } from '../worker/job.js';
 import { DefaultWorker } from '../worker/worker.js';
-import { DefaultJob } from './job.js';
 import { QueuePruner } from './pruner.js';
 import { DefaultQueuedJob } from './queued-job.js';
 import { DefaultTaskManager } from './task-manager.js';

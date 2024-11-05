@@ -1,6 +1,5 @@
 import { PgBackend } from './backends/pg/backend.js';
 import { createPool } from './backends/pg/factory.js';
-import { DefaultJob } from './queue/job.js';
 import { DefaultQueue } from './queue/queue.js';
 import { DefaultTaskManager } from './queue/task-manager.js';
 import { type Backend, type JobOptions } from './types/backend.js';
@@ -27,6 +26,7 @@ import {
 } from './types/worker.js';
 import { version } from './version.js';
 import { Executor } from './worker/executor.js';
+import { DefaultJob } from './worker/job.js';
 
 export default DefaultQueue;
 export {

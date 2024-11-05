@@ -1,7 +1,7 @@
 import EventEmitter from 'events';
 import t from 'tap';
 import { type JobDescriptor } from '../types/job.ts';
-import { Executor } from '../worker/executor.ts';
+import { Executor } from './executor.ts';
 import { DefaultJob } from './job.ts';
 
 t.test('Default backoff strategy', async (t) => {

@@ -1,5 +1,5 @@
 import {
-  JobBackend,
+  type JobBackend,
   type JobDequeueOptions,
   type WorkerBackend,
   type WorkerInboxOptions,

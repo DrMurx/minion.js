@@ -1,11 +1,11 @@
-import { JobOptions } from './backend.js';
+import { type JobOptions } from './backend.js';
 import { type JobArgs, type JobId, type JobResult, JobState } from './job.js';
 import { type WorkerId } from './worker.js';
 
 /**
  * A limited interface for a running `Job` when it is passed to a `Task` handler
  */
-export interface QueuedJob<Args extends JobArgs> {
+export interface JobHandle<Args extends JobArgs> {
   get id(): JobId;
 
   get queueName(): string;
@@ -47,7 +47,7 @@ export interface QueuedJob<Args extends JobArgs> {
    * Transition job back to `pending` or `scheduled` state. Already `pending` jobs may also be retried to change options.
    * If successful, it will return a new `QueueJob` object.
    */
-  retry(options?: JobOptions): Promise<QueuedJob<Args> | null>;
+  retry(options?: JobOptions): Promise<JobHandle<Args> | null>;
 
   /**
    * Change one or more metadata fields for this job. Setting a value to `null` will remove the field. The new values

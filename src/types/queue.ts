@@ -2,6 +2,7 @@ import type EventEmitter from 'events';
 import { type BackendIterator } from '../backends/iterator.js';
 import { Executor } from '../worker/executor.js';
 import { type JobDequeueOptions, type JobOptions } from './backend.js';
+import { type JobHandle } from './job-handle.js';
 import {
   JobState,
   type InferJobArgs,
@@ -16,7 +17,6 @@ import {
   type ListJobsOptions,
 } from './job.js';
 import { type StatsReader } from './queue-stats.js';
-import { type QueuedJob } from './queued-job.js';
 import { type Task, type TaskHandlerFunction } from './task.js';
 import {
   type ListWorkersOptions,
@@ -70,7 +70,7 @@ export interface Queue<BaseJob extends Job<JobArgs> = Job<JobArgs>>
     taskName: string,
     args?: Args,
     options?: JobOptions,
-  ): Promise<QueuedJob<Args>>;
+  ): Promise<JobHandle<Args>>;
 
   addJobWithAck<Result extends JobResult = JobResult, Args extends InferJobArgs<BaseJob> = InferJobArgs<BaseJob>>(
     taskName: string,
@@ -88,14 +88,14 @@ export interface Queue<BaseJob extends Job<JobArgs> = Job<JobArgs>>
   /**
    * Retrieve a Job control object, or return `null` if job does not exist.
    */
-  getJob<Args extends InferJobArgs<BaseJob> = InferJobArgs<BaseJob>>(id: JobId): Promise<QueuedJob<Args> | null>;
+  getJob<Args extends InferJobArgs<BaseJob> = InferJobArgs<BaseJob>>(id: JobId): Promise<JobHandle<Args> | null>;
 
   /**
    * Get an array of Job control objects according to the specified options.
    */
   getJobs<Args extends InferJobArgs<BaseJob> = InferJobArgs<BaseJob>>(
     options: ListJobsOptions,
-  ): Promise<QueuedJob<Args>[]>;
+  ): Promise<JobHandle<Args>[]>;
 
   /**
    * Return iterator object to safely iterate through job information as returned by the backend.

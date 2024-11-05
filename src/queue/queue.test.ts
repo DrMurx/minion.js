@@ -6,8 +6,8 @@ import { JobState } from '../types/job.js';
 import { type Queue } from '../types/queue.js';
 import { type Task } from '../types/task.js';
 import { WorkerState } from '../types/worker.js';
+import { DefaultJobHandle } from './job-handle.js';
 import { DefaultQueue } from './queue.js';
-import { DefaultQueuedJob } from './queued-job.js';
 
 const skip = process.env.TEST_ONLINE === undefined ? { skip: 'set TEST_ONLINE to enable this test' } : {};
 
@@ -49,6 +49,8 @@ t.test('Queue with PostgreSQL backend', skip, async (t) => {
     const worker = await queue.getNewWorker().register();
 
     const queuedJob1 = await queue.addJob('test');
+    t.ok(queuedJob1 instanceof DefaultJobHandle);
+
     const resultPromise1 = queue.getJobResult(queuedJob1.id, { interval: 0 });
     const executor1 = (await worker.getNextExecutor(0))!;
     const job1 = executor1.job;
@@ -85,7 +87,7 @@ t.test('Queue with PostgreSQL backend', skip, async (t) => {
     failed = undefined;
     const queuedJob1a = (await queue.getJob(queuedJob1.id))!;
     const queuedJob1b = await queuedJob1a.retry();
-    t.ok(queuedJob1b instanceof DefaultQueuedJob);
+    t.ok(queuedJob1b instanceof DefaultJobHandle);
     t.equal(queuedJob1b!.state, JobState.Pending);
     const ac = new AbortController();
     const signal = ac.signal;

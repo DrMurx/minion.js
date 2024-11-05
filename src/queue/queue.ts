@@ -1,6 +1,7 @@
 import EventEmitter from 'events';
 import { BackendIterator } from '../backends/iterator.js';
 import { type Backend, type JobDequeueOptions, type JobEnqueueOptions, type JobOptions } from '../types/backend.js';
+import { JobHandle } from '../types/job-handle.js';
 import {
   type InferJobArgs,
   type Job,
@@ -15,7 +16,6 @@ import {
 } from '../types/job.js';
 import { type QueueJobStatistics, type QueueStats } from '../types/queue-stats.js';
 import { type PruneOptions, type Queue, QueueEvents, type QueueOptions } from '../types/queue.js';
-import { QueuedJob } from '../types/queued-job.js';
 import { isTask, type Task, type TaskHandlerFunction, type TaskManager } from '../types/task.js';
 import {
   type ListWorkersOptions,
@@ -29,8 +29,8 @@ import { version } from '../version.js';
 import { Executor } from '../worker/executor.js';
 import { DefaultJob } from '../worker/job.js';
 import { DefaultWorker } from '../worker/worker.js';
+import { DefaultJobHandle } from './job-handle.js';
 import { QueuePruner } from './pruner.js';
-import { DefaultQueuedJob } from './queued-job.js';
 import { DefaultTaskManager } from './task-manager.js';
 
 /**
@@ -101,7 +101,7 @@ export class DefaultQueue<BaseJob extends Job<JobArgs> = DefaultJob<JobArgs>>
     taskName: string,
     args?: Args,
     options?: JobOptions,
-  ): Promise<QueuedJob<Args>> {
+  ): Promise<JobHandle<Args>> {
     const _args = args ?? ({} as Args);
     const _options = <JobEnqueueOptions>{
       queueName: this._options.queueNames[0],
@@ -114,7 +114,7 @@ export class DefaultQueue<BaseJob extends Job<JobArgs> = DefaultJob<JobArgs>>
       ...options,
     };
     const jobInfo = await this.backend.addJob(taskName, _args, _options);
-    return new DefaultQueuedJob(this.backend, jobInfo);
+    return new DefaultJobHandle(this.backend, jobInfo);
   }
 
   async addJobWithAck<Result extends JobResult = JobResult, Args extends InferJobArgs<BaseJob> = InferJobArgs<BaseJob>>(
@@ -136,18 +136,18 @@ export class DefaultQueue<BaseJob extends Job<JobArgs> = DefaultJob<JobArgs>>
     return new Promise<Result | null>((resolve, reject) => this.waitForResult(id, interval, signal, resolve, reject));
   }
 
-  async getJob<Args extends InferJobArgs<BaseJob> = InferJobArgs<BaseJob>>(id: JobId): Promise<QueuedJob<Args> | null> {
+  async getJob<Args extends InferJobArgs<BaseJob> = InferJobArgs<BaseJob>>(id: JobId): Promise<JobHandle<Args> | null> {
     const jobInfo = await this.backend.getJobInfo<Args>(id);
     if (jobInfo === undefined) return null;
-    return new DefaultQueuedJob(this.backend, jobInfo);
+    return new DefaultJobHandle(this.backend, jobInfo);
   }
 
   async getJobs<Args extends InferJobArgs<BaseJob> = InferJobArgs<BaseJob>>(
     options: ListJobsOptions,
-  ): Promise<QueuedJob<Args>[]> {
-    const jobs: QueuedJob<Args>[] = [];
+  ): Promise<JobHandle<Args>[]> {
+    const jobs: JobHandle<Args>[] = [];
     for await (const jobInfo of this.listJobInfos<Args>(options)) {
-      jobs.push(new DefaultQueuedJob(this.backend, jobInfo));
+      jobs.push(new DefaultJobHandle(this.backend, jobInfo));
     }
     return jobs;
   }

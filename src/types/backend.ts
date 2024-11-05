@@ -19,7 +19,7 @@ import {
   WorkerState,
 } from './worker.js';
 
-export interface Backend extends QueueBackend, IteratorBackend, QueuedJobBackend, WorkerBackend, EventEmitter {
+export interface Backend extends QueueBackend, IteratorBackend, JobHandleBackend, WorkerBackend, EventEmitter {
   readonly FOREGROUND_QUEUE: string;
   readonly name: string;
 
@@ -132,9 +132,9 @@ export interface JobBackend {
 }
 
 /**
- * The backend methods a `QueuedJob` object needs
+ * The backend methods a `JobHandle` object needs
  */
-export interface QueuedJobBackend extends JobBackend {
+export interface JobHandleBackend extends JobBackend {
   /**
    * Returns the information about a specific job.
    */

@@ -1,16 +1,16 @@
-import { type JobOptions, type QueuedJobBackend } from '../types/backend.js';
+import { type JobHandleBackend, type JobOptions } from '../types/backend.js';
+import { type JobHandle } from '../types/job-handle.js';
 import { JobState, type JobArgs, type JobId, type JobInfo, type JobResult } from '../types/job.js';
-import { type QueuedJob } from '../types/queued-job.js';
 import { type WorkerId } from '../types/worker.js';
 
 /**
- * Job Controller
+ * Job Handle
  */
-export class DefaultQueuedJob<Args extends JobArgs = JobArgs> implements QueuedJob<Args> {
+export class DefaultJobHandle<Args extends JobArgs = JobArgs> implements JobHandle<Args> {
   private jobInfo: JobInfo<Args>;
 
   constructor(
-    private backend: QueuedJobBackend,
+    private backend: JobHandleBackend,
     jobInfo: JobInfo<Args>,
   ) {
     this.jobInfo = { ...jobInfo };
@@ -106,10 +106,10 @@ export class DefaultQueuedJob<Args extends JobArgs = JobArgs> implements QueuedJ
     return this.jobInfo.childJobIds;
   }
 
-  async retry(options: JobOptions = {}): Promise<QueuedJob<Args> | null> {
+  async retry(options: JobOptions = {}): Promise<JobHandle<Args> | null> {
     const jobInfo = await this.backend.retryJob<Args>(this.id, this.attempt, options);
     if (jobInfo) {
-      return new DefaultQueuedJob(this.backend, jobInfo);
+      return new DefaultJobHandle(this.backend, jobInfo);
     }
     return null;
   }

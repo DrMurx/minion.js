@@ -1,8 +1,8 @@
 import { PgBackend } from './backends/pg/backend.js';
 import { createPool } from './backends/pg/factory.js';
-import { DefaultJob } from './job.js';
-import { DefaultQueue } from './queue.js';
-import { DefaultTaskManager } from './task-manager.js';
+import { DefaultJob } from './queue/job.js';
+import { DefaultQueue } from './queue/queue.js';
+import { DefaultTaskManager } from './queue/task-manager.js';
 import { type Backend, type JobOptions } from './types/backend.js';
 import {
   type InferJobArgs,

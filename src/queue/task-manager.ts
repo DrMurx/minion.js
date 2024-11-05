@@ -1,5 +1,5 @@
-import { type Job, type JobArgs } from './types/job.js';
-import { type Task, type TaskHandlerFunction, type TaskManager } from './types/task.js';
+import { type Job, type JobArgs } from '../types/job.js';
+import { type Task, type TaskHandlerFunction, type TaskManager } from '../types/task.js';
 
 export class DefaultTaskManager<BaseJob extends Job<JobArgs>> implements TaskManager<BaseJob> {
   private tasks: TaskList<BaseJob> = new Map();

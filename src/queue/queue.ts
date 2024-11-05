@@ -1,10 +1,6 @@
 import EventEmitter from 'events';
-import { BackendIterator } from './backends/iterator.js';
-import { DefaultJob } from './job.js';
-import { QueuePruner } from './queue/pruner.js';
-import { DefaultQueuedJob } from './queued-job.js';
-import { DefaultTaskManager } from './task-manager.js';
-import { type Backend, type JobDequeueOptions, type JobEnqueueOptions, type JobOptions } from './types/backend.js';
+import { BackendIterator } from '../backends/iterator.js';
+import { type Backend, type JobDequeueOptions, type JobEnqueueOptions, type JobOptions } from '../types/backend.js';
 import {
   type InferJobArgs,
   type Job,
@@ -16,11 +12,11 @@ import {
   JobState,
   type ListJobsOptions,
   unsuccessfulJobStates,
-} from './types/job.js';
-import { type QueueJobStatistics, type QueueStats } from './types/queue-stats.js';
-import { type PruneOptions, type Queue, QueueEvents, type QueueOptions } from './types/queue.js';
-import { QueuedJob } from './types/queued-job.js';
-import { isTask, type Task, type TaskHandlerFunction, type TaskManager } from './types/task.js';
+} from '../types/job.js';
+import { type QueueJobStatistics, type QueueStats } from '../types/queue-stats.js';
+import { type PruneOptions, type Queue, QueueEvents, type QueueOptions } from '../types/queue.js';
+import { QueuedJob } from '../types/queued-job.js';
+import { isTask, type Task, type TaskHandlerFunction, type TaskManager } from '../types/task.js';
 import {
   type ListWorkersOptions,
   type Worker,
@@ -28,10 +24,14 @@ import {
   type WorkerInfo,
   type WorkerOptions,
   WorkerState,
-} from './types/worker.js';
-import { version } from './version.js';
-import { DefaultWorker } from './worker.js';
-import { Executor } from './worker/executor.js';
+} from '../types/worker.js';
+import { version } from '../version.js';
+import { Executor } from '../worker/executor.js';
+import { DefaultWorker } from '../worker/worker.js';
+import { DefaultJob } from './job.js';
+import { QueuePruner } from './pruner.js';
+import { DefaultQueuedJob } from './queued-job.js';
+import { DefaultTaskManager } from './task-manager.js';
 
 /**
  * Job queue class.

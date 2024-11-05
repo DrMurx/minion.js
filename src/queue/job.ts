@@ -1,6 +1,6 @@
-import { JobResult, JobState, type Job, type JobArgs, type JobId } from './types/job.js';
-import { type RunningWorker } from './types/worker.js';
-import { type Executor } from './worker/executor.js';
+import { JobResult, JobState, type Job, type JobArgs, type JobId } from '../types/job.js';
+import { type RunningWorker } from '../types/worker.js';
+import { type Executor } from '../worker/executor.js';
 
 /**
  * Default job class.

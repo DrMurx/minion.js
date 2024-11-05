@@ -1,13 +1,13 @@
 import t from 'tap';
-import { JOB_TABLE, PgBackend, WORKER_TABLE } from './backends/pg/backend.js';
-import { createPool } from './backends/pg/factory.js';
+import { JOB_TABLE, PgBackend, WORKER_TABLE } from '../backends/pg/backend.js';
+import { createPool } from '../backends/pg/factory.js';
+import { type Backend } from '../types/backend.js';
+import { JobState } from '../types/job.js';
+import { type Queue } from '../types/queue.js';
+import { type Task } from '../types/task.js';
+import { WorkerState } from '../types/worker.js';
 import { DefaultQueue } from './queue.js';
 import { DefaultQueuedJob } from './queued-job.js';
-import { type Backend } from './types/backend.js';
-import { JobState } from './types/job.js';
-import { type Queue } from './types/queue.js';
-import { type Task } from './types/task.js';
-import { WorkerState } from './types/worker.js';
 
 const skip = process.env.TEST_ONLINE === undefined ? { skip: 'set TEST_ONLINE to enable this test' } : {};
 

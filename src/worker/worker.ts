@@ -4,10 +4,10 @@ import {
   type WorkerBackend,
   type WorkerInboxOptions,
   type WorkerRegistrationOptions,
-} from './types/backend.js';
-import { type InferJobArgs, type Job, type JobArgs } from './types/job.js';
-import { type JobFactory, type QueueEventEmitter } from './types/queue.js';
-import { type Task, type TaskManager } from './types/task.js';
+} from '../types/backend.js';
+import { type InferJobArgs, type Job, type JobArgs } from '../types/job.js';
+import { type JobFactory, type QueueEventEmitter } from '../types/queue.js';
+import { type Task, type TaskManager } from '../types/task.js';
 import {
   WorkerState,
   type Worker,
@@ -16,11 +16,11 @@ import {
   type WorkerId,
   type WorkerInfo,
   type WorkerOptions,
-} from './types/worker.js';
-import { WorkerCommandManager } from './worker/command-manager.js';
-import { WorkerTerminationError } from './worker/errors.js';
-import { Executor } from './worker/executor.js';
-import { WorkerLoop } from './worker/loop.js';
+} from '../types/worker.js';
+import { WorkerCommandManager } from './command-manager.js';
+import { WorkerTerminationError } from './errors.js';
+import { Executor } from './executor.js';
+import { WorkerLoop } from './loop.js';
 
 /**
  * Default worker class.

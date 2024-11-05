@@ -1,5 +1,5 @@
 import { type Backend, type JobPruneResult, type WorkerPruneResult } from '../types/backend.js';
-import { type QueueEventEmitter, type PruneOptions } from '../types/queue.js';
+import { type PruneOptions, type QueueEventEmitter } from '../types/queue.js';
 
 export class QueuePruner {
   private enabled: boolean = false;

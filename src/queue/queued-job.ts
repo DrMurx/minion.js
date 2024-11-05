@@ -1,7 +1,7 @@
-import { type JobBackend, type JobOptions } from './types/backend.js';
-import { JobState, type JobArgs, type JobId, type JobInfo, type JobResult } from './types/job.js';
-import { type QueuedJob } from './types/queued-job.js';
-import { type WorkerId } from './types/worker.js';
+import { type JobBackend, type JobOptions } from '../types/backend.js';
+import { JobState, type JobArgs, type JobId, type JobInfo, type JobResult } from '../types/job.js';
+import { type QueuedJob } from '../types/queued-job.js';
+import { type WorkerId } from '../types/worker.js';
 
 /**
  * Job Controller

@@ -1,6 +1,6 @@
 import os from 'os';
 import t from 'tap';
-import { DefaultQueue } from '../../queue.js';
+import { DefaultQueue } from '../../queue/queue.js';
 import { type Backend } from '../../types/backend.js';
 import { JobState } from '../../types/job.js';
 import { type Queue } from '../../types/queue.js';

@@ -642,7 +642,7 @@ t.test('Queue with PostgreSQL backend', skip, async (t) => {
     await queuedJob1.sync();
     t.same(queuedJob1.metadata, { foo: [4, 5, 6], baz: 'yada' });
 
-    t.notOk(await backend.amendJobMetadata(-1, { yada: [JobState.Failed] }));
+    t.notOk(await backend.amendJobMetadata(-1, 1, { yada: [JobState.Failed] }));
 
     await worker.unregister();
   });

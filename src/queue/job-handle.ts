@@ -115,7 +115,7 @@ export class DefaultJobHandle<Args extends JobArgs = JobArgs> implements JobHand
   }
 
   async amendMetadata(records: Record<string, any>): Promise<boolean> {
-    const isUpdated = await this.backend.amendJobMetadata(this.id, records);
+    const isUpdated = await this.backend.amendJobMetadata(this.id, this.attempt, records);
     if (isUpdated) {
       await this.sync();
     }

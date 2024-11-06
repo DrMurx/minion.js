@@ -62,9 +62,11 @@ export class PgBackend extends EventEmitter implements Backend {
     if (config instanceof pg.Pool) {
       pg.types.setTypeParser(20, parseInt);
       this._pool = config;
-    } else {
+    } else if (typeof config === 'string') {
       this._pool = createPool(config);
       this.autoclosePool = true;
+    } else {
+      throw new Error('Invalid config for PgBackend');
     }
   }
 
@@ -196,12 +198,13 @@ export class PgBackend extends EventEmitter implements Backend {
     return (results.rowCount ?? 0) > 0;
   }
 
-  async amendJobMetadata(id: JobId, records: Record<string, any>): Promise<boolean> {
+  async amendJobMetadata(id: JobId, attempt: number, records: Record<string, any>): Promise<boolean> {
     const results = await this.query(
       `UPDATE ${JOB_TABLE}
       SET metadata = JSONB_STRIP_NULLS(metadata || $1)
-      WHERE id = $2`,
-      [records, id],
+      WHERE id = $2
+        AND attempt = $3`,
+      [records, id, attempt],
     );
     return (results.rowCount ?? 0) > 0;
   }
@@ -223,9 +226,9 @@ export class PgBackend extends EventEmitter implements Backend {
   }
 
   async markJobFinished(
-    state: JobState.Succeeded | JobState.Failed | JobState.Aborted,
     jobId: JobId,
     attempt: number,
+    state: JobState.Succeeded | JobState.Failed | JobState.Aborted,
     result: JobResult,
   ): Promise<boolean> {
     const results = await this.query(

@@ -113,7 +113,7 @@ export class Executor<BaseJob extends Job<JobArgs>> {
   }
 
   async amendMetadata(records: Record<string, any>): Promise<boolean> {
-    return await this.backend.amendJobMetadata(this.id, records);
+    return await this.backend.amendJobMetadata(this.id, this.attempt, records);
   }
 
   /**
@@ -169,7 +169,7 @@ export class Executor<BaseJob extends Job<JobArgs>> {
    * Transition from `running` to `succeeded` state with or without a result.
    */
   async markSucceeded(result?: JobResult): Promise<boolean> {
-    const isUpdated = await this.backend.markJobFinished(JobState.Succeeded, this.id, this.attempt, result ?? {});
+    const isUpdated = await this.backend.markJobFinished(this.id, this.attempt, JobState.Succeeded, result ?? {});
     if (isUpdated) {
       this.jobInfo.state = JobState.Succeeded;
       this.jobInfo.progress = 1.0;
@@ -194,7 +194,7 @@ export class Executor<BaseJob extends Job<JobArgs>> {
     if (result instanceof Error) {
       result = { name: result.name, message: result.message, stack: result.stack };
     }
-    const isUpdated = await this.backend.markJobFinished(JobState.Failed, this.id, this.attempt, result);
+    const isUpdated = await this.backend.markJobFinished(this.id, this.attempt, JobState.Failed, result);
     if (isUpdated) {
       this.jobInfo.state = JobState.Failed;
       this.jobInfo.finishedAt = new Date();

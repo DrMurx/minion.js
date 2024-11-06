@@ -106,21 +106,21 @@ export interface JobBackend {
   /**
    * Change one or more metadata fields for a job. Setting a value to `null` will remove the field.
    */
-  amendJobMetadata(jobId: JobId, records: Record<string, any>): Promise<boolean>;
+  amendJobMetadata(jobId: JobId, attempt: number, records: Record<string, any>): Promise<boolean>;
 
   /**
    * Updates the job's progress.
    */
-  updateJobProgress(id: JobId, attempt: number, progress: number): Promise<boolean>;
+  updateJobProgress(jobId: JobId, attempt: number, progress: number): Promise<boolean>;
 
   /**
    * Transition from `running` to `succeeded` or `failed` state with or without a result. If the job has failed and
    * if there are attempts remaining, transition back to `pending` with a delay.
    */
   markJobFinished(
-    state: JobState.Succeeded | JobState.Failed | JobState.Aborted,
     jobId: JobId,
     attempt: number,
+    state: JobState.Succeeded | JobState.Failed | JobState.Aborted,
     result: JobResult,
   ): Promise<boolean>;
 

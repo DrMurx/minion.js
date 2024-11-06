@@ -106,7 +106,11 @@ export interface JobBackend {
   /**
    * Change one or more metadata fields for a job. Setting a value to `null` will remove the field.
    */
-  amendJobMetadata(jobId: JobId, attempt: number, records: Record<string, any>): Promise<boolean>;
+  amendJobMetadata(
+    jobId: JobId,
+    attempt: number,
+    records: Record<string, any>,
+  ): Promise<Record<string, any> | undefined>;
 
   /**
    * Updates the job's progress.

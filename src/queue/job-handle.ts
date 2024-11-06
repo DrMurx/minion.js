@@ -108,16 +108,17 @@ export class DefaultJobHandle<Args extends JobArgs = JobArgs> implements JobHand
 
   async retry(options: JobOptions = {}): Promise<JobHandle<Args> | null> {
     const jobInfo = await this.backend.retryJob<Args>(this.id, this.attempt, options);
-    if (jobInfo) {
+    if (jobInfo !== undefined) {
       return new DefaultJobHandle(this.backend, jobInfo);
     }
     return null;
   }
 
   async amendMetadata(records: Record<string, any>): Promise<boolean> {
-    const isUpdated = await this.backend.amendJobMetadata(this.id, this.attempt, records);
+    const metadata = await this.backend.amendJobMetadata(this.id, this.attempt, records);
+    const isUpdated = metadata !== undefined;
     if (isUpdated) {
-      await this.sync();
+      this.jobInfo.metadata = metadata;
     }
     return isUpdated;
   }
@@ -136,9 +137,9 @@ export class DefaultJobHandle<Args extends JobArgs = JobArgs> implements JobHand
 
   async sync(): Promise<boolean> {
     const jobInfo = await this.backend.getJobInfo<Args>(this.id);
-    if (jobInfo) {
+    if (jobInfo !== undefined) {
       this.jobInfo = jobInfo;
     }
-    return !!jobInfo;
+    return jobInfo !== undefined;
   }
 }

@@ -198,19 +198,25 @@ export class PgBackend extends EventEmitter implements Backend {
     return (results.rowCount ?? 0) > 0;
   }
 
-  async amendJobMetadata(id: JobId, attempt: number, records: Record<string, any>): Promise<boolean> {
-    const results = await this.query(
+  async amendJobMetadata(
+    id: JobId,
+    attempt: number,
+    records: Record<string, any>,
+  ): Promise<Record<string, any> | undefined> {
+    const results = await this.query<{ metadata: Record<string, any> }>(
       `UPDATE ${JOB_TABLE}
       SET metadata = JSONB_STRIP_NULLS(metadata || $1)
       WHERE id = $2
-        AND attempt = $3`,
+        AND attempt = $3
+      RETURNING metadata`,
       [records, id, attempt],
     );
-    return (results.rowCount ?? 0) > 0;
+    const jobInfo = results.rows[0];
+    return jobInfo !== undefined ? jobInfo.metadata : undefined;
   }
 
   async updateJobProgress(id: JobId, attempt: number, progress: number): Promise<boolean> {
-    const results = await this.query<UpdateJobProgressResult>(
+    const results = await this.query<{ workerId: WorkerId }>(
       `UPDATE ${JOB_TABLE}
       SET progress = $1
       WHERE id = $2
@@ -465,7 +471,7 @@ export class PgBackend extends EventEmitter implements Backend {
   }
 
   async registerWorker(options: WorkerRegistrationOptions): Promise<WorkerId> {
-    const results = await this.query<RegisterWorkerResult>(
+    const results = await this.query<{ id: WorkerId }>(
       `INSERT INTO ${WORKER_TABLE} (
         config,
         state,
@@ -701,7 +707,8 @@ export class PgBackend extends EventEmitter implements Backend {
   }
 
   async updateSchema(): Promise<void> {
-    const version = (await this.query<ServerVersionResult>('SHOW server_version_num')).rows[0].server_version_num;
+    const result = await this.query<{ server_version_num: number }>('SHOW server_version_num');
+    const version = result.rows[0].server_version_num;
     if (version < 90500) throw new Error('PostgreSQL 9.5 or later is required');
 
     const conn = await this._pool.connect();
@@ -914,16 +921,4 @@ interface WorkerInfoRow extends WorkerInfo {
 
 interface ReceiveResult {
   inbox: WorkerCommandDescriptor[];
-}
-
-interface RegisterWorkerResult {
-  id: WorkerId;
-}
-
-interface UpdateJobProgressResult {
-  workerId: WorkerId;
-}
-
-interface ServerVersionResult {
-  server_version_num: number;
 }

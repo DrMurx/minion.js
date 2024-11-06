@@ -638,9 +638,12 @@ t.test('Queue with PostgreSQL backend', skip, async (t) => {
     t.same(queuedJob1.metadata, { foo: [4, 5, 6], bar: { baz: [1, 2, 3] }, baz: 'yada', yada: ['works'] });
     t.same(queuedJob1.result, [{ 23: 'test3' }]);
 
+    t.ok(await queuedJob1.amendMetadata({ foo: [4, 5, 6, 7], so: true }));
+    t.same(queuedJob1.metadata, { foo: [4, 5, 6, 7], bar: { baz: [1, 2, 3] }, baz: 'yada', yada: ['works'], so: true });
+
     t.ok(await job.amendMetadata({ yada: null, bar: null }));
     await queuedJob1.sync();
-    t.same(queuedJob1.metadata, { foo: [4, 5, 6], baz: 'yada' });
+    t.same(queuedJob1.metadata, { foo: [4, 5, 6, 7], baz: 'yada', so: true });
 
     t.notOk(await backend.amendJobMetadata(-1, 1, { yada: [JobState.Failed] }));
 

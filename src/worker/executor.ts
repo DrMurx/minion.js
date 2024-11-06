@@ -113,7 +113,12 @@ export class Executor<BaseJob extends Job<JobArgs>> {
   }
 
   async amendMetadata(records: Record<string, any>): Promise<boolean> {
-    return await this.backend.amendJobMetadata(this.id, this.attempt, records);
+    const metadata = await this.backend.amendJobMetadata(this.id, this.attempt, records);
+    const isUpdated = metadata !== undefined;
+    if (isUpdated) {
+      this.jobInfo.metadata = metadata;
+    }
+    return isUpdated;
   }
 
   /**

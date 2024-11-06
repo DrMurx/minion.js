@@ -19,7 +19,7 @@ import { type PruneOptions, type Queue, QueueEvents, type QueueOptions } from '.
 import { isTask, type Task, type TaskHandlerFunction, type TaskManager } from '../types/task.js';
 import {
   type ListWorkersOptions,
-  type Worker,
+  type WorkerInstance,
   type WorkerCommandArg,
   type WorkerId,
   type WorkerInfo,
@@ -28,6 +28,7 @@ import {
 } from '../types/worker.js';
 import { version } from '../version.js';
 import { Executor } from '../worker/executor.js';
+import { GhostWorker } from '../worker/ghost-worker.js';
 import { DefaultJob } from '../worker/job.js';
 import { DefaultWorker } from '../worker/worker.js';
 import { DefaultJobHandle } from './job-handle.js';
@@ -72,8 +73,9 @@ export class DefaultQueue<BaseJob extends Job<JobArgs> = DefaultJob<JobArgs>>
     this._options = Object.freeze(_options);
 
     // Plug in some event handlers
+    const ghostWorker = new GhostWorker<BaseJob>();
     this.on('job_abandoned', ({ jobInfo }) => {
-      const executor = new Executor(jobInfo, this.backend, this, this);
+      const executor = new Executor(jobInfo, ghostWorker, this.backend, this, this);
       executor.retryFailed().catch((e) => {
         console.error(e);
       });
@@ -174,7 +176,7 @@ export class DefaultQueue<BaseJob extends Job<JobArgs> = DefaultJob<JobArgs>>
     try {
       const executor = await worker.getNextExecutor(0, { id: jobId });
       if (executor === null) return false;
-      await executor.perform(worker, true);
+      await executor.perform(true);
       return true;
     } finally {
       await worker.unregister();
@@ -188,7 +190,7 @@ export class DefaultQueue<BaseJob extends Job<JobArgs> = DefaultJob<JobArgs>>
         await worker.heartbeat();
         const executor = await worker.getNextExecutor(0, options);
         if (executor === null) break;
-        await executor.perform(worker);
+        await executor.perform();
       }
     } finally {
       await worker.unregister();
@@ -205,7 +207,7 @@ export class DefaultQueue<BaseJob extends Job<JobArgs> = DefaultJob<JobArgs>>
     }
   }
 
-  getNewWorker(options: Partial<WorkerOptions> = {}): Worker<BaseJob> {
+  getNewWorker(options: Partial<WorkerOptions> = {}): WorkerInstance<BaseJob> {
     const _options = <WorkerOptions>{
       ...DefaultWorker.DEFAULT_CONFIG,
       queueNames: this._options.queueNames,
@@ -214,7 +216,7 @@ export class DefaultQueue<BaseJob extends Job<JobArgs> = DefaultJob<JobArgs>>
     return new DefaultWorker(this.backend, _options, this.taskManager, this, this.backend, this);
   }
 
-  async getWorkerInfo(worker: WorkerId | Worker<BaseJob>): Promise<WorkerInfo | undefined> {
+  async getWorkerInfo(worker: WorkerId | WorkerInstance<BaseJob>): Promise<WorkerInfo | undefined> {
     const id = typeof worker === 'number' ? worker : worker.id;
     if (id === undefined) return undefined;
     return await this.backend.getWorkerInfo(id);

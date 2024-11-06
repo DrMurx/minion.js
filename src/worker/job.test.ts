@@ -21,7 +21,7 @@ t.test('Default backoff strategy', async (t) => {
       maxAttempts: 0,
       attempt,
     };
-    const executor = new Executor(jobInfo, null as any, null as any, new EventEmitter<any>());
+    const executor = new Executor(jobInfo, null as any, null as any, null as any, new EventEmitter<any>());
     const job = new DefaultJob(executor);
     t.equal(await job.getBackoffDelay(), expectedDelay);
   }

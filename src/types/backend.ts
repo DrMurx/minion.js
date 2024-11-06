@@ -157,7 +157,7 @@ export interface JobHandleBackend extends JobBackend {
 }
 
 /**
- * The backend methods a `Worker` object needs
+ * The backend methods a `WorkerInstance` object needs
  */
 export interface WorkerBackend {
   /**

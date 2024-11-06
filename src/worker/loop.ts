@@ -1,7 +1,7 @@
 import EventEmitter from 'events';
 import { type JobDequeueOptions } from '../types/backend.js';
 import { type Job, type JobArgs } from '../types/job.js';
-import { type Worker } from '../types/worker.js';
+import { type WorkerInstance } from '../types/worker.js';
 import { type Executor } from './executor.js';
 
 /**
@@ -14,7 +14,7 @@ export class WorkerLoop<BaseJob extends Job<JobArgs>> extends EventEmitter {
   private jobs: JobStatus<BaseJob>[] = [];
   private stopPromises: Array<() => void> = [];
 
-  constructor(protected worker: Worker<BaseJob>) {
+  constructor(protected worker: WorkerInstance<BaseJob>) {
     super();
   }
 
@@ -107,7 +107,7 @@ export class WorkerLoop<BaseJob extends Job<JobArgs>> extends EventEmitter {
     if (executor === null) return false;
 
     // Construct the jobStatus object - the promise on `Job.perform` will update its status after it has finished
-    const performPromise = executor.perform(this.worker, false);
+    const performPromise = executor.perform(false);
     const jobStatus: JobStatus<BaseJob> = {
       job: executor,
       performPromise,

@@ -20,7 +20,7 @@ import { type StatsReader } from './queue-stats.js';
 import { type Task, type TaskHandlerFunction } from './task.js';
 import {
   type ListWorkersOptions,
-  type Worker,
+  type WorkerInstance,
   type WorkerCommandArg,
   type WorkerId,
   type WorkerInfo,
@@ -138,12 +138,12 @@ export interface WorkerManager<BaseJob extends Job<JobArgs>> {
   /**
    * Build worker object.
    */
-  getNewWorker(options?: Partial<WorkerOptions>): Worker<BaseJob>;
+  getNewWorker(options?: Partial<WorkerOptions>): WorkerInstance<BaseJob>;
 
   /**
    * Get worker information.
    */
-  getWorkerInfo(worker: WorkerId | Worker<BaseJob>): Promise<WorkerInfo | undefined>;
+  getWorkerInfo(worker: WorkerId | WorkerInstance<BaseJob>): Promise<WorkerInfo | undefined>;
 
   /**
    * Return iterator object to safely iterate through worker information.

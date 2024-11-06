@@ -3,6 +3,9 @@ import { type JobDequeueOptions } from './backend.js';
 import { type Job, type JobArgs, type JobId } from './job.js';
 import { type Task } from './task.js';
 
+/**
+ * Class with methods of a `Worker` required within the `Executor`.
+ */
 export interface RunningWorker<BaseJob extends Job<JobArgs>> {
   /**
    * Worker id.
@@ -28,7 +31,10 @@ export interface RunningWorker<BaseJob extends Job<JobArgs>> {
   heartbeat(force?: boolean): Promise<this>;
 }
 
-export interface Worker<BaseJob extends Job<JobArgs>> extends RunningWorker<BaseJob> {
+/**
+ * Class with all methods that are required to configure and spawn a `Worker`.
+ */
+export interface WorkerInstance<BaseJob extends Job<JobArgs>> extends RunningWorker<BaseJob> {
   get config(): Readonly<WorkerConfig>;
   setConfig(config: Partial<WorkerConfig>): Promise<void>;
   setMetadata(key: string, value: any): Promise<void>;
@@ -47,7 +53,7 @@ export interface Worker<BaseJob extends Job<JobArgs>> extends RunningWorker<Base
   stop(): Promise<void>;
 
   /**
-   * Terminate worker loop (like `Worker.stop`, but sends an `AbortSignal`s).
+   * Terminate worker loop (like `stop`, but sends an `AbortSignal`).
    */
   terminate(reason?: string): Promise<void>;
 
@@ -86,7 +92,7 @@ export interface Worker<BaseJob extends Job<JobArgs>> extends RunningWorker<Base
 export type WorkerId = number;
 
 export type WorkerCommandArg = Record<string, any> & { [Symbol.iterator]?: never };
-export type WorkerCommandHandler = (worker: Worker<any>, arg: WorkerCommandArg) => Promise<void>;
+export type WorkerCommandHandler = (worker: WorkerInstance<any>, arg: WorkerCommandArg) => Promise<void>;
 export type WorkerCommandDescriptor = { command: string; arg: WorkerCommandArg };
 
 export interface WorkerOptions extends WorkerConfig {

@@ -18,9 +18,9 @@ import { type Queue, type QueueOptions } from './types/queue.js';
 import { type Task, type TaskHandlerFunction, type TaskManager } from './types/task.js';
 import {
   type RunningWorker,
-  type Worker,
   type WorkerConfig,
   type WorkerId,
+  type WorkerInstance,
   type WorkerOptions,
   WorkerState,
 } from './types/worker.js';
@@ -44,19 +44,19 @@ export {
   type Job,
   type JobArgs,
   type JobDescriptor,
+  type JobHandle,
   type JobId,
   type JobInfo,
   type JobOptions,
   type JobResult,
   type Queue,
-  type JobHandle,
   type QueueOptions,
   type RunningWorker,
   type Task,
   type TaskHandlerFunction,
   type TaskManager,
-  type Worker,
   type WorkerConfig,
   type WorkerId,
+  type WorkerInstance,
   type WorkerOptions,
 };

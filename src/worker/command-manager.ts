@@ -1,5 +1,5 @@
 import {
-  type Worker,
+  type WorkerInstance,
   type WorkerCommandArg,
   type WorkerCommandDescriptor,
   type WorkerCommandHandler,
@@ -12,7 +12,7 @@ export class WorkerCommandManager {
   private commands: Map<string, WorkerCommandHandler> = new Map();
 
   constructor(
-    private worker: Worker<any>,
+    private worker: WorkerInstance<any>,
     commands: Record<string, WorkerCommandHandler>,
   ) {
     this.addDefaultHandlers();

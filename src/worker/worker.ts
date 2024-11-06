@@ -10,7 +10,7 @@ import { type JobFactory, type QueueEventEmitter } from '../types/queue.js';
 import { type Task, type TaskManager } from '../types/task.js';
 import {
   WorkerState,
-  type Worker,
+  type WorkerInstance,
   type WorkerCommandHandler,
   type WorkerConfig,
   type WorkerId,
@@ -24,7 +24,7 @@ import { WorkerLoop } from './loop.js';
 /**
  * Default worker class.
  */
-export class DefaultWorker<BaseJob extends Job<JobArgs>> implements Worker<BaseJob> {
+export class DefaultWorker<BaseJob extends Job<JobArgs>> implements WorkerInstance<BaseJob> {
   public static readonly DEFAULT_CONFIG = Object.freeze(<Partial<WorkerConfig>>{
     maxCapacity: 1,
     spareCapacity: 0,
@@ -178,7 +178,7 @@ export class DefaultWorker<BaseJob extends Job<JobArgs>> implements Worker<BaseJ
     const taskNames = this.taskManager.getTaskNames();
     const jobInfo = await this.workerBackend.assignNextJob<InferJobArgs<BaseJob>>(this.id, taskNames, wait, _options);
     if (jobInfo === null) return null;
-    return new Executor(jobInfo, this.jobBackend, this.jobFactory, this.notifier);
+    return new Executor<BaseJob>(jobInfo, this, this.jobBackend, this.jobFactory, this.notifier);
   }
 
   async terminate(reason?: string): Promise<void> {

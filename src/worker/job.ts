@@ -6,8 +6,6 @@ import { type Executor } from './executor.js';
  * Default job class.
  */
 export class DefaultJob<Args extends JobArgs> implements Job<Args> {
-  public worker: RunningWorker<Job<Args>> | null = null;
-
   constructor(private executor: Executor<Job<Args>>) {}
 
   get id(): JobId {
@@ -36,6 +34,10 @@ export class DefaultJob<Args extends JobArgs> implements Job<Args> {
 
   get state(): JobState {
     return this.executor.state;
+  }
+
+  get worker(): RunningWorker<Job<Args>> {
+    return this.executor.worker;
   }
 
   get abortSignal(): AbortSignal {

@@ -193,9 +193,9 @@ t.test('Queue with PostgreSQL backend', skip, async (t) => {
     const queuedJob2 = await queue.addJob('test');
     const queuedJob3 = await queue.addJob('test');
 
-    await worker.getNextExecutor().then((job) => job!.perform(worker));
-    await worker.getNextExecutor().then((job) => job!.perform(worker));
-    await worker.getNextExecutor().then((job) => job!.perform(worker));
+    await worker.getNextExecutor().then((job) => job!.perform());
+    await worker.getNextExecutor().then((job) => job!.perform());
+    await worker.getNextExecutor().then((job) => job!.perform());
 
     t.ok(await queuedJob2.sync());
     const finishedAt1 = queuedJob2.finishedAt!.getMilliseconds();
@@ -348,7 +348,7 @@ t.test('Queue with PostgreSQL backend', skip, async (t) => {
     t.notOk(queuedJob1.finishedAt);
     t.same(queuedJob1.time instanceof Date, true);
 
-    await executor1.perform(worker);
+    await executor1.perform();
     t.same((await queue.getWorkerInfo(worker))!.jobIds, []);
     t.ok(await queuedJob1.sync());
     t.equal(queuedJob1.state, JobState.Succeeded);
@@ -604,7 +604,7 @@ t.test('Queue with PostgreSQL backend', skip, async (t) => {
     const queuedJob3 = await queue.addJob('fail');
     const job3 = (await worker.getNextExecutor())!;
     t.equal(job3.id, queuedJob3.id);
-    await job3.perform(worker);
+    await job3.perform();
     await queuedJob3.sync();
     t.equal(queuedJob3.state, JobState.Failed);
     t.match(queuedJob3.result, {
@@ -629,7 +629,7 @@ t.test('Queue with PostgreSQL backend', skip, async (t) => {
     );
     const worker = await queue.getNewWorker().register();
     const job = (await worker.getNextExecutor())!;
-    await job.perform(worker);
+    await job.perform();
     await queuedJob1.sync();
     t.equal(queuedJob1.state, JobState.Succeeded);
 
@@ -658,7 +658,7 @@ t.test('Queue with PostgreSQL backend', skip, async (t) => {
     t.equal(queuedJob1.state, JobState.Running);
     t.equal(queuedJob1.maxAttempts, 3);
     t.equal(queuedJob1.attempt, 1);
-    await executor1.perform(worker);
+    await executor1.perform();
     await queuedJob1.sync();
     t.equal(queuedJob1.state, JobState.Scheduled);
     t.match(queuedJob1.result, { message: /Intentional failure/ });
@@ -676,7 +676,7 @@ t.test('Queue with PostgreSQL backend', skip, async (t) => {
     t.equal(queuedJob1.state, JobState.Running);
     t.equal(queuedJob1.maxAttempts, 3);
     t.equal(queuedJob1.attempt, 2);
-    await executor2.perform(worker);
+    await executor2.perform();
     await queuedJob1.sync();
     t.equal(queuedJob1.state, JobState.Scheduled);
     t.equal(queuedJob1.maxAttempts, 3);
@@ -692,7 +692,7 @@ t.test('Queue with PostgreSQL backend', skip, async (t) => {
     t.equal(queuedJob1.state, JobState.Running);
     t.equal(queuedJob1.maxAttempts, 3);
     t.equal(queuedJob1.attempt, 3);
-    await executor3.perform(worker);
+    await executor3.perform();
     await queuedJob1.sync();
     t.equal(queuedJob1.state, JobState.Failed);
     t.match(queuedJob1.result, { message: /Intentional failure/ });
@@ -703,7 +703,7 @@ t.test('Queue with PostgreSQL backend', skip, async (t) => {
     t.ok(await queuedJob1.retry({ maxAttempts: 5 }));
     const job4 = (await worker.getNextExecutor())!;
     t.equal(job4.id, queuedJob1.id);
-    await job4.perform(worker);
+    await job4.perform();
     await queuedJob1.sync();
     t.equal(queuedJob1.state, JobState.Scheduled);
 
@@ -711,7 +711,7 @@ t.test('Queue with PostgreSQL backend', skip, async (t) => {
 
     const job5 = (await worker.getNextExecutor())!;
     t.equal(job5.id, queuedJob1.id);
-    await job5.perform(worker);
+    await job5.perform();
     await queuedJob1.sync();
     t.equal(queuedJob1.state, JobState.Failed);
     await worker.unregister();
@@ -788,7 +788,7 @@ t.test('Queue with PostgreSQL backend', skip, async (t) => {
     const job2 = (await worker.getNextExecutor())!;
     const job3 = (await worker.getNextExecutor())!;
     const job4 = (await worker.getNextExecutor())!;
-    await Promise.all([job1.perform(worker), job2.perform(worker), job3.perform(worker), job4.perform(worker)]);
+    await Promise.all([job1.perform(), job2.perform(), job3.perform(), job4.perform()]);
     await Promise.all([queuedJob1.sync(), queuedJob2.sync(), queuedJob3.sync(), queuedJob4.sync()]);
     t.equal(queuedJob1.state, JobState.Succeeded);
     t.equal(queuedJob2.state, JobState.Succeeded);

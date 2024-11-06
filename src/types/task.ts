@@ -1,14 +1,12 @@
 import { type Job, type JobArgs, type JobResult } from './job.js';
-import { type RunningWorker } from './worker.js';
 
 export type TaskHandlerFunction<BaseJob extends Job<JobArgs> = Job<JobArgs>> = (
   job: BaseJob,
-  worker: RunningWorker<BaseJob>,
 ) => Promise<JobResult | void>;
 
 export interface Task<BaseJob extends Job<JobArgs> = Job<JobArgs>> {
   readonly name: string;
-  handle(job: BaseJob, worker: RunningWorker<BaseJob>): Promise<JobResult | void>;
+  handle(job: BaseJob): Promise<JobResult | void>;
 }
 
 export function isTask(t: any): t is Task {

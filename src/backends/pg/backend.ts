@@ -412,7 +412,7 @@ export class PgBackend extends EventEmitter implements Backend {
    * Returns the information about jobs in batches.
    */
   async getJobInfo<Args extends JobArgs>(jobId: JobId): Promise<JobInfo<Args> | undefined> {
-    const results = await this.query<JobInfoRow<Args>>(
+    const results = await this.query<JobInfo<Args>>(
       `SELECT
         ${this.jobInfoSql},
         ARRAY(SELECT id FROM ${JOB_TABLE} WHERE parent_job_ids @> ARRAY[j.id]) AS "childJobIds",
@@ -435,7 +435,7 @@ export class PgBackend extends EventEmitter implements Backend {
     limit: number,
     options: ListJobsOptions,
   ): Promise<JobInfoList<Args>> {
-    const results = await this.query<JobInfoRow<Args>>(
+    const results = await this.query<JobInfo<Args> & { total: number }>(
       `SELECT
         ${this.jobInfoSql},
         ARRAY(SELECT id FROM ${JOB_TABLE} WHERE parent_job_ids @> ARRAY[j.id]) AS "childJobIds",
@@ -490,7 +490,7 @@ export class PgBackend extends EventEmitter implements Backend {
   }
 
   async updateWorker(workerId: WorkerId, options: WorkerRegistrationOptions): Promise<boolean> {
-    const results = await this.query<ReceiveResult>(
+    const results = await this.query(
       `UPDATE ${WORKER_TABLE} AS new
       SET
         config = $1,
@@ -505,7 +505,7 @@ export class PgBackend extends EventEmitter implements Backend {
   }
 
   async checkWorkerInbox(workerId: WorkerId, options: WorkerInboxOptions): Promise<WorkerCommandDescriptor[]> {
-    const results = await this.query<ReceiveResult>(
+    const results = await this.query<{ inbox: WorkerCommandDescriptor[] }>(
       `UPDATE ${WORKER_TABLE} AS new
       SET
         state = $1,
@@ -557,7 +557,7 @@ export class PgBackend extends EventEmitter implements Backend {
   }
 
   async getWorkerInfo(workerId: WorkerId): Promise<WorkerInfo | undefined> {
-    const results = await this.query<WorkerInfoRow>(
+    const results = await this.query<WorkerInfo>(
       `SELECT
         id,
 
@@ -588,7 +588,7 @@ export class PgBackend extends EventEmitter implements Backend {
   }
 
   async getWorkerInfos(offset: number, limit: number, options: ListWorkersOptions): Promise<WorkerInfoList> {
-    const results = await this.query<WorkerInfoRow>(
+    const results = await this.query<WorkerInfo & { total: number }>(
       `SELECT
         id,
 
@@ -910,15 +910,3 @@ const queueDatabaseUpgrades: MigrationStep[] = [
       `,
   },
 ];
-
-interface JobInfoRow<Args extends JobArgs> extends JobInfo<Args> {
-  total: number;
-}
-
-interface WorkerInfoRow extends WorkerInfo {
-  total: number;
-}
-
-interface ReceiveResult {
-  inbox: WorkerCommandDescriptor[];
-}

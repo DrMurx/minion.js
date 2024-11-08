@@ -258,7 +258,7 @@ export class PgBackend extends EventEmitter implements Backend {
     taskNames: string[],
     timeout: number,
     options: JobDequeueOptions,
-  ): Promise<JobDescriptor<Args> | null> {
+  ): Promise<JobInfo<Args> | null> {
     for (let repeat = 1; ; repeat--) {
       const dequeueJobInfo = await this.tryAssignNextJob<Args>(workerId, taskNames, options);
       if (dequeueJobInfo !== null) return dequeueJobInfo;
@@ -271,12 +271,12 @@ export class PgBackend extends EventEmitter implements Backend {
     workerId: WorkerId,
     taskNames: string[],
     options: JobDequeueOptions,
-  ): Promise<JobDescriptor<Args> | null> {
+  ): Promise<JobInfo<Args> | null> {
     const jobId = options.id;
     const minPriority = options.minPriority;
     const queueNames = Array.isArray(options.queueNames) ? options.queueNames : [options.queueNames];
 
-    const results = await this.query<JobDescriptor<Args>>(
+    const results = await this.query<JobInfo<Args>>(
       `UPDATE ${JOB_TABLE}
       SET state = '${JobState.Running}',
           progress = 0.0,
@@ -313,7 +313,7 @@ export class PgBackend extends EventEmitter implements Backend {
         LIMIT 1
         FOR UPDATE SKIP LOCKED
       )
-      RETURNING ${this.jobDescriptorSql}`,
+      RETURNING ${this.jobInfoSql}`,
       [workerId, jobId, queueNames, taskNames, minPriority],
     );
     if ((results.rowCount ?? 0) <= 0) return null;

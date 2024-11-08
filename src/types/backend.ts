@@ -173,7 +173,7 @@ export interface WorkerBackend {
     taskNames: string[],
     timeout: number,
     options: JobDequeueOptions,
-  ): Promise<JobDescriptor<Args> | null>;
+  ): Promise<JobInfo<Args> | null>;
 
   /**
    * Register a new worker.

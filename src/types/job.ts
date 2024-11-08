@@ -100,7 +100,7 @@ export interface JobInfo<Args extends JobArgs = JobArgs> {
   queueName: string;
   taskName: string;
   args: Args;
-  result: JobResult;
+  result?: JobResult;
 
   state: JobState;
   priority: number;

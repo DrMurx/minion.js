@@ -15,7 +15,7 @@ import {
   unsuccessfulJobStates,
 } from '../types/job.js';
 import { type QueueJobStatistics, type QueueStats } from '../types/queue-stats.js';
-import { type PruneOptions, type Queue, QueueEvents, type QueueOptions } from '../types/queue.js';
+import { type JobFactory, type PruneOptions, type Queue, QueueEvents, type QueueOptions } from '../types/queue.js';
 import { isTask, type Task, type TaskHandlerFunction, type TaskManager } from '../types/task.js';
 import {
   type ListWorkersOptions,
@@ -28,6 +28,7 @@ import {
 } from '../types/worker.js';
 import { version } from '../version.js';
 import { Executor } from '../worker/executor.js';
+import { DefaultJobFactory } from '../worker/job-factory.js';
 import { DefaultJob } from '../worker/job.js';
 import { DefaultTaskManager } from '../worker/task-manager.js';
 import { DefaultWorker } from '../worker/worker.js';
@@ -41,7 +42,7 @@ export class DefaultQueue<BaseJob extends Job<JobArgs> = DefaultJob<JobArgs>>
   extends EventEmitter<QueueEvents<BaseJob>>
   implements Queue<BaseJob>
 {
-  public static readonly DEFAULT_OPTIONS = Object.freeze(<QueueOptions>{
+  public static readonly DEFAULT_OPTIONS = Object.freeze(<QueueOptions<any>>{
     queueNames: Object.freeze(['default']),
     pruneInterval: 5 * 60 * 1000,
     workerLostTimeout: 30 * 60 * 1000,
@@ -49,7 +50,8 @@ export class DefaultQueue<BaseJob extends Job<JobArgs> = DefaultJob<JobArgs>>
     jobUnattendedPeriod: 2 * 24 * 60 * 60 * 1000,
   });
 
-  protected _options: Readonly<QueueOptions>;
+  protected _options: Readonly<QueueOptions<BaseJob>>;
+  protected jobFactory: JobFactory<BaseJob>;
   protected taskManager: TaskManager<BaseJob>;
   protected pruner: QueuePruner<BaseJob>;
 
@@ -58,12 +60,13 @@ export class DefaultQueue<BaseJob extends Job<JobArgs> = DefaultJob<JobArgs>>
    */
   constructor(
     protected backend: Backend,
-    options: Partial<QueueOptions> = {},
+    options: Partial<QueueOptions<BaseJob>> = {},
   ) {
     super();
 
     // Assemble and freeze options
-    const _options: QueueOptions = { ...DefaultQueue.DEFAULT_OPTIONS, ...options };
+    const _options: QueueOptions<BaseJob> = { ...DefaultQueue.DEFAULT_OPTIONS, ...options };
+    delete _options.jobFactory;
     delete _options.tasks;
     if (!Array.isArray(_options.queueNames) || _options.queueNames.length === 0) {
       throw new Error('No queue names given');
@@ -72,11 +75,12 @@ export class DefaultQueue<BaseJob extends Job<JobArgs> = DefaultJob<JobArgs>>
     this._options = Object.freeze(_options);
 
     // Create other objects
+    this.jobFactory = options.jobFactory ?? new DefaultJobFactory<BaseJob>();
     this.taskManager = new DefaultTaskManager<BaseJob>(options.tasks);
     this.pruner = new QueuePruner(this.backend, this._options, this);
   }
 
-  get options(): Readonly<QueueOptions> {
+  get options(): Readonly<QueueOptions<BaseJob>> {
     return this._options;
   }
 

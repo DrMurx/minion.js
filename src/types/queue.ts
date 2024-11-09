@@ -31,15 +31,14 @@ import {
  * The public queue interface
  */
 export interface Queue<BaseJob extends Job<JobArgs> = Job<JobArgs>>
-  extends JobFactory<BaseJob>,
-    QuickWorker,
+  extends QuickWorker,
     WorkerManager<BaseJob>,
     StatsReader,
     QueueEventEmitter<BaseJob> {
   /**
    * Access to the queue options
    */
-  get options(): Readonly<QueueOptions>;
+  get options(): Readonly<QueueOptions<BaseJob>>;
 
   /**
    * Starts the queue and ensure that backend schema is updated to the latest version.
@@ -193,13 +192,15 @@ export interface PruneOptions {
   jobUnattendedPeriod: number;
 }
 
-export interface QueueOptions extends PruneOptions {
+export interface QueueOptions<BaseJob extends Job<JobArgs>> extends PruneOptions {
   /**
    * Names of the queues
    */
   queueNames: string[];
 
   tasks?: Task[] | { [taskName: string]: TaskHandlerFunction };
+
+  jobFactory?: JobFactory<BaseJob>;
 }
 
 export interface QueueEvents<

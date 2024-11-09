@@ -19,16 +19,15 @@ import { type PruneOptions, type Queue, QueueEvents, type QueueOptions } from '.
 import { isTask, type Task, type TaskHandlerFunction, type TaskManager } from '../types/task.js';
 import {
   type ListWorkersOptions,
-  type WorkerInstance,
   type WorkerCommandArg,
   type WorkerId,
   type WorkerInfo,
+  type WorkerInstance,
   type WorkerOptions,
   WorkerState,
 } from '../types/worker.js';
 import { version } from '../version.js';
 import { Executor } from '../worker/executor.js';
-import { GhostWorker } from '../worker/ghost-worker.js';
 import { DefaultJob } from '../worker/job.js';
 import { DefaultWorker } from '../worker/worker.js';
 import { DefaultJobHandle } from './job-handle.js';
@@ -52,7 +51,7 @@ export class DefaultQueue<BaseJob extends Job<JobArgs> = DefaultJob<JobArgs>>
 
   protected _options: Readonly<QueueOptions>;
   protected taskManager: TaskManager<BaseJob>;
-  protected pruner: QueuePruner;
+  protected pruner: QueuePruner<BaseJob>;
 
   /**
    * Constructor
@@ -71,15 +70,6 @@ export class DefaultQueue<BaseJob extends Job<JobArgs> = DefaultJob<JobArgs>>
     }
     Object.freeze(_options.queueNames);
     this._options = Object.freeze(_options);
-
-    // Plug in some event handlers
-    const ghostWorker = new GhostWorker<BaseJob>();
-    this.on('job_abandoned', ({ jobInfo }) => {
-      const executor = new Executor(jobInfo, ghostWorker, this.backend, this, this);
-      executor.retryFailed().catch((e) => {
-        console.error(e);
-      });
-    });
 
     // Create other objects
     this.taskManager = new DefaultTaskManager<BaseJob>(options.tasks);
@@ -164,6 +154,27 @@ export class DefaultQueue<BaseJob extends Job<JobArgs> = DefaultJob<JobArgs>>
     chunkSize: number = 10,
   ): BackendIterator<JobInfo<Args>> {
     return new BackendIterator<JobInfo<Args>>('jobs', this.backend, options, { chunkSize });
+  }
+
+  async retryFailedJob(job: BaseJob): Promise<void> {
+    if (job.state === JobState.Failed && job.attempt < job.maxAttempts) {
+      const options = {
+        // Set maxAttempt to its current value (otherwise, `Backend.retryJob` increases it)
+        maxAttempts: job.maxAttempts,
+        delayFor: await job.getBackoffDelay(),
+      };
+      await this.backend.retryJob(job.id, job.attempt, options);
+    }
+  }
+
+  async retryAbandonedJob(jobInfo: JobInfo<InferJobArgs<BaseJob>>): Promise<void> {
+    if (jobInfo.state === JobState.Abandoned && jobInfo.attempt < jobInfo.maxAttempts) {
+      const options = {
+        // Set maxAttempt to its current value (otherwise, `Backend.retryJob` increases it)
+        maxAttempts: jobInfo.maxAttempts,
+      };
+      await this.backend.retryJob(jobInfo.id, jobInfo.attempt, options);
+    }
   }
 
   async runJob(jobId: number): Promise<boolean> {

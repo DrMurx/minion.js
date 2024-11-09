@@ -717,6 +717,7 @@ t.test('Queue with PostgreSQL backend', skip, async (t) => {
     await job5.perform();
     await queuedJob1.sync();
     t.equal(queuedJob1.state, JobState.Failed);
+
     await worker.unregister();
   });
 
@@ -734,11 +735,10 @@ t.test('Queue with PostgreSQL backend', skip, async (t) => {
 
     await queue.prune();
     await queuedJob1.sync();
-    t.equal(queuedJob1.state, JobState.Scheduled);
+    t.equal(queuedJob1.state, JobState.Pending);
     t.same(queuedJob1.result, { name: 'WorkerGoneError', message: 'Worker went away' });
     t.equal(queuedJob1.maxAttempts, 2);
     t.equal(queuedJob1.attempt, 2);
-    t.ok(queuedJob1.retriedAt! < queuedJob1.delayUntil);
 
     await pool.query(`UPDATE ${JOB_TABLE} SET delay_until = NOW() WHERE id = $1`, [queuedJob1.id]); // Skip backoff
 

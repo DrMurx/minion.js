@@ -20,10 +20,10 @@ import { type StatsReader } from './queue-stats.js';
 import { type Task, type TaskHandlerFunction } from './task.js';
 import {
   type ListWorkersOptions,
-  type WorkerInstance,
   type WorkerCommandArg,
   type WorkerId,
   type WorkerInfo,
+  type WorkerInstance,
   type WorkerOptions,
 } from './worker.js';
 
@@ -164,6 +164,11 @@ export interface QuickWorker {
   runJobs(options?: Partial<JobDequeueOptions>): Promise<void>;
 }
 
+export interface QueueEventEmitter<BaseJob extends Job<JobArgs>> extends EventEmitter<QueueEvents<BaseJob>> {
+  retryFailedJob(job: BaseJob): Promise<void>;
+  retryAbandonedJob(jobInfo: JobInfo<InferJobArgs<BaseJob>>): Promise<void>;
+}
+
 // --------------------------------------------------------------
 
 export interface PruneOptions {
@@ -196,8 +201,6 @@ export interface QueueOptions extends PruneOptions {
 
   tasks?: Task[] | { [taskName: string]: TaskHandlerFunction };
 }
-
-export type QueueEventEmitter<BaseJob extends Job<JobArgs>> = EventEmitter<QueueEvents<BaseJob>>;
 
 export interface QueueEvents<
   BaseJob extends Job<JobArgs>,

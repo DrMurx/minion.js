@@ -9,6 +9,7 @@ export interface Job<Args extends JobArgs> {
   get args(): Args;
   get progress(): number;
   get attempt(): number;
+  get maxAttempts(): number;
   get state(): JobState;
 
   get abortSignal(): AbortSignal;

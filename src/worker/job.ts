@@ -32,6 +32,10 @@ export class DefaultJob<Args extends JobArgs> implements Job<Args> {
     return this.executor.attempt;
   }
 
+  get maxAttempts(): number {
+    return this.executor.maxAttempts;
+  }
+
   get state(): JobState {
     return this.executor.state;
   }

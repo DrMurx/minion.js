@@ -1,7 +1,6 @@
 import { type JobBackend } from '../types/backend.js';
 import {
   JobState,
-  unsuccessfulJobStates,
   type InferJobArgs,
   type Job,
   type JobArgs,
@@ -227,22 +226,8 @@ export class Executor<BaseJob extends Job<JobArgs>> {
         };
         this.notifier.emit('job_failed', event);
       }
-      await this.retryFailed();
+      await this.notifier.retryFailedJob(this.job);
     }
     return isUpdated;
-  }
-
-  /**
-   * Transition a `failed` job back to `pending` or `scheduled` state if there are still attempts left.
-   */
-  async retryFailed(): Promise<void> {
-    if (unsuccessfulJobStates.includes(this.state) && this.attempt < this.maxAttempts) {
-      const options = {
-        // Set maxAttempt to its current value (otherwise, `Backend.retryJob` increases it)
-        maxAttempts: this.maxAttempts,
-        delayFor: await this.job.getBackoffDelay(),
-      };
-      await this.backend.retryJob<InferJobArgs<BaseJob>>(this.id, this.attempt, options);
-    }
   }
 }

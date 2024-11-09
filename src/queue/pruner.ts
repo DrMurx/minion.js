@@ -1,7 +1,8 @@
 import { type Backend, type JobPruneResult, type WorkerPruneResult } from '../types/backend.js';
+import { InferJobArgs, type Job, type JobArgs } from '../types/job.js';
 import { type PruneOptions, type QueueEventEmitter } from '../types/queue.js';
 
-export class QueuePruner {
+export class QueuePruner<BaseJob extends Job<JobArgs>> {
   private enabled: boolean = false;
   private performPromise: Promise<boolean> | undefined;
   private pruneScheduler: NodeJS.Timeout | undefined;
@@ -10,7 +11,7 @@ export class QueuePruner {
   constructor(
     private backend: Backend,
     private options: Readonly<PruneOptions>,
-    private notifier: QueueEventEmitter<any>,
+    private notifier: QueueEventEmitter<BaseJob>,
   ) {}
 
   /**
@@ -68,8 +69,14 @@ export class QueuePruner {
     this.performPromise = (async (): Promise<boolean> => {
       try {
         const workerPruneResult = await this.backend.pruneWorkers(options.workerLostTimeout);
-        const jobPruneResult = await this.backend.pruneJobs<any>(options.jobUnattendedPeriod, options.jobExpungePeriod);
+        const jobPruneResult = await this.backend.pruneJobs<InferJobArgs<BaseJob>>(
+          options.jobUnattendedPeriod,
+          options.jobExpungePeriod,
+        );
         this.sendPruneNotifications(workerPruneResult, jobPruneResult);
+        await Promise.allSettled(
+          jobPruneResult.abandonedJobs.map((jobInfo) => this.notifier.retryAbandonedJob(jobInfo)),
+        );
         this.lastPruneAt = Date.now();
         return workerPruneResult.lostWorkers.length > 0 || jobPruneResult.expiredJobs.length > 0;
       } catch (error) {

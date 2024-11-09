@@ -45,10 +45,6 @@ const JOB_NOTIFICATION_TRIGGER = 'queue_jobs_notify_workers_trigger';
  */
 export class PgBackend extends EventEmitter implements Backend {
   public readonly FOREGROUND_QUEUE = '_foreground_queue';
-
-  /**
-   * Backend name.
-   */
   public readonly name = 'Pg';
 
   private hostname = os.hostname();

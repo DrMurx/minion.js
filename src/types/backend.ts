@@ -20,7 +20,14 @@ import {
 } from './worker.js';
 
 export interface Backend extends QueueBackend, IteratorBackend, JobHandleBackend, WorkerBackend, EventEmitter {
+  /**
+   * Name of the foreground queue
+   */
   readonly FOREGROUND_QUEUE: string;
+
+  /**
+   * Backend name.
+   */
   readonly name: string;
 
   /**

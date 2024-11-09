@@ -73,7 +73,13 @@ export class DefaultWorker<BaseJob extends Job<JobArgs>> implements WorkerInstan
     private jobBackend: ExecutorBackend,
     private notifier: QueueEventEmitter<BaseJob>,
   ) {
-    this._config = { ...options };
+    // Assemble configuration options
+    const _config: WorkerOptions = { ...DefaultWorker.DEFAULT_CONFIG, ...options };
+    delete _config.metadata;
+    delete _config.attachments;
+    delete _config.commands;
+    this._config = _config;
+
     this._metadata = { ...options.metadata };
     this.attachments = options.attachments ?? {};
     this.commandManager = new WorkerCommandManager(this, options.commands ?? {});

@@ -29,10 +29,10 @@ import {
 import { version } from '../version.js';
 import { Executor } from '../worker/executor.js';
 import { DefaultJob } from '../worker/job.js';
+import { DefaultTaskManager } from '../worker/task-manager.js';
 import { DefaultWorker } from '../worker/worker.js';
 import { DefaultJobHandle } from './job-handle.js';
 import { QueuePruner } from './pruner.js';
-import { DefaultTaskManager } from './task-manager.js';
 
 /**
  * Job queue class.

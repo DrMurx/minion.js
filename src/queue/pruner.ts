@@ -27,6 +27,7 @@ export class QueuePruner<BaseJob extends Job<JobArgs>> {
     clearTimeout(this.pruneScheduler);
     this.enabled = false;
     this.pruneScheduler = undefined;
+    if (this.performPromise) await this.performPromise;
   }
 
   /**

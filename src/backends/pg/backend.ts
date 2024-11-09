@@ -8,10 +8,10 @@ import {
   type JobInfoList,
   type JobOptions,
   type JobPruneResult,
-  type WorkerInboxOptions,
   type WorkerInfoList,
   type WorkerPruneResult,
   type WorkerRegistrationOptions,
+  type WorkerUpdateOptions,
 } from '../../types/backend.js';
 import {
   type JobArgs,
@@ -489,38 +489,40 @@ export class PgBackend extends EventEmitter implements Backend {
     return results.rows[0].id;
   }
 
-  async updateWorker(workerId: WorkerId, options: WorkerRegistrationOptions): Promise<boolean> {
+  async updateWorker(workerId: WorkerId, options: WorkerUpdateOptions): Promise<boolean> {
     const results = await this.query(
       `UPDATE ${WORKER_TABLE} AS new
       SET
-        config = $1,
-        state = $2,
-        finished_job_count = $3,
-        metadata = $4,
+        config = COALESCE($1, config),
+        state = COALESCE($2, state),
+        finished_job_count = COALESCE($3, finished_job_count),
+        metadata = JSONB_STRIP_NULLS(metadata || $4),
         last_seen_at = NOW()
       WHERE id = $5`,
-      [options.config, options.state, options.finishedJobCount, options.metadata, workerId],
+      [options.config, options.state, options.finishedJobCount, options.metadata ?? {}, workerId],
     );
     return (results.rowCount ?? 0) <= 0;
   }
 
-  async checkWorkerInbox(workerId: WorkerId, options: WorkerInboxOptions): Promise<WorkerCommandDescriptor[]> {
+  async checkWorkerInbox(workerId: WorkerId, options: WorkerUpdateOptions): Promise<WorkerCommandDescriptor[]> {
     const results = await this.query<{ inbox: WorkerCommandDescriptor[] }>(
       `UPDATE ${WORKER_TABLE} AS new
       SET
-        state = $1,
-        finished_job_count = $2,
+        config = COALESCE($1, config),
+        state = COALESCE($2, state),
+        finished_job_count = COALESCE($3, finished_job_count),
+        metadata = JSONB_STRIP_NULLS(metadata || $4),
         inbox = '[]',
         last_seen_at = NOW()
       FROM (
         SELECT id, inbox
         FROM ${WORKER_TABLE}
-        WHERE id = $3
+        WHERE id = $5
         FOR UPDATE
       ) AS old
       WHERE new.id = old.id
       RETURNING old.inbox AS "inbox"`,
-      [options.state, options.finishedJobCount, workerId],
+      [options.config, options.state, options.finishedJobCount, options.metadata ?? {}, workerId],
     );
     if ((results.rowCount ?? 0) <= 0) return [];
     return results.rows[0].inbox ?? [];

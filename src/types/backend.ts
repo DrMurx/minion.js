@@ -183,13 +183,13 @@ export interface WorkerBackend {
   /**
    * Update worker's data (including its `lastSeenAt` date).
    */
-  updateWorker(id: WorkerId, options: WorkerRegistrationOptions): Promise<boolean>;
+  updateWorker(id: WorkerId, options: WorkerUpdateOptions): Promise<boolean>;
 
   /**
    * Update some of the worker's data (`status`, `finishedJobCount` and `lastSeenAt`), and receive
    * remote control commands.
    */
-  checkWorkerInbox(id: WorkerId, options: WorkerInboxOptions): Promise<WorkerCommandDescriptor[]>;
+  checkWorkerInbox(id: WorkerId, options: WorkerUpdateOptions): Promise<WorkerCommandDescriptor[]>;
 
   /**
    * Unregister worker.
@@ -242,17 +242,29 @@ export type WorkerInfoList = {
   total: number;
 };
 
-export type WorkerRegistrationOptions = {
+/**
+ * Options to store in the database when the worker is registered (or updated)
+ */
+export interface WorkerRegistrationOptions {
+  /**
+   * The worker's current configuration
+   */
   config: WorkerConfig;
+  /**
+   * The worker's current state
+   */
   state: WorkerState;
+  /**
+   * Number of jobs this worker has processed
+   */
   finishedJobCount: number;
+  /**
+   * The worker's current metadata (ie arbitrary data which is not related to configuration)
+   */
   metadata: Record<string, any>;
-};
+}
 
-export type WorkerInboxOptions = {
-  state: WorkerState;
-  finishedJobCount: number;
-};
+export type WorkerUpdateOptions = Partial<WorkerRegistrationOptions>;
 
 export type JobPruneResult<Args extends JobArgs = JobArgs> = {
   /**

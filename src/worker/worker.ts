@@ -1,8 +1,8 @@
 import {
+  WorkerUpdateOptions,
   type ExecutorBackend,
   type JobDequeueOptions,
   type WorkerBackend,
-  type WorkerInboxOptions,
   type WorkerRegistrationOptions,
 } from '../types/backend.js';
 import { type InferJobArgs, type Job, type JobArgs } from '../types/job.js';
@@ -216,7 +216,7 @@ export class DefaultWorker<BaseJob extends Job<JobArgs>> implements WorkerInstan
 
   async heartbeat(force: boolean = false): Promise<this> {
     if ((force || this.needsHeartbeat) && this.isRegistered) {
-      const options: WorkerRegistrationOptions = {
+      const options: WorkerUpdateOptions = {
         config: this._config,
         state: this.state,
         finishedJobCount: this.finishedJobCount,
@@ -230,7 +230,7 @@ export class DefaultWorker<BaseJob extends Job<JobArgs>> implements WorkerInstan
 
   async processInbox(force: boolean = false): Promise<this> {
     if ((force || this.needsInboxCheck || this.needsHeartbeat) && this.isRegistered) {
-      const options: WorkerInboxOptions = {
+      const options: WorkerUpdateOptions = {
         state: this.state,
         finishedJobCount: this.finishedJobCount,
       };

@@ -1,6 +1,5 @@
-import EventEmitter from 'events';
 import t from 'tap';
-import { type JobDescriptor } from '../types/job.ts';
+import { JobState, type JobInfo } from '../types/job.ts';
 import { Executor } from './executor.ts';
 import { DefaultJob } from './job.ts';
 
@@ -14,14 +13,33 @@ t.test('Default backoff strategy', async (t) => {
     [5, 640],
     [25, 390640],
   ]) {
-    const jobInfo: JobDescriptor = {
+    const jobInfo: JobInfo = {
       id: 0,
+      queueName: '',
       taskName: '',
       args: {},
+
+      state: JobState.Failed,
+      priority: 0,
+      progress: 0.0,
       maxAttempts: 0,
-      attempt,
+      attempt: attempt,
+
+      parentJobIds: [],
+      childJobIds: [],
+      laxDependency: false,
+
+      metadata: {},
+
+      delayUntil: new Date(),
+      startedAt: new Date(),
+
+      createdAt: new Date(),
+
+      time: new Date(),
     };
-    const executor = new Executor(jobInfo, null as any, null as any, null as any, new EventEmitter<any>());
+
+    const executor = new Executor(jobInfo, null as any, null as any, null as any, null as any);
     const job = new DefaultJob(executor);
     t.equal(await job.getBackoffDelay(), expectedDelay);
   }

@@ -11,7 +11,7 @@ export interface JobHandle<Args extends JobArgs> {
   get queueName(): string;
   get taskName(): string;
   get args(): Args;
-  get result(): JobResult;
+  get result(): JobResult | undefined;
 
   get state(): JobState;
   get priority(): number;

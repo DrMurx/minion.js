@@ -32,7 +32,7 @@ export class DefaultJobHandle<Args extends JobArgs = JobArgs> implements JobHand
     return this.jobInfo.args;
   }
 
-  get result(): JobResult {
+  get result(): JobResult | undefined {
     return this.jobInfo.result;
   }
 

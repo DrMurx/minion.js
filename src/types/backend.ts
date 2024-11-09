@@ -100,9 +100,9 @@ export interface IteratorBackend {
 }
 
 /**
- * The backend methods a `Job` object needs
+ * The backend methods the `Executor` object needs
  */
-export interface JobBackend {
+export interface ExecutorBackend {
   /**
    * Change one or more metadata fields for a job. Setting a value to `null` will remove the field.
    */
@@ -127,6 +127,16 @@ export interface JobBackend {
     state: JobState.Succeeded | JobState.Failed | JobState.Aborted,
     result: JobResult,
   ): Promise<boolean>;
+}
+
+/**
+ * The backend methods a `JobHandle` object needs
+ */
+export interface JobHandleBackend extends ExecutorBackend {
+  /**
+   * Returns the information about a specific job.
+   */
+  getJobInfo<Args extends JobArgs>(jobId: JobId): Promise<JobInfo<Args> | undefined>;
 
   /**
    * Transition job back to `pending` state, already `pending` jobs may also be retried to change options. Note that
@@ -138,16 +148,6 @@ export interface JobBackend {
     attempt: number,
     options: JobOptions,
   ): Promise<JobInfo<Args> | undefined>;
-}
-
-/**
- * The backend methods a `JobHandle` object needs
- */
-export interface JobHandleBackend extends JobBackend {
-  /**
-   * Returns the information about a specific job.
-   */
-  getJobInfo<Args extends JobArgs>(jobId: JobId): Promise<JobInfo<Args> | undefined>;
 
   /**
    * Cancels a job as long as it hasn't been started.

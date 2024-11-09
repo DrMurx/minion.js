@@ -1,4 +1,4 @@
-import { type JobBackend } from '../types/backend.js';
+import { type ExecutorBackend } from '../types/backend.js';
 import {
   JobState,
   type InferJobArgs,
@@ -22,7 +22,7 @@ export class Executor<BaseJob extends Job<JobArgs>> {
   constructor(
     jobInfo: JobInfo<InferJobArgs<BaseJob>>,
     worker: RunningWorker<BaseJob>,
-    private backend: JobBackend,
+    private backend: ExecutorBackend,
     private jobFactory: JobFactory<BaseJob>,
     private notifier: QueueEventEmitter<BaseJob>,
   ) {

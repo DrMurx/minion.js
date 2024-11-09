@@ -1,5 +1,5 @@
 import {
-  type JobBackend,
+  type ExecutorBackend,
   type JobDequeueOptions,
   type WorkerBackend,
   type WorkerInboxOptions,
@@ -70,7 +70,7 @@ export class DefaultWorker<BaseJob extends Job<JobArgs>> implements WorkerInstan
     options: WorkerOptions,
     private taskManager: TaskManager<BaseJob>,
     private jobFactory: JobFactory<BaseJob>,
-    private jobBackend: JobBackend,
+    private jobBackend: ExecutorBackend,
     private notifier: QueueEventEmitter<BaseJob>,
   ) {
     this._config = { ...options };

@@ -1,5 +1,5 @@
 import { type Backend, type JobPruneResult, type WorkerPruneResult } from '../types/backend.js';
-import { InferJobArgs, type Job, type JobArgs } from '../types/job.js';
+import { type InferJobArgs, type Job, type JobArgs } from '../types/job.js';
 import { type PruneOptions, type QueueEventEmitter } from '../types/queue.js';
 
 export class QueuePruner<BaseJob extends Job<JobArgs>> {
@@ -75,9 +75,7 @@ export class QueuePruner<BaseJob extends Job<JobArgs>> {
           options.jobExpungePeriod,
         );
         this.sendPruneNotifications(workerPruneResult, jobPruneResult);
-        await Promise.allSettled(
-          jobPruneResult.abandonedJobs.map((jobInfo) => this.notifier.retryAbandonedJob(jobInfo)),
-        );
+        await Promise.allSettled(jobPruneResult.abandonedJobs.map((jobInfo) => this.notifier.retryFailedJob(jobInfo)));
         this.lastPruneAt = Date.now();
         return workerPruneResult.lostWorkers.length > 0 || jobPruneResult.expiredJobs.length > 0;
       } catch (error) {

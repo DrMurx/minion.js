@@ -1,7 +1,6 @@
 import t from 'tap';
-import { JobState, type JobInfo } from '../types/job.ts';
-import { Executor } from './executor.ts';
-import { DefaultJob } from './job.ts';
+import { JobState, type JobInfo } from '../types/job.js';
+import { defaultBackoffStrategy } from './backoff-strategy.js';
 
 t.test('Default backoff strategy', async (t) => {
   for (const [attempt, expectedDelay] of [
@@ -38,10 +37,7 @@ t.test('Default backoff strategy', async (t) => {
 
       time: new Date(),
     };
-
-    const executor = new Executor(jobInfo, null as any, null as any, null as any, null as any);
-    const job = new DefaultJob(executor);
-    t.equal(await job.getBackoffDelay(), expectedDelay);
+    t.equal(defaultBackoffStrategy(jobInfo), expectedDelay);
   }
 
   t.end();

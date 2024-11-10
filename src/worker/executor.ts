@@ -5,11 +5,12 @@ import {
   type Job,
   type JobArgs,
   type JobError,
+  type JobFactory,
   type JobId,
   type JobInfo,
   type JobResult,
 } from '../types/job.js';
-import { type JobFactory, type QueueEventEmitter } from '../types/queue.js';
+import { type QueueEventEmitter } from '../types/queue.js';
 import { type RunningWorker } from '../types/worker.js';
 
 export class Executor<BaseJob extends Job<JobArgs>> {
@@ -226,7 +227,7 @@ export class Executor<BaseJob extends Job<JobArgs>> {
         };
         this.notifier.emit('job_failed', event);
       }
-      await this.notifier.retryFailedJob(this.job);
+      await this.notifier.retryFailedJob(this._jobInfo);
     }
     return isUpdated;
   }

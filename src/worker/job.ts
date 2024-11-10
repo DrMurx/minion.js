@@ -55,8 +55,4 @@ export class DefaultJob<Args extends JobArgs> implements Job<Args> {
   async amendMetadata(records: Record<string, any>): Promise<boolean> {
     return await this.executor.amendMetadata(records);
   }
-
-  async getBackoffDelay(): Promise<number> {
-    return this.attempt ** 4 + 15;
-  }
 }

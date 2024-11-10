@@ -5,8 +5,8 @@ import {
   type WorkerBackend,
   type WorkerRegistrationOptions,
 } from '../types/backend.js';
-import { type InferJobArgs, type Job, type JobArgs } from '../types/job.js';
-import { type JobFactory, type QueueEventEmitter } from '../types/queue.js';
+import { type JobFactory, type InferJobArgs, type Job, type JobArgs } from '../types/job.js';
+import { type QueueEventEmitter } from '../types/queue.js';
 import { type Task, type TaskManager } from '../types/task.js';
 import {
   WorkerState,

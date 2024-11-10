@@ -1,6 +1,5 @@
 import type EventEmitter from 'events';
 import { type BackendIterator } from '../backends/iterator.js';
-import { Executor } from '../worker/executor.js';
 import { type JobDequeueOptions, type JobOptions } from './backend.js';
 import { type JobHandle } from './job-handle.js';
 import {
@@ -8,8 +7,10 @@ import {
   type InferJobArgs,
   type Job,
   type JobArgs,
+  type JobBackoffStrategy,
   type JobDescriptor,
   type JobError,
+  type JobFactory,
   type JobId,
   type JobInfo,
   type JobResult,
@@ -129,10 +130,6 @@ export interface Queue<BaseJob extends Job<JobArgs> = Job<JobArgs>>
   resetQueue(): Promise<void>;
 }
 
-export interface JobFactory<BaseJob extends Job<JobArgs>> {
-  createJobObject<ResultJob extends BaseJob>(executor: Executor<ResultJob>): ResultJob;
-}
-
 export interface WorkerManager<BaseJob extends Job<JobArgs>> {
   /**
    * Build worker object.
@@ -164,8 +161,7 @@ export interface QuickWorker {
 }
 
 export interface QueueEventEmitter<BaseJob extends Job<JobArgs>> extends EventEmitter<QueueEvents<BaseJob>> {
-  retryFailedJob(job: BaseJob): Promise<void>;
-  retryAbandonedJob(jobInfo: JobInfo<InferJobArgs<BaseJob>>): Promise<void>;
+  retryFailedJob(jobInfo: JobInfo<InferJobArgs<BaseJob>>): Promise<void>;
 }
 
 // --------------------------------------------------------------
@@ -198,9 +194,20 @@ export interface QueueOptions<BaseJob extends Job<JobArgs>> extends PruneOptions
    */
   queueNames: string[];
 
+  /**
+   * Tasks to register at Queue construction times
+   */
   tasks?: Task[] | { [taskName: string]: TaskHandlerFunction };
 
+  /**
+   * Factory class to create new jobs
+   */
   jobFactory?: JobFactory<BaseJob>;
+
+  /**
+   * Function to calculate a backoff strategy
+   */
+  backoffStrategy?: JobBackoffStrategy<InferJobArgs<BaseJob>>;
 }
 
 export interface QueueEvents<

@@ -1,11 +1,13 @@
 import EventEmitter from 'events';
 import { BackendIterator } from '../backends/iterator.js';
 import { type Backend, type JobDequeueOptions, type JobEnqueueOptions, type JobOptions } from '../types/backend.js';
-import { JobHandle } from '../types/job-handle.js';
+import { type JobHandle } from '../types/job-handle.js';
 import {
   type InferJobArgs,
   type Job,
   type JobArgs,
+  type JobBackoffStrategy,
+  type JobFactory,
   type JobId,
   type JobInfo,
   type JobResult,
@@ -15,7 +17,7 @@ import {
   unsuccessfulJobStates,
 } from '../types/job.js';
 import { type QueueJobStatistics, type QueueStats } from '../types/queue-stats.js';
-import { type JobFactory, type PruneOptions, type Queue, QueueEvents, type QueueOptions } from '../types/queue.js';
+import { type PruneOptions, type Queue, QueueEvents, type QueueOptions } from '../types/queue.js';
 import { isTask, type Task, type TaskHandlerFunction, type TaskManager } from '../types/task.js';
 import {
   type ListWorkersOptions,
@@ -27,6 +29,7 @@ import {
   WorkerState,
 } from '../types/worker.js';
 import { version } from '../version.js';
+import { defaultBackoffStrategy } from '../worker/backoff-strategy.js';
 import { Executor } from '../worker/executor.js';
 import { DefaultJobFactory } from '../worker/job-factory.js';
 import { DefaultJob } from '../worker/job.js';
@@ -52,6 +55,7 @@ export class DefaultQueue<BaseJob extends Job<JobArgs> = DefaultJob<JobArgs>>
 
   protected _options: Readonly<QueueOptions<BaseJob>>;
   protected jobFactory: JobFactory<BaseJob>;
+  protected backoffStrategy: JobBackoffStrategy<InferJobArgs<BaseJob>>;
   protected taskManager: TaskManager<BaseJob>;
   protected pruner: QueuePruner<BaseJob>;
 
@@ -67,6 +71,7 @@ export class DefaultQueue<BaseJob extends Job<JobArgs> = DefaultJob<JobArgs>>
     // Assemble and freeze options
     const _options: QueueOptions<BaseJob> = { ...DefaultQueue.DEFAULT_OPTIONS, ...options };
     delete _options.jobFactory;
+    delete _options.backoffStrategy;
     delete _options.tasks;
     if (!Array.isArray(_options.queueNames) || _options.queueNames.length === 0) {
       throw new Error('No queue names given');
@@ -76,6 +81,7 @@ export class DefaultQueue<BaseJob extends Job<JobArgs> = DefaultJob<JobArgs>>
 
     // Create other objects
     this.jobFactory = options.jobFactory ?? new DefaultJobFactory<BaseJob>();
+    this.backoffStrategy = options.backoffStrategy ?? defaultBackoffStrategy;
     this.taskManager = new DefaultTaskManager<BaseJob>(options.tasks);
     this.pruner = new QueuePruner(this.backend, this._options, this);
   }
@@ -160,22 +166,12 @@ export class DefaultQueue<BaseJob extends Job<JobArgs> = DefaultJob<JobArgs>>
     return new BackendIterator<JobInfo<Args>>('jobs', this.backend, options, { chunkSize });
   }
 
-  async retryFailedJob(job: BaseJob): Promise<void> {
-    if (job.state === JobState.Failed && job.attempt < job.maxAttempts) {
-      const options = {
-        // Set maxAttempt to its current value (otherwise, `Backend.retryJob` increases it)
-        maxAttempts: job.maxAttempts,
-        delayFor: await job.getBackoffDelay(),
-      };
-      await this.backend.retryJob(job.id, job.attempt, options);
-    }
-  }
-
-  async retryAbandonedJob(jobInfo: JobInfo<InferJobArgs<BaseJob>>): Promise<void> {
-    if (jobInfo.state === JobState.Abandoned && jobInfo.attempt < jobInfo.maxAttempts) {
+  async retryFailedJob(jobInfo: JobInfo<InferJobArgs<BaseJob>>): Promise<void> {
+    if (unsuccessfulJobStates.includes(jobInfo.state) && jobInfo.attempt < jobInfo.maxAttempts) {
       const options = {
         // Set maxAttempt to its current value (otherwise, `Backend.retryJob` increases it)
         maxAttempts: jobInfo.maxAttempts,
+        delayFor: this.backoffStrategy(jobInfo),
       };
       await this.backend.retryJob(jobInfo.id, jobInfo.attempt, options);
     }

@@ -1,3 +1,4 @@
+import { type Executor } from '../worker/executor.js';
 import { type WorkerId } from './worker.js';
 
 /**
@@ -24,11 +25,6 @@ export interface Job<Args extends JobArgs> {
    * will get serialized as JSON.
    */
   amendMetadata(records: Record<string, any>): Promise<boolean>;
-
-  /**
-   * Return the backoff delay in ms.
-   */
-  getBackoffDelay(): Promise<number>;
 }
 
 export type JobId = number;
@@ -37,6 +33,15 @@ export type JobResult = Record<string, any>;
 export type JobError = Record<string, any> | Error;
 
 export type InferJobArgs<J extends Job<JobArgs>> = J extends Job<infer A> ? A : never;
+
+/**
+ * Return the backoff delay for a failed job in ms.
+ */
+export type JobBackoffStrategy<Args extends JobArgs = JobArgs> = (jobInfo: JobInfo<Args>) => number;
+
+export interface JobFactory<BaseJob extends Job<JobArgs>> {
+  createJobObject<ResultJob extends BaseJob>(executor: Executor<ResultJob>): ResultJob;
+}
 
 export enum JobState {
   /**

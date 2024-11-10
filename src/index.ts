@@ -1,6 +1,7 @@
 import { PgBackend } from './backends/pg/backend.js';
 import { createPool } from './backends/pg/factory.js';
 import { DefaultQueue } from './queue/queue.js';
+import { QuickRunner } from './queue/quick-runner.js';
 import { type Backend, type JobOptions } from './types/backend.js';
 import { type JobHandle } from './types/job-handle.js';
 import {
@@ -36,6 +37,7 @@ export {
   DefaultTaskManager,
   JobState,
   PgBackend,
+  QuickRunner,
   version,
   WorkerState,
   type Backend,

@@ -1,6 +1,6 @@
 import type EventEmitter from 'events';
 import { type BackendIterator } from '../backends/iterator.js';
-import { type JobDequeueOptions, type JobOptions } from './backend.js';
+import { type JobOptions } from './backend.js';
 import { type JobHandle } from './job-handle.js';
 import {
   JobState,
@@ -32,10 +32,14 @@ import {
  * The public queue interface
  */
 export interface Queue<BaseJob extends Job<JobArgs> = Job<JobArgs>>
-  extends QuickWorker,
-    WorkerManager<BaseJob>,
+  extends WorkerManager<BaseJob>,
     StatsReader,
     QueueEventEmitter<BaseJob> {
+  /**
+   * Name of the foreground queue
+   */
+  readonly FOREGROUND_QUEUE: string;
+
   /**
    * Access to the queue options
    */
@@ -145,19 +149,6 @@ export interface WorkerManager<BaseJob extends Job<JobArgs>> {
    * Return iterator object to safely iterate through worker information.
    */
   listWorkerInfos(options?: ListWorkersOptions, chunkSize?: number): BackendIterator<WorkerInfo>;
-}
-
-export interface QuickWorker {
-  /**
-   * Retry job in a foreground queue, then perform it right away with a temporary worker in this process,
-   * very useful for debugging.
-   */
-  runJob(id: number): Promise<boolean>;
-
-  /**
-   * Perform all jobs with a temporary worker, very useful for testing.
-   */
-  runJobs(options?: Partial<JobDequeueOptions>): Promise<void>;
 }
 
 export interface QueueEventEmitter<BaseJob extends Job<JobArgs>> extends EventEmitter<QueueEvents<BaseJob>> {

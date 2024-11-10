@@ -44,7 +44,6 @@ const JOB_NOTIFICATION_TRIGGER = 'queue_jobs_notify_workers_trigger';
  * PostgreSQL backend class for the Queue.
  */
 export class PgBackend extends EventEmitter implements Backend {
-  public readonly FOREGROUND_QUEUE = '_foreground_queue';
   public readonly name = 'Pg';
 
   private hostname = os.hostname();
@@ -350,6 +349,7 @@ export class PgBackend extends EventEmitter implements Backend {
   async pruneJobs<Args extends JobArgs>(
     unattendedPeriod: number,
     expungePeriod: number,
+    ignoreQueues: string[],
   ): Promise<JobPruneResult<Args>> {
     // Delete `pending`/`scheduled` jobs past expiration date
     const expiredJobsResult = await this.query<JobDescriptor<Args>>(
@@ -393,7 +393,7 @@ export class PgBackend extends EventEmitter implements Backend {
             AND state IN ('${WorkerState.Online}', '${WorkerState.Busy}', '${WorkerState.Idle}')
         )
       RETURNING ${this.jobInfoSql}`,
-      [JSON.stringify({ name: 'WorkerGoneError', message: 'Worker went away' }), [this.FOREGROUND_QUEUE]],
+      [JSON.stringify({ name: 'WorkerGoneError', message: 'Worker went away' }), ignoreQueues],
     );
 
     return {

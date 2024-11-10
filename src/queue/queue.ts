@@ -1,6 +1,6 @@
 import EventEmitter from 'events';
 import { BackendIterator } from '../backends/iterator.js';
-import { type Backend, type JobDequeueOptions, type JobEnqueueOptions, type JobOptions } from '../types/backend.js';
+import { type Backend, type JobEnqueueOptions, type JobOptions } from '../types/backend.js';
 import { type JobHandle } from '../types/job-handle.js';
 import {
   type InferJobArgs,
@@ -53,6 +53,8 @@ export class DefaultQueue<BaseJob extends Job<JobArgs> = DefaultJob<JobArgs>>
     jobUnattendedPeriod: 2 * 24 * 60 * 60 * 1000,
   });
 
+  public readonly FOREGROUND_QUEUE = '_foreground_queue';
+
   protected _options: Readonly<QueueOptions<BaseJob>>;
   protected jobFactory: JobFactory<BaseJob>;
   protected backoffStrategy: JobBackoffStrategy<InferJobArgs<BaseJob>>;
@@ -63,7 +65,7 @@ export class DefaultQueue<BaseJob extends Job<JobArgs> = DefaultJob<JobArgs>>
    * Constructor
    */
   constructor(
-    protected backend: Backend,
+    protected _backend: Backend,
     options: Partial<QueueOptions<BaseJob>> = {},
   ) {
     super();
@@ -83,7 +85,7 @@ export class DefaultQueue<BaseJob extends Job<JobArgs> = DefaultJob<JobArgs>>
     this.jobFactory = options.jobFactory ?? new DefaultJobFactory<BaseJob>();
     this.backoffStrategy = options.backoffStrategy ?? defaultBackoffStrategy;
     this.taskManager = new DefaultTaskManager<BaseJob>(options.tasks);
-    this.pruner = new QueuePruner(this.backend, this._options, this);
+    this.pruner = new QueuePruner(this._backend, this._options, [this.FOREGROUND_QUEUE], this);
   }
 
   get options(): Readonly<QueueOptions<BaseJob>> {
@@ -91,13 +93,13 @@ export class DefaultQueue<BaseJob extends Job<JobArgs> = DefaultJob<JobArgs>>
   }
 
   async start(): Promise<void> {
-    await this.backend.updateSchema();
+    await this._backend.updateSchema();
     this.pruner.start();
   }
 
   async stop(): Promise<void> {
     await this.pruner.stop();
-    await this.backend.end();
+    await this._backend.end();
   }
 
   async addJob<Args extends InferJobArgs<BaseJob>>(
@@ -116,8 +118,8 @@ export class DefaultQueue<BaseJob extends Job<JobArgs> = DefaultJob<JobArgs>>
       delayFor: 0,
       ...options,
     };
-    const jobInfo = await this.backend.addJob(taskName, _args, _options);
-    return new DefaultJobHandle(this.backend, jobInfo);
+    const jobInfo = await this._backend.addJob(taskName, _args, _options);
+    return new DefaultJobHandle(this._backend, jobInfo);
   }
 
   async addJobWithAck<Result extends JobResult = JobResult, Args extends InferJobArgs<BaseJob> = InferJobArgs<BaseJob>>(
@@ -140,9 +142,9 @@ export class DefaultQueue<BaseJob extends Job<JobArgs> = DefaultJob<JobArgs>>
   }
 
   async getJob<Args extends InferJobArgs<BaseJob> = InferJobArgs<BaseJob>>(id: JobId): Promise<JobHandle<Args> | null> {
-    const jobInfo = await this.backend.getJobInfo<Args>(id);
+    const jobInfo = await this._backend.getJobInfo<Args>(id);
     if (jobInfo === undefined) return null;
-    return new DefaultJobHandle(this.backend, jobInfo);
+    return new DefaultJobHandle(this._backend, jobInfo);
   }
 
   async getJobs<Args extends InferJobArgs<BaseJob> = InferJobArgs<BaseJob>>(
@@ -150,7 +152,7 @@ export class DefaultQueue<BaseJob extends Job<JobArgs> = DefaultJob<JobArgs>>
   ): Promise<JobHandle<Args>[]> {
     const jobs: JobHandle<Args>[] = [];
     for await (const jobInfo of this.listJobInfos<Args>(options)) {
-      jobs.push(new DefaultJobHandle(this.backend, jobInfo));
+      jobs.push(new DefaultJobHandle(this._backend, jobInfo));
     }
     return jobs;
   }
@@ -163,7 +165,7 @@ export class DefaultQueue<BaseJob extends Job<JobArgs> = DefaultJob<JobArgs>>
     options: ListJobsOptions = {},
     chunkSize: number = 10,
   ): BackendIterator<JobInfo<Args>> {
-    return new BackendIterator<JobInfo<Args>>('jobs', this.backend, options, { chunkSize });
+    return new BackendIterator<JobInfo<Args>>('jobs', this._backend, options, { chunkSize });
   }
 
   async retryFailedJob(jobInfo: JobInfo<InferJobArgs<BaseJob>>): Promise<void> {
@@ -173,38 +175,7 @@ export class DefaultQueue<BaseJob extends Job<JobArgs> = DefaultJob<JobArgs>>
         maxAttempts: jobInfo.maxAttempts,
         delayFor: this.backoffStrategy(jobInfo),
       };
-      await this.backend.retryJob(jobInfo.id, jobInfo.attempt, options);
-    }
-  }
-
-  async runJob(jobId: number): Promise<boolean> {
-    const queueName = this.backend.FOREGROUND_QUEUE;
-    const jobCtrl = await this.getJob(jobId);
-    if (jobCtrl === null) return false;
-    if ((await jobCtrl.retry({ queueName, maxAttempts: jobCtrl.maxAttempts + 1 })) === null) return false;
-
-    const worker = await this.getNewWorker({ queueNames: [queueName] }).register();
-    try {
-      const executor = await worker.getNextExecutor(0, { id: jobId });
-      if (executor === null) return false;
-      await executor.perform(true);
-      return true;
-    } finally {
-      await worker.unregister();
-    }
-  }
-
-  async runJobs(options?: JobDequeueOptions): Promise<void> {
-    const worker = await this.getNewWorker().register();
-    try {
-      while (true) {
-        await worker.heartbeat();
-        const executor = await worker.getNextExecutor(0, options);
-        if (executor === null) break;
-        await executor.perform();
-      }
-    } finally {
-      await worker.unregister();
+      await this._backend.retryJob(jobInfo.id, jobInfo.attempt, options);
     }
   }
 
@@ -224,13 +195,13 @@ export class DefaultQueue<BaseJob extends Job<JobArgs> = DefaultJob<JobArgs>>
       queueNames: this._options.queueNames,
       ...options,
     };
-    return new DefaultWorker(this.backend, _options, this.taskManager, this, this.backend, this);
+    return new DefaultWorker(this._backend, _options, this.taskManager, this, this._backend, this);
   }
 
   async getWorkerInfo(worker: WorkerId | WorkerInstance<BaseJob>): Promise<WorkerInfo | undefined> {
     const id = typeof worker === 'number' ? worker : worker.id;
     if (id === undefined) return undefined;
-    return await this.backend.getWorkerInfo(id);
+    return await this._backend.getWorkerInfo(id);
   }
 
   listWorkerInfos(options: ListWorkersOptions = {}, chunkSize: number = 10): BackendIterator<WorkerInfo> {
@@ -238,7 +209,7 @@ export class DefaultQueue<BaseJob extends Job<JobArgs> = DefaultJob<JobArgs>>
       state: [WorkerState.Online, WorkerState.Idle, WorkerState.Busy],
       ...options,
     };
-    return new BackendIterator<WorkerInfo>('workers', this.backend, _options, { chunkSize });
+    return new BackendIterator<WorkerInfo>('workers', this._backend, _options, { chunkSize });
   }
 
   async sendWorkerCommand(command: string, arg: WorkerCommandArg, options?: ListWorkersOptions): Promise<boolean> {
@@ -246,7 +217,7 @@ export class DefaultQueue<BaseJob extends Job<JobArgs> = DefaultJob<JobArgs>>
       state: [WorkerState.Online, WorkerState.Idle, WorkerState.Busy],
       ...(options ?? {}),
     };
-    return await this.backend.sendWorkerCommand(command, arg ?? {}, _options);
+    return await this._backend.sendWorkerCommand(command, arg ?? {}, _options);
   }
 
   async prune(extraOptions: Partial<PruneOptions> = {}): Promise<boolean> {
@@ -254,20 +225,20 @@ export class DefaultQueue<BaseJob extends Job<JobArgs> = DefaultJob<JobArgs>>
   }
 
   async getJobStatistics(): Promise<QueueJobStatistics> {
-    return await this.backend.getJobHistory();
+    return await this._backend.getJobHistory();
   }
 
   async getStatistics(): Promise<QueueStats> {
-    const stats = await this.backend.getStats();
+    const stats = await this._backend.getStats();
 
     stats.queueboneVersion = version;
-    stats.backendName = this.backend.name;
+    stats.backendName = this._backend.name;
 
     return stats;
   }
 
   async resetQueue(): Promise<void> {
-    await this.backend.reset();
+    await this._backend.reset();
   }
 
   protected async waitForResult<Result extends JobResult>(
@@ -279,7 +250,7 @@ export class DefaultQueue<BaseJob extends Job<JobArgs> = DefaultJob<JobArgs>>
   ) {
     const rerun = () => this.waitForResult(jobId, interval, signal, resolve, reject);
     try {
-      const info = await this.backend.getJobInfo(jobId);
+      const info = await this._backend.getJobInfo(jobId);
       if (info === undefined) {
         resolve(null);
       } else if (info.state === JobState.Succeeded) {

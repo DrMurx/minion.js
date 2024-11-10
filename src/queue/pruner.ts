@@ -11,6 +11,7 @@ export class QueuePruner<BaseJob extends Job<JobArgs>> {
   constructor(
     private backend: Backend,
     private options: Readonly<PruneOptions>,
+    private ignoreQueues: string[],
     private notifier: QueueEventEmitter<BaseJob>,
   ) {}
 
@@ -73,6 +74,7 @@ export class QueuePruner<BaseJob extends Job<JobArgs>> {
         const jobPruneResult = await this.backend.pruneJobs<InferJobArgs<BaseJob>>(
           options.jobUnattendedPeriod,
           options.jobExpungePeriod,
+          this.ignoreQueues,
         );
         this.sendPruneNotifications(workerPruneResult, jobPruneResult);
         await Promise.allSettled(jobPruneResult.abandonedJobs.map((jobInfo) => this.notifier.retryFailedJob(jobInfo)));

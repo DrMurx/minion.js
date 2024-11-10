@@ -21,11 +21,6 @@ import {
 
 export interface Backend extends QueueBackend, IteratorBackend, JobHandleBackend, WorkerBackend, EventEmitter {
   /**
-   * Name of the foreground queue
-   */
-  readonly FOREGROUND_QUEUE: string;
-
-  /**
    * Backend name.
    */
   readonly name: string;
@@ -62,7 +57,11 @@ export interface QueueBackend {
    * 3. Mark `running` jobs of `lost` workers as `abandoned`.
    * 4. Mark `pending` jobs that are overdue as `unattended`.
    */
-  pruneJobs<Args extends JobArgs>(unattendedPeriod: number, expungePeriod: number): Promise<JobPruneResult<Args>>;
+  pruneJobs<Args extends JobArgs>(
+    unattendedPeriod: number,
+    expungePeriod: number,
+    ignoreQueues: string[],
+  ): Promise<JobPruneResult<Args>>;
 
   /**
    * Returns information about a worker.

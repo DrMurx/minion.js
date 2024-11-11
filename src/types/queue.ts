@@ -162,6 +162,14 @@ export type QueueEventEmitter<BaseJob extends Job<JobArgs>> = EventEmitter<Queue
 // --------------------------------------------------------------
 
 export interface PruneOptions {
+  /**
+   * True if pruning of outdated elements should be enabled in this process.
+   */
+  pruneEnabled: boolean;
+
+  /**
+   * Specify the interval at which prune runs will happen, if enabled.
+   */
   pruneInterval: number;
 
   /**

@@ -47,6 +47,7 @@ export class DefaultQueue<BaseJob extends Job<JobArgs> = DefaultJob<JobArgs>>
 {
   public static readonly DEFAULT_OPTIONS = Object.freeze(<QueueOptions<any>>{
     queueNames: Object.freeze(['default']),
+    pruneEnabled: true,
     pruneInterval: 5 * 60 * 1000,
     workerLostTimeout: 30 * 60 * 1000,
     jobExpungePeriod: 2 * 24 * 60 * 60 * 1000,
@@ -99,7 +100,7 @@ export class DefaultQueue<BaseJob extends Job<JobArgs> = DefaultJob<JobArgs>>
     this._backend.setRequeueHandler<InferJobArgs<BaseJob>>((jobInfo) =>
       this.retryFailedJob(jobInfo).catch((error) => console.error(error)),
     );
-    this.pruner.start();
+    if (this._options.pruneEnabled) this.pruner.start();
   }
 
   async stop(): Promise<void> {

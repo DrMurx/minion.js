@@ -666,6 +666,7 @@ t.test('Queue with PostgreSQL backend', skip, async (t) => {
     t.equal(jobHandle1.maxAttempts, 3);
     t.equal(jobHandle1.attempt, 2);
     await executor2.perform();
+    await new Promise((resolve) => setTimeout(resolve, 10));
     await jobHandle1.sync();
     t.equal(jobHandle1.state, JobState.Scheduled);
     t.equal(jobHandle1.maxAttempts, 3);

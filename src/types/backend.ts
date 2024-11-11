@@ -1,4 +1,3 @@
-import type EventEmitter from 'events';
 import {
   type JobArgs,
   type JobDescriptor,
@@ -19,7 +18,7 @@ import {
   WorkerState,
 } from './worker.js';
 
-export interface Backend extends QueueBackend, IteratorBackend, JobHandleBackend, WorkerBackend, EventEmitter {
+export interface Backend extends QueueBackend, IteratorBackend, JobHandleBackend, WorkerBackend {
   /**
    * Backend name.
    */
@@ -45,6 +44,11 @@ export interface Backend extends QueueBackend, IteratorBackend, JobHandleBackend
  * The backend methods a `Queue` object needs
  */
 export interface QueueBackend {
+  /**
+   * Allows the Queue to define a handler that would be called when the Backend consideres a job worth requeueing
+   */
+  setRequeueHandler<Args extends JobArgs>(handler: (jobInfo: JobInfo<Args>) => Promise<void>): void;
+
   /**
    * Enqueue a new job with `pending` state.
    */

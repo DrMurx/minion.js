@@ -227,7 +227,6 @@ export class Executor<BaseJob extends Job<JobArgs>> {
         };
         this.notifier.emit('job_failed', event);
       }
-      await this.notifier.retryFailedJob(this._jobInfo);
     }
     return isUpdated;
   }

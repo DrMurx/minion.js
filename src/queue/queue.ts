@@ -94,6 +94,11 @@ export class DefaultQueue<BaseJob extends Job<JobArgs> = DefaultJob<JobArgs>>
 
   async start(): Promise<void> {
     await this._backend.updateSchema();
+
+    // Install a requeue handler which requeues failed or abandoned jobs
+    this._backend.setRequeueHandler<InferJobArgs<BaseJob>>((jobInfo) =>
+      this.retryFailedJob(jobInfo).catch((error) => console.error(error)),
+    );
     this.pruner.start();
   }
 
@@ -168,7 +173,10 @@ export class DefaultQueue<BaseJob extends Job<JobArgs> = DefaultJob<JobArgs>>
     return new BackendIterator<JobInfo<Args>>('jobs', this._backend, options, { chunkSize });
   }
 
-  async retryFailedJob(jobInfo: JobInfo<InferJobArgs<BaseJob>>): Promise<void> {
+  /**
+   * Requeue unsuccessful jobs and backoff with the given backoff strategy
+   */
+  protected async retryFailedJob(jobInfo: JobInfo<InferJobArgs<BaseJob>>): Promise<void> {
     if (unsuccessfulJobStates.includes(jobInfo.state) && jobInfo.attempt < jobInfo.maxAttempts) {
       const options = {
         // Set maxAttempt to its current value (otherwise, `Backend.retryJob` increases it)

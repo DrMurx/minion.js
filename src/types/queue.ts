@@ -29,10 +29,12 @@ import {
 } from './worker.js';
 
 /**
- * The public queue interface
+ * The public queue interface, aggregating Producer, Consumer, Controller and some other interfaces
  */
 export interface Queue<BaseJob extends Job<JobArgs> = Job<JobArgs>>
-  extends WorkerManager<BaseJob>,
+  extends Producer<BaseJob>,
+    Consumer<BaseJob>,
+    Controller,
     StatsReader,
     QueueEventEmitter<BaseJob> {
   /**
@@ -54,7 +56,9 @@ export interface Queue<BaseJob extends Job<JobArgs> = Job<JobArgs>>
    * Release all resources and stop using the queue.
    */
   stop(): Promise<void>;
+}
 
+export interface Producer<BaseJob extends Job<JobArgs>> {
   /**
    * Enqueue a new job with `pending` or `scheduled` state. Arguments can only be simple scalars, maps or arrays.
    * @param options.queueName     - Queue to put job in, defaults to the first queueName given to the `Queue`.
@@ -109,13 +113,32 @@ export interface Queue<BaseJob extends Job<JobArgs> = Job<JobArgs>>
     options?: ListJobsOptions,
     chunkSize?: number,
   ): BackendIterator<JobInfo<Args>>;
+}
 
+export interface Consumer<BaseJob extends Job<JobArgs>> {
   /**
    * Register a task.
    */
   registerTask(task: Task<BaseJob>): void;
   registerTask(taskName: string, fn: TaskHandlerFunction<BaseJob>): void;
 
+  /**
+   * Build worker object.
+   */
+  getNewWorker(options?: Partial<WorkerOptions>): WorkerInstance<BaseJob>;
+
+  /**
+   * Get worker information.
+   */
+  getWorkerInfo(worker: WorkerId | WorkerInstance<BaseJob>): Promise<WorkerInfo | undefined>;
+
+  /**
+   * Return iterator object to safely iterate through worker information.
+   */
+  listWorkerInfos(options?: ListWorkersOptions, chunkSize?: number): BackendIterator<WorkerInfo>;
+}
+
+export interface Controller {
   /**
    * Broadcast remote control command to one or more workers. Unless `option.state` is specified, commands
    * will only be sent to online workers (idle/busy).
@@ -134,26 +157,7 @@ export interface Queue<BaseJob extends Job<JobArgs> = Job<JobArgs>>
   resetQueue(): Promise<void>;
 }
 
-export interface WorkerManager<BaseJob extends Job<JobArgs>> {
-  /**
-   * Build worker object.
-   */
-  getNewWorker(options?: Partial<WorkerOptions>): WorkerInstance<BaseJob>;
-
-  /**
-   * Get worker information.
-   */
-  getWorkerInfo(worker: WorkerId | WorkerInstance<BaseJob>): Promise<WorkerInfo | undefined>;
-
-  /**
-   * Return iterator object to safely iterate through worker information.
-   */
-  listWorkerInfos(options?: ListWorkersOptions, chunkSize?: number): BackendIterator<WorkerInfo>;
-}
-
-export interface QueueEventEmitter<BaseJob extends Job<JobArgs>> extends EventEmitter<QueueEvents<BaseJob>> {
-  retryFailedJob(jobInfo: JobInfo<InferJobArgs<BaseJob>>): Promise<void>;
-}
+export type QueueEventEmitter<BaseJob extends Job<JobArgs>> = EventEmitter<QueueEvents<BaseJob>>;
 
 // --------------------------------------------------------------
 

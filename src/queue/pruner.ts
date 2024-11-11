@@ -77,7 +77,6 @@ export class QueuePruner<BaseJob extends Job<JobArgs>> {
           this.ignoreQueues,
         );
         this.sendPruneNotifications(workerPruneResult, jobPruneResult);
-        await Promise.allSettled(jobPruneResult.abandonedJobs.map((jobInfo) => this.notifier.retryFailedJob(jobInfo)));
         this.lastPruneAt = Date.now();
         return workerPruneResult.lostWorkers.length > 0 || jobPruneResult.expiredJobs.length > 0;
       } catch (error) {

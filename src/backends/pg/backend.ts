@@ -1,4 +1,3 @@
-import EventEmitter from 'events';
 import os from 'os';
 import pg, { QueryConfigValues, QueryResult, QueryResultRow } from 'pg';
 import {
@@ -43,7 +42,7 @@ const JOB_NOTIFICATION_TRIGGER = 'queue_jobs_notify_workers_trigger';
 /**
  * PostgreSQL backend class for the Queue.
  */
-export class PgBackend extends EventEmitter implements Backend {
+export class PgBackend implements Backend {
   public readonly name = 'Pg';
 
   private hostname = os.hostname();
@@ -51,9 +50,9 @@ export class PgBackend extends EventEmitter implements Backend {
   private _pool: pg.Pool;
   private _schema: string | undefined;
   private autoclosePool = false;
+  private requeueHandler: (jobInfo: JobInfo<any>) => Promise<void> = async () => {};
 
   constructor(config: string | pg.Pool) {
-    super();
     if (config instanceof pg.Pool) {
       pg.types.setTypeParser(20, parseInt);
       this._pool = config;
@@ -67,6 +66,10 @@ export class PgBackend extends EventEmitter implements Backend {
 
   get pool(): pg.Pool {
     return this._pool;
+  }
+
+  setRequeueHandler<Args extends JobArgs>(handler: (jobInfo: JobInfo<Args>) => Promise<void>): void {
+    this.requeueHandler = handler;
   }
 
   protected query<R extends QueryResultRow = any>(
@@ -220,9 +223,6 @@ export class PgBackend extends EventEmitter implements Backend {
       [progress, id, attempt],
     );
     if (results.rowCount === 0) return false;
-    // if (results.rows[0].workerId) {
-    //   this.emit('worker_', { workerId: results.rows[0].workerId });
-    // }
     return true;
   }
 
@@ -232,7 +232,7 @@ export class PgBackend extends EventEmitter implements Backend {
     state: JobState.Succeeded | JobState.Failed | JobState.Aborted,
     result: JobResult,
   ): Promise<boolean> {
-    const results = await this.query(
+    const results = await this.query<JobInfo>(
       `UPDATE ${JOB_TABLE}
         SET result = $1,
             state = $2,
@@ -240,12 +240,18 @@ export class PgBackend extends EventEmitter implements Backend {
             finished_at = NOW()
       WHERE id = $4
         AND state = '${JobState.Running}'
-        AND attempt = $5`,
+        AND attempt = $5
+      RETURNING ${this.jobInfoSql}`,
       [JSON.stringify(result), state, state === JobState.Succeeded ? 1.0 : null, jobId, attempt],
     );
 
     // Unable to update row? (reasons: job has already been marked as finished, retried by a different worker, or record is gone)
-    return (results.rowCount ?? 0) > 0;
+    const jobInfo = results.rows[0];
+    const isUpdated = jobInfo !== undefined;
+    if (isUpdated) {
+      await this.requeueHandler(jobInfo);
+    }
+    return isUpdated;
   }
 
   async assignNextJob<Args extends JobArgs>(
@@ -395,6 +401,8 @@ export class PgBackend extends EventEmitter implements Backend {
       RETURNING ${this.jobInfoSql}`,
       [JSON.stringify({ name: 'WorkerGoneError', message: 'Worker went away' }), ignoreQueues],
     );
+
+    await Promise.allSettled(abandonedJobsResult.rows.map((jobInfo) => this.requeueHandler(jobInfo)));
 
     return {
       expiredJobs: expiredJobsResult.rows,
@@ -724,6 +732,7 @@ export class PgBackend extends EventEmitter implements Backend {
 
   async end(): Promise<void> {
     if (this.autoclosePool) await this._pool.end();
+    this.requeueHandler = async () => {};
   }
 
   protected get jobInfoSql() {

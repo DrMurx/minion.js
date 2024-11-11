@@ -1,5 +1,4 @@
-import { type Job, type JobArgs } from '../types/job.js';
-import { type JobFactory } from '../types/queue.js';
+import { type Job, type JobArgs, type JobFactory } from '../types/job.js';
 import { type Executor } from './executor.js';
 import { DefaultJob } from './job.js';
 

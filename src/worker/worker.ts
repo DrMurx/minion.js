@@ -25,7 +25,8 @@ import { WorkerLoop } from './loop.js';
  * Default worker class.
  */
 export class DefaultWorker<BaseJob extends Job<JobArgs>> implements WorkerInstance<BaseJob> {
-  public static readonly DEFAULT_CONFIG = Object.freeze(<Partial<WorkerConfig>>{
+  public static readonly DEFAULT_CONFIG = Object.freeze(<WorkerConfig>{
+    queueNames: Object.freeze(['default']),
     maxCapacity: 1,
     spareCapacity: 0,
     spareMinPriority: 1,
@@ -206,12 +207,14 @@ export class DefaultWorker<BaseJob extends Job<JobArgs>> implements WorkerInstan
     if (!this.isRegistered) {
       const options: WorkerRegistrationOptions = {
         config: this._config,
-        state: WorkerState.Online,
-        finishedJobCount: this.finishedJobCount,
         metadata: this._metadata,
       };
-      this._id = await this.workerBackend.registerWorker(options);
+      const workerInfo = await this.workerBackend.registerWorker(options);
+      this._id = workerInfo.id;
+      this._config = workerInfo.config;
       this._state = WorkerState.Online;
+      this._metadata = workerInfo.metadata;
+      this.finishedJobCount = 0;
       this.lastHeartbeatAt = Date.now();
     } else {
       await this.heartbeat(true);
@@ -228,7 +231,11 @@ export class DefaultWorker<BaseJob extends Job<JobArgs>> implements WorkerInstan
         finishedJobCount: this.finishedJobCount,
         metadata: this._metadata,
       };
-      await this.workerBackend.updateWorker(this._id!, options);
+      const workerInfo = await this.workerBackend.updateWorker(this._id!, options);
+      if (workerInfo) {
+        this._config = workerInfo.config;
+        this._metadata = workerInfo.metadata;
+      }
       this.lastHeartbeatAt = Date.now();
     }
     return this;

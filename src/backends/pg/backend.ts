@@ -474,8 +474,8 @@ export class PgBackend implements Backend {
     return { total, jobs: results.rows };
   }
 
-  async registerWorker(options: WorkerRegistrationOptions): Promise<WorkerId> {
-    const results = await this.query<{ id: WorkerId }>(
+  async registerWorker(options: WorkerRegistrationOptions): Promise<WorkerInfo> {
+    const results = await this.query<WorkerInfo>(
       `INSERT INTO ${WORKER_TABLE} (
         config,
         state,
@@ -487,14 +487,27 @@ export class PgBackend implements Backend {
       VALUES (
         $1, $2, $3, $4, $5, $6
       )
-      RETURNING id`,
-      [options.config, options.state, this.hostname, process.pid, options.finishedJobCount, options.metadata],
+      RETURNING id,
+
+        config,
+        state,
+        host,
+        pid,
+
+        finished_job_count AS "finishedJobCount",
+        metadata,
+
+        started_at AS "startedAt",
+        last_seen_at AS "lastSeenAt"`,
+      [options.config, WorkerState.Online, this.hostname, process.pid, 0, options.metadata],
     );
-    return results.rows[0].id;
+    const workerInfo = results.rows[0];
+    if (workerInfo) workerInfo.jobIds = [];
+    return workerInfo;
   }
 
-  async updateWorker(workerId: WorkerId, options: WorkerUpdateOptions): Promise<boolean> {
-    const results = await this.query(
+  async updateWorker(workerId: WorkerId, options: WorkerUpdateOptions): Promise<WorkerInfo | undefined> {
+    const results = await this.query<WorkerInfo>(
       `UPDATE ${WORKER_TABLE} AS new
       SET
         config = COALESCE($1, config),
@@ -502,10 +515,24 @@ export class PgBackend implements Backend {
         finished_job_count = COALESCE($3, finished_job_count),
         metadata = JSONB_STRIP_NULLS(metadata || $4),
         last_seen_at = NOW()
-      WHERE id = $5`,
+      WHERE id = $5
+      RETURNING id,
+
+        config,
+        state,
+        host,
+        pid,
+
+        finished_job_count AS "finishedJobCount",
+        metadata,
+
+        started_at AS "startedAt",
+        last_seen_at AS "lastSeenAt"`,
       [options.config, options.state, options.finishedJobCount, options.metadata ?? {}, workerId],
     );
-    return (results.rowCount ?? 0) <= 0;
+    const workerInfo = results.rows[0];
+    if (workerInfo) workerInfo.jobIds = [];
+    return workerInfo;
   }
 
   async checkWorkerInbox(workerId: WorkerId, options: WorkerUpdateOptions): Promise<WorkerCommandDescriptor[]> {

@@ -186,14 +186,18 @@ export interface WorkerBackend {
   ): Promise<JobInfo<Args> | null>;
 
   /**
-   * Register a new worker.
+   * Register a new worker with the given `options`.
+   * The method will return a `WorkerInfo` record, and the worker is expected to respect the
+   * `id`, `config`  and `metadata`.
    */
-  registerWorker(options: WorkerRegistrationOptions): Promise<number>;
+  registerWorker(options: WorkerRegistrationOptions): Promise<WorkerInfo>;
 
   /**
    * Update worker's data (including its `lastSeenAt` date).
+   * The method will return a `WorkerInfo` record, and the worker is expected to respect the
+   * `config` and `metadata`.
    */
-  updateWorker(id: WorkerId, options: WorkerUpdateOptions): Promise<boolean>;
+  updateWorker(id: WorkerId, options: WorkerUpdateOptions): Promise<WorkerInfo | undefined>;
 
   /**
    * Update some of the worker's data (`status`, `finishedJobCount` and `lastSeenAt`), and receive
@@ -261,6 +265,13 @@ export interface WorkerRegistrationOptions {
    */
   config: WorkerConfig;
   /**
+   * The worker's current metadata (ie arbitrary data which is not related to configuration)
+   */
+  metadata: Record<string, any>;
+}
+
+export interface WorkerUpdateOptions extends Partial<WorkerRegistrationOptions> {
+  /**
    * The worker's current state
    */
   state: WorkerState;
@@ -268,13 +279,7 @@ export interface WorkerRegistrationOptions {
    * Number of jobs this worker has processed
    */
   finishedJobCount: number;
-  /**
-   * The worker's current metadata (ie arbitrary data which is not related to configuration)
-   */
-  metadata: Record<string, any>;
 }
-
-export type WorkerUpdateOptions = Partial<WorkerRegistrationOptions>;
 
 export type JobPruneResult<Args extends JobArgs = JobArgs> = {
   /**

@@ -1,10 +1,6 @@
+import { DefaultQueue, JobState, WorkerState, type Backend, type Queue } from '@queuebone/core';
 import os from 'os';
 import t from 'tap';
-import { DefaultQueue } from '../../queue/queue.js';
-import { type Backend } from '../../types/backend.js';
-import { JobState } from '../../types/job.js';
-import { type Queue } from '../../types/queue.js';
-import { WorkerState } from '../../types/worker.js';
 import { PgBackend } from './backend.js';
 import { createPool } from './factory.js';
 

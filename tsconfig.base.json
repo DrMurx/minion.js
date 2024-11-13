@@ -1,14 +1,19 @@
 {
   "compilerOptions": {
-    "lib": ["ESNext"],
+    "rootDir": "${configDir}/src",
+    "emitDecoratorMetadata": true,
+    "experimentalDecorators": true,
+    "allowSyntheticDefaultImports": true,
     "target": "ES2020",
-    "module": "ES2020",
-    "sourceMap": true,
-    "declaration": true,
-    "incremental": true,
-    "moduleResolution": "node",
+    "lib": ["ESNext"],
+    "module": "Preserve",
+    "moduleResolution": "Bundler",
     "esModuleInterop": true,
-    "noErrorTruncation": true,
-    "strict": true
-  }
+    "strict": true,
+    "noEmit": true,
+    "customConditions": ["@development"],
+    "incremental": true,
+    "noErrorTruncation": true
+  },
+  "include": ["${configDir}/src/**/*"]
 }

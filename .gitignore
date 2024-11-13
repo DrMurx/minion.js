@@ -1,7 +1,60 @@
-node_modules
-package-lock.json
-coverage
+# Based on https://raw.githubusercontent.com/github/gitignore/main/Node.gitignore
+
+# Logs
+logs/
+_.log
+.pnpm-debug.log*
+
+# Diagnostic reports (https://nodejs.org/api/report.html)
+report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
+
+# Runtime data
+pids
+_.pid
+_.seed
+*.pid.lock
+
+# Coverage directory used by tools like istanbul
+coverage/
+.coverage/
+*.lcov
+
+# nyc test coverage
 .nyc_output
-/lib
+
+# Compiled binary addons (https://nodejs.org/api/addons.html)
+build/Release
+
+# Dependency directories
+node_modules/
+
+# TypeScript cache
 *.tsbuildinfo
+
+# Optional eslint cache
+.eslintcache
+
+# Optional stylelint cache
+.stylelintcache
+
+# Optional REPL history
+.node_repl_history
+
+# dotenv environment variable files
+.env
+.env.development.local
+.env.test.local
+.env.production.local
+.env.local
+
+# cache
+.cache/
+
+# Typescript build / generate output
+dist/
+
+# Finder (MacOS) folder config
+.DS_Store
+
+package-lock.json
 .tap

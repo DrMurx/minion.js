@@ -1,7 +1,6 @@
+import { createPool, PgBackend } from '@queuebone/pg-backend';
 import os from 'os';
 import t from 'tap';
-import { PgBackend } from '../backends/pg/backend.js';
-import { createPool } from '../backends/pg/factory.js';
 import { DefaultQueue } from '../queue/queue.js';
 import { type Backend } from '../types/backend.js';
 import { type Job, type JobArgs, JobState } from '../types/job.js';

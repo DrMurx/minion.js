@@ -1,35 +1,33 @@
-import os from 'os';
-import pg, { QueryConfigValues, QueryResult, QueryResultRow } from 'pg';
 import {
   type Backend,
+  type DailyJobHistory,
+  type JobArgs,
   type JobDequeueOptions,
+  type JobDescriptor,
   type JobEnqueueOptions,
+  type JobId,
+  type JobInfo,
   type JobInfoList,
   type JobOptions,
   type JobPruneResult,
-  type WorkerInfoList,
-  type WorkerPruneResult,
-  type WorkerRegistrationOptions,
-  type WorkerUpdateOptions,
-} from '../../types/backend.js';
-import {
-  type JobArgs,
-  type JobDescriptor,
-  type JobId,
-  type JobInfo,
   type JobResult,
   JobState,
   type ListJobsOptions,
-} from '../../types/job.js';
-import { type DailyJobHistory, type QueueJobStatistics, type QueueStats } from '../../types/queue-stats.js';
-import {
   type ListWorkersOptions,
+  type QueueJobStatistics,
+  type QueueStats,
   type WorkerCommandArg,
   type WorkerCommandDescriptor,
   type WorkerId,
   type WorkerInfo,
+  type WorkerInfoList,
+  type WorkerPruneResult,
+  type WorkerRegistrationOptions,
   WorkerState,
-} from '../../types/worker.js';
+  type WorkerUpdateOptions,
+} from '@queuebone/core';
+import os from 'os';
+import pg, { QueryConfigValues, QueryResult, QueryResultRow } from 'pg';
 import { createPool } from './factory.js';
 import { Migration, type MigrationStep } from './migration.js';
 

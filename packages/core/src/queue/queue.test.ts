@@ -1,6 +1,5 @@
+import { createPool, JOB_TABLE, PgBackend, WORKER_TABLE } from '@queuebone/pg-backend';
 import t from 'tap';
-import { JOB_TABLE, PgBackend, WORKER_TABLE } from '../backends/pg/backend.js';
-import { createPool } from '../backends/pg/factory.js';
 import { type Backend } from '../types/backend.js';
 import { JobState } from '../types/job.js';
 import { type Queue } from '../types/queue.js';
@@ -1010,7 +1009,7 @@ t.test('Queue with PostgreSQL backend', skip, async (t) => {
     t.equal(stats1.onlineWorkers, 0);
     t.equal(stats1.busyWorkers, 0);
     t.equal(stats1.idleWorkers, 0);
-    t.equal(stats1.queueboneVersion, '0.4.1');
+    t.equal(stats1.queueboneVersion, '0.0.1');
     t.equal(stats1.backendName, 'Pg');
     t.match(stats1.backendVersion, /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/);
     t.ok(stats1.backendUptime);

@@ -1,0 +1,66 @@
+{
+  "name": "@queuebone/core",
+  "version": "0.0.1",
+  "description": "Node.js job queue",
+  "keywords": [
+    "queubone",
+    "job-queue",
+    "queue"
+  ],
+  "license": "MIT",
+  "contributors": [
+    "Initial minion.js: Sebastian Riedel <kraih@mojolicious.org>",
+    "Jan Kunzmann <jan-github@phobia.de>"
+  ],
+  "type": "module",
+  "exports": {
+    "@development": "./src/index.ts",
+    "types": "./dist/index.d.ts",
+    "import": "./dist/index.js"
+  },
+  "files": [
+    "dist/"
+  ],
+  "scripts": {
+    "build": "tsc -p ./tsconfig.build.json",
+    "build:bench": "pnpm build && pnpm run bench",
+    "build:clean": "pnpm clean && pnpm build",
+    "build:coverage": "pnpm build && pnpm coverage",
+    "build:node": "pnpm build && node",
+    "build:watch": "pnpm build -- --watch",
+    "clean": "rm -rf tsconfig*.tsbuildinfo dist",
+    "coverage": "c8 tap --disable-coverage --allow-empty-coverage",
+    "coverage:ci": "c8 --reporter lcovonly tap --disable-coverage --allow-empty-coverage",
+    "lint": "eslint \"src/**/*.ts\" \"src/*.ts\"",
+    "lint:fix": "pnpm lint -- --fix",
+    "prepublishOnly": "pnpm build",
+    "publish:minor": "pnpm version minor && pnpm publish",
+    "publish:patch": "pnpm version patch && pnpm publish",
+    "test": "tap --disable-coverage --allow-empty-coverage"
+  },
+  "devDependencies": {
+    "@commitlint/cli": "^19.5.0",
+    "@commitlint/config-conventional": "^19.5.0",
+    "@eslint/js": "^9.12.0",
+    "@queuebone/pg-backend": "workspace:*",
+    "@types/busboy": "^1.5.4",
+    "@types/eslint__js": "^8.42.3",
+    "@types/node": "^22.7.4",
+    "@types/tap": "^15.0.12",
+    "@vitest/coverage-istanbul": "^2.1.2",
+    "c8": "^10.1.2",
+    "eslint": "^9.12.0",
+    "eslint-config-prettier": "^9.1.0",
+    "eslint-plugin-node": "^11.1.0",
+    "eslint-plugin-prettier": "^5.2.1",
+    "prettier": "^3.3.3",
+    "sort-package-json": "^2.10.1",
+    "tap": "^21.0.1",
+    "typescript": "~5.5.0",
+    "typescript-eslint": "^8.8.1"
+  },
+  "packageManager": "pnpm@9.0.2+sha512.8bedf31de42705b97ff89330bbe177954ad5703a92fa894be0fb4d45b5dfab59a21f65a8419ad1cae82dd16fac2d41a8c343775e80efe7dab6d80b0408db2fd6",
+  "engines": {
+    "node": ">= 18"
+  }
+}

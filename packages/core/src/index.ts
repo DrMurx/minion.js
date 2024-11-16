@@ -22,6 +22,7 @@ export {
   type Job,
   type JobArgs,
   type JobDescriptor,
+  type JobFactory,
   type JobId,
   type JobInfo,
   type JobResult,
@@ -45,6 +46,7 @@ export {
 export { version } from './version.js';
 export { defaultBackoffStrategy } from './worker/backoff-strategy.js';
 export { Executor } from './worker/executor.js';
+export { DefaultJobFactory } from './worker/job-factory.js';
 export { DefaultJob } from './worker/job.js';
 export { DefaultTaskManager } from './worker/task-manager.js';
 export { DefaultWorker } from './worker/worker.js';

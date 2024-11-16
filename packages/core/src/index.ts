@@ -43,6 +43,7 @@ export {
   type WorkerOptions,
 } from './types/worker.js';
 export { version } from './version.js';
+export { defaultBackoffStrategy } from './worker/backoff-strategy.js';
 export { Executor } from './worker/executor.js';
 export { DefaultJob } from './worker/job.js';
 export { DefaultTaskManager } from './worker/task-manager.js';

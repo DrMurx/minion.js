@@ -45,7 +45,7 @@
     "test": "tap --disable-coverage --allow-empty-coverage"
   },
   "dependencies": {
-    "@queuebone/core": "workspace:*",
+    "@queuebone/core": "workspace:^",
     "@fastify/bearer-auth": "^10.0.1",
     "axios": "^1.7.7",
     "fastify": "^5.1.0"
@@ -54,7 +54,7 @@
     "@commitlint/cli": "^19.5.0",
     "@commitlint/config-conventional": "^19.5.0",
     "@eslint/js": "^9.12.0",
-    "@queuebone/pg-backend": "workspace:*",
+    "@queuebone/pg-backend": "workspace:^",
     "@types/busboy": "^1.5.4",
     "@types/eslint__js": "^8.42.3",
     "@types/node": "^22.7.4",

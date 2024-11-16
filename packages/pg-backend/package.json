@@ -46,7 +46,7 @@
     "test": "tap --disable-coverage --allow-empty-coverage"
   },
   "dependencies": {
-    "@queuebone/core": "workspace:*",
+    "@queuebone/core": "workspace:^",
     "pg": "^8.13.0"
   },
   "devDependencies": {

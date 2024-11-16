@@ -22,6 +22,12 @@
   "files": [
     "dist/"
   ],
+  "publishConfig": {
+    "exports": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
   "scripts": {
     "build": "tsc -p ./tsconfig.build.json",
     "build:bench": "pnpm build && pnpm run bench",
@@ -35,8 +41,8 @@
     "lint": "eslint \"src/**/*.ts\" \"src/*.ts\"",
     "lint:fix": "pnpm lint -- --fix",
     "prepublishOnly": "pnpm build",
-    "publish:minor": "pnpm version minor && pnpm publish",
-    "publish:patch": "pnpm version patch && pnpm publish",
+    "publish:minor": "pnpm version minor && pnpm publish --no-git-checks",
+    "publish:patch": "pnpm version patch && pnpm publish --no-git-checks",
     "test": "tap --disable-coverage --allow-empty-coverage"
   },
   "dependencies": {

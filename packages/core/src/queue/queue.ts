@@ -30,7 +30,6 @@ import {
 } from '../types/worker.js';
 import { version } from '../version.js';
 import { defaultBackoffStrategy } from '../worker/backoff-strategy.js';
-import { Executor } from '../worker/executor.js';
 import { DefaultJobFactory } from '../worker/job-factory.js';
 import { DefaultJob } from '../worker/job.js';
 import { DefaultTaskManager } from '../worker/task-manager.js';
@@ -163,10 +162,6 @@ export class DefaultQueue<BaseJob extends Job<JobArgs> = DefaultJob<JobArgs>>
     return jobs;
   }
 
-  createJobObject<ResultJob extends BaseJob>(executor: Executor<ResultJob>): ResultJob {
-    return new DefaultJob(executor) as unknown as ResultJob;
-  }
-
   listJobInfos<Args extends InferJobArgs<BaseJob> = InferJobArgs<BaseJob>>(
     options: ListJobsOptions = {},
     chunkSize: number = 10,
@@ -204,7 +199,7 @@ export class DefaultQueue<BaseJob extends Job<JobArgs> = DefaultJob<JobArgs>>
       queueNames: this._options.queueNames,
       ...options,
     };
-    return new DefaultWorker(this._backend, _options, this.taskManager, this, this._backend, this);
+    return new DefaultWorker(this._backend, _options, this.taskManager, this.jobFactory, this._backend, this);
   }
 
   async getWorkerInfo(worker: WorkerId | WorkerInstance<BaseJob>): Promise<WorkerInfo | undefined> {

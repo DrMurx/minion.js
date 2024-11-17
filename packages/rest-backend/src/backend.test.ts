@@ -4,7 +4,7 @@ import Fastify from 'fastify';
 import os from 'os';
 import t from 'tap';
 import { RestBackend } from './backend.js';
-import { RemoteWorkerClassConfig, RestBackendServer } from './server.js';
+import { RestServerQueue } from './server.js';
 
 const skip = process.env.TEST_ONLINE === undefined ? { skip: 'set TEST_ONLINE to enable this test' } : {};
 const SCHEMA = 'queue_http_backend_test';
@@ -19,32 +19,31 @@ t.test('HTTP backend', skip, async (t) => {
 
   // Create server components
   const serverBackend = new PgBackend(pool);
-  const serverQueue = new DefaultQueue(serverBackend, {
-    backoffStrategy: () => 0, // No backoff for this test
-  });
-  await serverQueue.start();
   const fastify = Fastify({
     logger: false,
   });
-  const workerConfig: RemoteWorkerClassConfig[] = [
-    {
-      name: 'test-worker-1',
-      token: 'test-token-1',
-      config: {
-        queueNames: ['default'],
-        heartbeatInterval: 60 * 60 * 1000,
+  const serverQueue = new RestServerQueue(fastify, serverBackend, {
+    backoffStrategy: () => 0, // No backoff for this test
+    remoteWorkerConfigs: [
+      {
+        name: 'test-worker-1',
+        token: 'test-token-1',
+        config: {
+          queueNames: ['default'],
+          heartbeatInterval: 60 * 60 * 1000,
+        },
+        maxWorkers: 2,
       },
-      maxWorkers: 2,
-    },
-    {
-      name: 'test-worker-2',
-      token: 'test-token-2',
-      config: {
-        queueNames: ['default'],
+      {
+        name: 'test-worker-2',
+        token: 'test-token-2',
+        config: {
+          queueNames: ['default'],
+        },
       },
-    },
-  ];
-  new RestBackendServer(fastify, serverQueue, serverBackend, workerConfig);
+    ],
+  });
+  await serverQueue.start();
   fastify.listen({ port: PORT });
 
   // Create client components

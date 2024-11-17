@@ -1,11 +1,13 @@
 import bearerAuthPlugin from '@fastify/bearer-auth';
 import {
+  Backend,
+  DefaultJob,
+  DefaultQueue,
   DefaultWorker,
+  type Job,
   type JobArgs,
-  type JobHandleBackend,
   type JobInfo,
-  type Queue,
-  type WorkerBackend,
+  QueueOptions,
   type WorkerConfig,
   type WorkerId,
   type WorkerInfo,
@@ -28,7 +30,9 @@ import {
   updateWorkerSchema,
 } from './server-schema.js';
 
-type RestBackend = JobHandleBackend & WorkerBackend;
+export interface RestServerQueueOptions<BaseJob extends Job<JobArgs>> extends QueueOptions<BaseJob> {
+  remoteWorkerConfigs?: RemoteWorkerClassConfig[];
+}
 
 export interface RemoteWorkerClassConfig {
   /**
@@ -52,28 +56,22 @@ export interface RemoteWorkerClassConfig {
   config: Partial<WorkerConfig>;
 }
 
-interface RemoteWorkerClass {
-  name: string;
-  config: WorkerConfig;
-  maxWorkers: number;
-  activeWorkers: Map<WorkerId, WorkerInfo>;
-}
-
-export class RestBackendServer {
-  private classes: Map<string, RemoteWorkerClass> = new Map();
+export class RestServerQueue<BaseJob extends Job<JobArgs> = DefaultJob<JobArgs>> extends DefaultQueue<BaseJob> {
+  protected classes: Map<string, RemoteWorkerClass> = new Map();
 
   constructor(
-    private fastify: FastifyInstance,
-    private queue: Queue,
-    private backend: RestBackend,
-    remoteWorkerConfigs?: RemoteWorkerClassConfig[],
+    protected fastify: FastifyInstance,
+    backend: Backend,
+    options: Partial<RestServerQueueOptions<BaseJob>> = {},
   ) {
-    if (remoteWorkerConfigs !== undefined) {
-      remoteWorkerConfigs.forEach((remoteWorkerConfig) => this.addRemoteWorker(remoteWorkerConfig));
+    super(backend, options);
+
+    if (options.remoteWorkerConfigs !== undefined && Array.isArray(options.remoteWorkerConfigs)) {
+      options.remoteWorkerConfigs.forEach((remoteWorkerConfig) => this.addRemoteWorker(remoteWorkerConfig));
     }
 
     // Plug in event listener to remove lost workers
-    this.queue.on('worker_lost', ({ workerInfo }) => {
+    this.on('worker_lost', ({ workerInfo }) => {
       this.classes.forEach((holder) => {
         if (holder.activeWorkers.has(workerInfo.id)) {
           holder.activeWorkers.delete(workerInfo.id);
@@ -126,9 +124,10 @@ export class RestBackendServer {
         },
       };
 
-      const workerInfo = await this.backend.registerWorker(options);
+      const workerInfo = await this._backend.registerWorker(options);
       if (workerInfo !== undefined) {
         holder.activeWorkers.set(workerInfo.id, workerInfo);
+        this.emit('worker_registered', { workerInfo });
       }
 
       return workerInfo;
@@ -151,7 +150,7 @@ export class RestBackendServer {
         state: request.body.state,
         finishedJobCount: 0,
       };
-      const workerInfo = await this.backend.updateWorker(workerId, options);
+      const workerInfo = await this._backend.updateWorker(workerId, options);
       if (workerInfo !== undefined) {
         return workerInfo;
       } else {
@@ -175,9 +174,10 @@ export class RestBackendServer {
           return;
         }
 
-        const isUpdated = await this.backend.unregisterWorker(workerId);
+        const isUpdated = await this._backend.unregisterWorker(workerId);
         if (isUpdated) {
           holder.activeWorkers.delete(workerId);
+          this.emit('worker_unregistered', { workerId });
           return;
         } else {
           reply.status(404).send();
@@ -202,7 +202,7 @@ export class RestBackendServer {
           state: request.body.state,
           finishedJobCount: 0,
         };
-        const commands = await this.backend.checkWorkerInbox(workerId, options);
+        const commands = await this._backend.checkWorkerInbox(workerId, options);
         if (commands.length !== 0) {
           return commands;
         } else {
@@ -231,7 +231,7 @@ export class RestBackendServer {
         const { queueNames, dequeueTimeout } = holder.config;
         const minPriority = request.body.options.minPriority ?? 0;
 
-        const jobInfo = await this.backend.assignNextJob(workerId, taskNames, dequeueTimeout, {
+        const jobInfo = await this._backend.assignNextJob(workerId, taskNames, dequeueTimeout, {
           queueNames,
           minPriority,
         });
@@ -248,7 +248,7 @@ export class RestBackendServer {
       const holder = this.classes.get(key)!;
 
       const { id: jobId, attempt } = request.params;
-      const jobInfo = await this.backend.getJobInfo(jobId);
+      const jobInfo = await this._backend.getJobInfo(jobId);
       if (jobInfo === undefined || jobInfo.attempt !== attempt || !holder.activeWorkers.has(jobInfo.workerId!)) {
         reply.status(404).send();
         return;
@@ -259,7 +259,7 @@ export class RestBackendServer {
 
       const metadata = request.body.metadata;
       if (metadata !== undefined) {
-        const newMetadata = await this.backend.amendJobMetadata(jobId, attempt, metadata);
+        const newMetadata = await this._backend.amendJobMetadata(jobId, attempt, metadata);
         if (newMetadata !== undefined) {
           partialJobInfo.metadata = newMetadata;
         } else {
@@ -269,7 +269,7 @@ export class RestBackendServer {
 
       const progress = request.body.progress;
       if (progress !== undefined) {
-        const isUpdated = await this.backend.updateJobProgress(jobId, attempt, progress);
+        const isUpdated = await this._backend.updateJobProgress(jobId, attempt, progress);
         if (isUpdated) {
           partialJobInfo.progress = progress;
         } else {
@@ -280,7 +280,7 @@ export class RestBackendServer {
       const state = request.body.state;
       const result = request.body.result;
       if (state !== undefined && result !== undefined) {
-        const isUpdated = await this.backend.markJobFinished(jobId, attempt, state, result);
+        const isUpdated = await this._backend.markJobFinished(jobId, attempt, state, result);
         if (isUpdated) {
           partialJobInfo.state = state;
           partialJobInfo.result = result;
@@ -294,4 +294,11 @@ export class RestBackendServer {
       reply.status(responseCode).send();
     });
   }
+}
+
+interface RemoteWorkerClass {
+  name: string;
+  config: WorkerConfig;
+  maxWorkers: number;
+  activeWorkers: Map<WorkerId, WorkerInfo>;
 }

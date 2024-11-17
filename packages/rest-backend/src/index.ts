@@ -1,2 +1,2 @@
 export { RestBackend } from './backend.js';
-export { RestBackendServer, type RemoteWorkerClassConfig } from './server.js';
+export { RestServerQueue, type RemoteWorkerClassConfig, type RestServerQueueOptions } from './server.js';

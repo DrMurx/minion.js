@@ -27,7 +27,7 @@ import {
   updateWorkerSchema,
 } from './server-schema.js';
 
-export type RestBackend = JobHandleBackend & WorkerBackend;
+type RestBackend = JobHandleBackend & WorkerBackend;
 
 export interface RemoteWorkerClassConfig {
   /**

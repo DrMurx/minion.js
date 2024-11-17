@@ -4,6 +4,7 @@ import {
   type JobArgs,
   type JobHandleBackend,
   type JobInfo,
+  type Queue,
   type WorkerBackend,
   type WorkerConfig,
   type WorkerId,
@@ -63,12 +64,23 @@ export class RestBackendServer {
 
   constructor(
     private fastify: FastifyInstance,
+    private queue: Queue,
     private backend: RestBackend,
     remoteWorkerConfigs?: RemoteWorkerClassConfig[],
   ) {
     if (remoteWorkerConfigs !== undefined) {
       remoteWorkerConfigs.forEach((remoteWorkerConfig) => this.addRemoteWorker(remoteWorkerConfig));
     }
+
+    // Plug in event listener to remove lost workers
+    this.queue.on('worker_lost', ({ workerInfo }) => {
+      this.classes.forEach((holder) => {
+        if (holder.activeWorkers.has(workerInfo.id)) {
+          holder.activeWorkers.delete(workerInfo.id);
+        }
+      });
+    });
+
     this.setupRoutes();
   }
 

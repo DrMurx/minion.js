@@ -44,7 +44,7 @@ t.test('HTTP backend', skip, async (t) => {
       },
     },
   ];
-  new RestBackendServer(fastify, serverBackend, workerConfig);
+  new RestBackendServer(fastify, serverQueue, serverBackend, workerConfig);
   fastify.listen({ port: PORT });
 
   // Create client components

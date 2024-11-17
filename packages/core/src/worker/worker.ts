@@ -214,6 +214,7 @@ export class DefaultWorker<BaseJob extends Job<JobArgs>> implements WorkerInstan
       this._config = workerInfo.config;
       this._state = WorkerState.Online;
       this._metadata = workerInfo.metadata;
+      this.notifier.emit('worker_registered', { workerInfo });
       this.finishedJobCount = 0;
       this.lastHeartbeatAt = Date.now();
     } else {
@@ -258,6 +259,7 @@ export class DefaultWorker<BaseJob extends Job<JobArgs>> implements WorkerInstan
     if (this._id !== undefined) {
       await this.workerBackend.unregisterWorker(this._id);
       this._state = WorkerState.Offline;
+      this.notifier.emit('worker_unregistered', { workerId: this._id });
       this._id = undefined;
     }
     return this;

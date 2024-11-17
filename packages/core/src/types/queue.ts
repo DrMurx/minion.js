@@ -227,6 +227,8 @@ export interface QueueEvents<
   job_expunged: [{ jobInfo: JobDescriptorRO }];
   job_abandoned: [{ jobInfo: JobInfoRO }];
   job_unattended: [{ jobInfo: JobDescriptorRO }];
+  worker_registered: [{ workerInfo: Readonly<WorkerInfo> }];
+  worker_unregistered: [{ workerId: WorkerId }];
   worker_lost: [{ workerInfo: Readonly<WorkerInfo> }];
   prune_run: [{ force: boolean; options: PruneOptions }];
 }

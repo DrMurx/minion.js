@@ -26,15 +26,15 @@ export class WorkerLoop<BaseJob extends Job<JobArgs>> extends EventEmitter {
   }
 
   /**
-   * `true` if the worker's primary capacity is exhausted
+   * `true` if the worker's primary capacity is exhausted and it has only reserved capacity.
    */
-  get hasSpareCapacity(): boolean {
-    const { maxCapacity, spareCapacity } = this.worker.config;
-    return this.jobs.length >= maxCapacity - spareCapacity;
+  get hasOnlyReservedCapacity(): boolean {
+    const { maxCapacity, reservedCapacity } = this.worker.config;
+    return this.jobs.length >= maxCapacity - reservedCapacity && this.jobs.length < maxCapacity;
   }
 
   /**
-   * `true` if the worker's primary and spare capacity is exhausted
+   * `true` if the worker's full capacity is exhausted.
    */
   get hasNoCapacity(): boolean {
     const { maxCapacity } = this.worker.config;
@@ -93,13 +93,13 @@ export class WorkerLoop<BaseJob extends Job<JobArgs>> extends EventEmitter {
    * Pull another job into the worker for execution. Should not be called when the worker has stopped.
    */
   protected async replenish(): Promise<boolean> {
-    const { dequeueTimeout, queueNames, spareMinPriority } = this.worker.config;
+    const { dequeueTimeout, queueNames, reservedMinPriority } = this.worker.config;
 
     // Dequeue options for pulling the job
     const options: JobDequeueOptions = {
       queueNames,
-      // If only spare slots are available, we fetch only jobs with configured min priority
-      minPriority: this.hasSpareCapacity ? spareMinPriority : undefined,
+      // If only reserved slots are available, we fetch only jobs with configured min priority
+      minPriority: this.hasOnlyReservedCapacity ? reservedMinPriority : undefined,
     };
 
     // Pull a job while assign it to current worker
@@ -109,7 +109,7 @@ export class WorkerLoop<BaseJob extends Job<JobArgs>> extends EventEmitter {
     // Construct the jobStatus object - the promise on `Job.perform` will update its status after it has finished
     const performPromise = executor.perform(false);
     const jobStatus: JobStatus<BaseJob> = {
-      job: executor,
+      executor,
       performPromise,
       isRunning: true,
     };
@@ -132,7 +132,7 @@ export class WorkerLoop<BaseJob extends Job<JobArgs>> extends EventEmitter {
 }
 
 interface JobStatus<BaseJob extends Job<JobArgs>> {
-  job: Executor<BaseJob>;
+  executor: Executor<BaseJob>;
   performPromise: Promise<void>;
   isRunning: boolean;
 }

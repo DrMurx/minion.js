@@ -28,8 +28,8 @@ export class DefaultWorker<BaseJob extends Job<JobArgs>> implements WorkerInstan
   public static readonly DEFAULT_CONFIG = Object.freeze(<WorkerConfig>{
     queueNames: Object.freeze(['default']),
     maxCapacity: 1,
-    spareCapacity: 0,
-    spareMinPriority: 1,
+    reservedCapacity: 0,
+    reservedMinPriority: 1,
     heartbeatInterval: 10 * 1000,
     inboxCheckInterval: 60 * 1000,
     dequeueTimeout: 5 * 1000,

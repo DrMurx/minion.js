@@ -113,11 +113,11 @@ export interface WorkerConfig {
   /**
    * Worker can reserve this number of slots.
    */
-  spareCapacity: number;
+  reservedCapacity: number;
   /**
    * Minimal priority for the reserved slots.
    */
-  spareMinPriority: number;
+  reservedMinPriority: number;
   /**
    * Interval at which the worker's lastSeen date is updated.
    */

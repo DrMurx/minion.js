@@ -66,7 +66,7 @@ export class RestBackend implements Backend {
         metadata: records,
       };
       const response = await this._axios.patch<{ metadata?: Record<string, any> }>(`/jobs/${jobId}/${attempt}`, body);
-      return response.data.metadata ?? {};
+      return response.status === 200 ? (response.data.metadata ?? {}) : undefined;
     } catch (_) {
       return undefined;
     }
@@ -77,8 +77,8 @@ export class RestBackend implements Backend {
       const body = {
         progress,
       };
-      await this._axios.patch(`/jobs/${jobId}/${attempt}`, body);
-      return true;
+      const response = await this._axios.patch(`/jobs/${jobId}/${attempt}`, body);
+      return response.status === 200;
     } catch (_) {
       return false;
     }
@@ -95,8 +95,8 @@ export class RestBackend implements Backend {
         state,
         result,
       };
-      await this._axios.patch(`/jobs/${jobId}/${attempt}`, body);
-      return true;
+      const response = await this._axios.patch(`/jobs/${jobId}/${attempt}`, body);
+      return response.status === 200;
     } catch (_) {
       return false;
     }
@@ -116,7 +116,7 @@ export class RestBackend implements Backend {
         },
       };
       const response = await this._axios.post<JobInfo<Args>>(`/workers/${id}/nextjob`, body);
-      return response.data;
+      return response.status === 200 ? response.data : null;
     } catch (_) {
       return null;
     }
@@ -146,7 +146,8 @@ export class RestBackend implements Backend {
   async registerWorker(): Promise<WorkerInfo> {
     try {
       const response = await this._axios.post<WorkerInfo>('/workers', {});
-      return response.data;
+      if (response.status === 200) return response.data;
+      throw new Error("Can't register worker");
     } catch (e) {
       throw new Error(`Can't register worker. ${e}`);
     }
@@ -158,7 +159,7 @@ export class RestBackend implements Backend {
         state: options.state,
       };
       const response = await this._axios.patch(`/workers/${id}`, body);
-      return response.data;
+      return response.status === 200 ? response.data : undefined;
     } catch (_) {
       return undefined;
     }
@@ -170,7 +171,7 @@ export class RestBackend implements Backend {
         state: options.state,
       };
       const response = await this._axios.post<WorkerCommandDescriptor[]>(`/workers/${id}/inbox`, body);
-      return response.data;
+      return response.status === 200 ? response.data : [];
     } catch (_) {
       return [];
     }
@@ -178,8 +179,8 @@ export class RestBackend implements Backend {
 
   async unregisterWorker(id: WorkerId): Promise<boolean> {
     try {
-      await this._axios.delete(`/workers/${id}`);
-      return true;
+      const response = await this._axios.delete(`/workers/${id}`);
+      return response.status === 200;
     } catch (_) {
       return false;
     }

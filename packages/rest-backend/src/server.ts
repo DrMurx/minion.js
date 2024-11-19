@@ -7,7 +7,7 @@ import {
   type Job,
   type JobArgs,
   type JobInfo,
-  QueueOptions,
+  type QueueOptions,
   type WorkerConfig,
   type WorkerId,
   type WorkerInfo,
@@ -90,7 +90,11 @@ export class RestServerQueue<BaseJob extends Job<JobArgs> = DefaultJob<JobArgs>>
 
     const holder: RemoteWorkerClass = {
       name: remoteWorkerConfig.name,
-      config: { ...DefaultWorker.DEFAULT_CONFIG, ...remoteWorkerConfig.config },
+      config: {
+        ...DefaultWorker.DEFAULT_CONFIG,
+        queueNames: this._options.queueNames,
+        ...remoteWorkerConfig.config,
+      },
       maxWorkers: remoteWorkerConfig.maxWorkers ?? 1,
       activeWorkers: new Map(),
     };

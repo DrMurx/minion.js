@@ -53,7 +53,7 @@ export interface RemoteWorkerClassConfig {
   /**
    * Config for the corresponding worker
    */
-  config: Partial<WorkerConfig>;
+  config?: Partial<WorkerConfig>;
 }
 
 export class RestServerQueue<BaseJob extends Job<JobArgs> = DefaultJob<JobArgs>> extends DefaultQueue<BaseJob> {
@@ -93,7 +93,7 @@ export class RestServerQueue<BaseJob extends Job<JobArgs> = DefaultJob<JobArgs>>
       config: {
         ...DefaultWorker.DEFAULT_CONFIG,
         queueNames: this._options.queueNames,
-        ...remoteWorkerConfig.config,
+        ...(remoteWorkerConfig.config ?? {}),
       },
       maxWorkers: remoteWorkerConfig.maxWorkers ?? 1,
       activeWorkers: new Map(),

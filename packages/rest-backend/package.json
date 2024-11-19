@@ -14,7 +14,7 @@
   ],
   "type": "module",
   "exports": {
-    "@development": "./src/index.ts",
+    "@queuebone/development": "./src/index.ts",
     "types": "./dist/index.d.ts",
     "import": "./dist/index.js"
   },

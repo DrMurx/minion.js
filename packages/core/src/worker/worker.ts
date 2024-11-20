@@ -128,10 +128,12 @@ export class DefaultWorker<BaseJob extends Job<JobArgs>> implements WorkerInstan
   }
 
   get needsInboxCheck(): boolean {
+    if (this._config.inboxCheckInterval === 0) return false;
     return this.lastInboxCheck + this._config.inboxCheckInterval < Date.now();
   }
 
   get needsHeartbeat(): boolean {
+    if (this._config.heartbeatInterval === 0) return false;
     return this.lastHeartbeatAt + this._config.heartbeatInterval < Date.now();
   }
 

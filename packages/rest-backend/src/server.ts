@@ -1,20 +1,18 @@
 import bearerAuthPlugin from '@fastify/bearer-auth';
 import {
   Backend,
-  DefaultJob,
   DefaultQueue,
   DefaultWorker,
+  type InferJobArgs,
   type Job,
   type JobArgs,
-  type JobInfo,
   type QueueOptions,
   type WorkerConfig,
   type WorkerId,
-  type WorkerInfo,
   type WorkerRegistrationOptions,
-  type WorkerUpdateOptions,
 } from '@queuebone/core';
 import { type FastifyInstance } from 'fastify';
+import { Executor } from './executor.js';
 import {
   type AssignNextJobAPI,
   assignNextJobSchema,
@@ -29,6 +27,7 @@ import {
   type UpdateWorkerAPI,
   updateWorkerSchema,
 } from './server-schema.js';
+import { Worker } from './worker.js';
 
 export interface RestServerQueueOptions<BaseJob extends Job<JobArgs>> extends QueueOptions<BaseJob> {
   remoteWorkerConfigs?: RemoteWorkerClassConfig[];
@@ -56,8 +55,8 @@ export interface RemoteWorkerClassConfig {
   config?: Partial<WorkerConfig>;
 }
 
-export class RestServerQueue<BaseJob extends Job<JobArgs> = DefaultJob<JobArgs>> extends DefaultQueue<BaseJob> {
-  protected classes: Map<string, RemoteWorkerClass> = new Map();
+export class RestServerQueue<BaseJob extends Job<JobArgs> = Job<JobArgs>> extends DefaultQueue<BaseJob> {
+  protected classes: Map<string, RemoteWorkerClass<BaseJob>> = new Map();
 
   constructor(
     protected fastify: FastifyInstance,
@@ -67,7 +66,7 @@ export class RestServerQueue<BaseJob extends Job<JobArgs> = DefaultJob<JobArgs>>
     super(backend, options);
 
     if (options.remoteWorkerConfigs !== undefined && Array.isArray(options.remoteWorkerConfigs)) {
-      options.remoteWorkerConfigs.forEach((remoteWorkerConfig) => this.addRemoteWorker(remoteWorkerConfig));
+      options.remoteWorkerConfigs.forEach((remoteWorkerConfig) => this.addRemoteWorkerConfig(remoteWorkerConfig));
     }
 
     // Plug in event listener to remove lost workers
@@ -82,13 +81,13 @@ export class RestServerQueue<BaseJob extends Job<JobArgs> = DefaultJob<JobArgs>>
     this.setupRoutes();
   }
 
-  addRemoteWorker(remoteWorkerConfig: RemoteWorkerClassConfig) {
+  addRemoteWorkerConfig(remoteWorkerConfig: RemoteWorkerClassConfig) {
     const token = remoteWorkerConfig.token;
     if (this.classes.has(token)) {
       throw new Error(`Token ${token} already exists`);
     }
 
-    const holder: RemoteWorkerClass = {
+    const holder: RemoteWorkerClass<BaseJob> = {
       name: remoteWorkerConfig.name,
       config: {
         ...DefaultWorker.DEFAULT_CONFIG,
@@ -103,6 +102,8 @@ export class RestServerQueue<BaseJob extends Job<JobArgs> = DefaultJob<JobArgs>>
   }
 
   private setupRoutes() {
+    type BaseJobArgs = InferJobArgs<BaseJob>;
+
     this.fastify.register(bearerAuthPlugin, {
       keys: [],
       auth: (key) => this.classes.has(key), // This is not timing safe!
@@ -113,10 +114,14 @@ export class RestServerQueue<BaseJob extends Job<JobArgs> = DefaultJob<JobArgs>>
      */
     this.fastify.post<RegisterWorkerAPI>('/workers', { schema: registerWorkerSchema }, async (request, reply) => {
       const key = request.headers.authorization!.substring(7)!;
-      const holder = this.classes.get(key)!;
+      const holder = this.classes.get(key);
+      if (holder === undefined) {
+        reply.status(401).send(); // 401 = unauthorized
+        return;
+      }
 
       if (holder.activeWorkers.size >= holder.maxWorkers) {
-        reply.status(403).send();
+        reply.status(403).send(); // 403 = forbidden
         return;
       }
 
@@ -128,13 +133,10 @@ export class RestServerQueue<BaseJob extends Job<JobArgs> = DefaultJob<JobArgs>>
         },
       };
 
-      const workerInfo = await this._backend.registerWorker(options);
-      if (workerInfo !== undefined) {
-        holder.activeWorkers.set(workerInfo.id, workerInfo);
-        this.emit('worker_registered', { workerInfo });
-      }
+      const worker = await new Worker<BaseJob>(this._backend, options, this).register();
+      holder.activeWorkers.set(worker.id!, worker);
 
-      return workerInfo;
+      return worker.workerInfo;
     });
 
     /**
@@ -142,23 +144,24 @@ export class RestServerQueue<BaseJob extends Job<JobArgs> = DefaultJob<JobArgs>>
      */
     this.fastify.patch<UpdateWorkerAPI>('/workers/:id', { schema: updateWorkerSchema }, async (request, reply) => {
       const key = request.headers.authorization!.substring(7)!;
-      const holder = this.classes.get(key)!;
-
-      const { id: workerId } = request.params;
-      if (!holder.activeWorkers.has(workerId)) {
-        reply.status(401).send();
+      const holder = this.classes.get(key);
+      if (holder === undefined) {
+        reply.status(401).send(); // 401 = unauthorized
         return;
       }
 
-      const options: WorkerUpdateOptions = {
-        state: request.body.state,
-        finishedJobCount: 0,
-      };
-      const workerInfo = await this._backend.updateWorker(workerId, options);
+      const { id: workerId } = request.params;
+      const worker = holder.activeWorkers.get(workerId);
+      if (worker === undefined) {
+        reply.status(401).send(); // 401 = unauthorized
+        return;
+      }
+
+      const workerInfo = await worker.update(request.body.state);
       if (workerInfo !== undefined) {
         return workerInfo;
       } else {
-        reply.status(404).send();
+        reply.status(404).send(); // 404 = not found
       }
     });
 
@@ -170,22 +173,21 @@ export class RestServerQueue<BaseJob extends Job<JobArgs> = DefaultJob<JobArgs>>
       { schema: unregisterWorkerSchema },
       async (request, reply) => {
         const key = request.headers.authorization!.substring(7)!;
-        const holder = this.classes.get(key)!;
+        const holder = this.classes.get(key);
+        if (holder === undefined) {
+          reply.status(401).send(); // 401 = unauthorized
+          return;
+        }
 
         const { id: workerId } = request.params;
-        if (!holder.activeWorkers.has(workerId)) {
-          reply.status(401).send();
+        const worker = holder.activeWorkers.get(workerId);
+        if (worker === undefined) {
+          reply.status(401).send(); // 401 = unauthorized
           return;
         }
 
-        const isUpdated = await this._backend.unregisterWorker(workerId);
-        if (isUpdated) {
-          holder.activeWorkers.delete(workerId);
-          this.emit('worker_unregistered', { workerId });
-          return;
-        } else {
-          reply.status(404).send();
-        }
+        await worker.unregister();
+        holder.activeWorkers.delete(workerId);
       },
     );
 
@@ -194,19 +196,20 @@ export class RestServerQueue<BaseJob extends Job<JobArgs> = DefaultJob<JobArgs>>
       { schema: checkWorkerInboxSchema },
       async (request, reply) => {
         const key = request.headers.authorization!.substring(7)!;
-        const holder = this.classes.get(key)!;
-
-        const { id: workerId } = request.params;
-        if (!holder.activeWorkers.has(workerId)) {
-          reply.status(401).send();
+        const holder = this.classes.get(key);
+        if (holder === undefined) {
+          reply.status(401).send(); // 401 = unauthorized
           return;
         }
 
-        const options: WorkerUpdateOptions = {
-          state: request.body.state,
-          finishedJobCount: 0,
-        };
-        const commands = await this._backend.checkWorkerInbox(workerId, options);
+        const { id: workerId } = request.params;
+        const worker = holder.activeWorkers.get(workerId);
+        if (worker === undefined) {
+          reply.status(401).send(); // 401 = unauthorized
+          return;
+        }
+
+        const commands = await worker.getInbox(request.body.state);
         if (commands.length !== 0) {
           return commands;
         } else {
@@ -223,22 +226,21 @@ export class RestServerQueue<BaseJob extends Job<JobArgs> = DefaultJob<JobArgs>>
       { schema: assignNextJobSchema },
       async (request, reply) => {
         const key = request.headers.authorization!.substring(7)!;
-        const holder = this.classes.get(key)!;
-
-        const { id: workerId } = request.params;
-        if (!holder.activeWorkers.has(workerId)) {
-          reply.status(401).send();
+        const holder = this.classes.get(key);
+        if (holder === undefined) {
+          reply.status(401).send(); // 401 = unauthorized
           return;
         }
 
-        const { taskNames } = request.body;
-        const { queueNames, dequeueTimeout } = holder.config;
-        const minPriority = request.body.options.minPriority ?? 0;
+        const { id: workerId } = request.params;
+        const worker = holder.activeWorkers.get(workerId);
+        if (worker === undefined) {
+          reply.status(401).send(); // 401 = unauthorized
+          return;
+        }
 
-        const jobInfo = await this._backend.assignNextJob(workerId, taskNames, dequeueTimeout, {
-          queueNames,
-          minPriority,
-        });
+        const jobInfo = await worker.getNextJob(request.body.taskNames, request.body.options.minPriority ?? 0);
+
         if (jobInfo !== null) {
           return jobInfo;
         } else {
@@ -249,34 +251,40 @@ export class RestServerQueue<BaseJob extends Job<JobArgs> = DefaultJob<JobArgs>>
 
     this.fastify.patch<UpdateJobAPI>('/jobs/:id/:attempt', { schema: updateJobSchema }, async (request, reply) => {
       const key = request.headers.authorization!.substring(7)!;
-      const holder = this.classes.get(key)!;
-
-      const { id: jobId, attempt } = request.params;
-      const jobInfo = await this._backend.getJobInfo(jobId);
-      if (jobInfo === undefined || jobInfo.attempt !== attempt || !holder.activeWorkers.has(jobInfo.workerId!)) {
-        reply.status(404).send();
+      const holder = this.classes.get(key);
+      if (holder === undefined) {
+        reply.status(401).send(); // 401 = unauthorized
         return;
       }
 
-      const partialJobInfo: Partial<JobInfo<JobArgs>> = {};
-      let responseCode = 200;
+      const { id: jobId, attempt } = request.params;
+      const jobInfo = await this._backend.getJobInfo<BaseJobArgs>(jobId);
+      if (
+        jobInfo === undefined ||
+        jobInfo.attempt !== attempt ||
+        jobInfo.workerId === undefined ||
+        !holder.activeWorkers.has(jobInfo.workerId)
+      ) {
+        reply.status(404).send(); // 404 = not found
+        return;
+      }
+
+      const executor = new Executor(jobInfo, this._backend, this);
+
+      let responseCode = 0;
 
       const metadata = request.body.metadata;
       if (metadata !== undefined) {
-        const newMetadata = await this._backend.amendJobMetadata(jobId, attempt, metadata);
-        if (newMetadata !== undefined) {
-          partialJobInfo.metadata = newMetadata;
-        } else {
+        const isUpdated = await executor.amendMetadata(metadata);
+        if (!isUpdated) {
           responseCode = 404;
         }
       }
 
       const progress = request.body.progress;
       if (progress !== undefined) {
-        const isUpdated = await this._backend.updateJobProgress(jobId, attempt, progress);
-        if (isUpdated) {
-          partialJobInfo.progress = progress;
-        } else {
+        const isUpdated = await executor.updateProgress(progress);
+        if (!isUpdated) {
           responseCode = 404;
         }
       }
@@ -284,25 +292,24 @@ export class RestServerQueue<BaseJob extends Job<JobArgs> = DefaultJob<JobArgs>>
       const state = request.body.state;
       const result = request.body.result;
       if (state !== undefined && result !== undefined) {
-        const isUpdated = await this._backend.markJobFinished(jobId, attempt, state, result);
-        if (isUpdated) {
-          partialJobInfo.state = state;
-          partialJobInfo.result = result;
-        } else {
+        jobInfo.state = state;
+        jobInfo.result = result;
+        const isUpdated = await executor.markFinished(state, result);
+        if (!isUpdated) {
           responseCode = 404;
         }
       }
-      if (responseCode === 200) {
-        return partialJobInfo;
+      if (responseCode === 0) {
+        return executor.jobInfo;
       }
       reply.status(responseCode).send();
     });
   }
 }
 
-interface RemoteWorkerClass {
+interface RemoteWorkerClass<BaseJob extends Job<JobArgs>> {
   name: string;
   config: WorkerConfig;
   maxWorkers: number;
-  activeWorkers: Map<WorkerId, WorkerInfo>;
+  activeWorkers: Map<WorkerId, Worker<BaseJob>>;
 }

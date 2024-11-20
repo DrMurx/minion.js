@@ -34,22 +34,36 @@ export const updateJobSchema = {
     },
   },
   body: {
-    type: 'object',
-    properties: {
-      result: {
+    anyOf: [
+      {
         type: 'object',
-        properties: {},
+        properties: {
+          metadata: {
+            type: 'object',
+            properties: {},
+          },
+        },
       },
-      state: {
-        type: 'string',
-        enum: [JobState.Succeeded, JobState.Failed],
-      },
-      progress: { type: 'number' },
-      metadata: {
+      {
         type: 'object',
-        properties: {},
+        properties: {
+          progress: { type: 'number' },
+        },
       },
-    },
+      {
+        type: 'object',
+        properties: {
+          state: {
+            type: 'string',
+            enum: [JobState.Succeeded, JobState.Failed],
+          },
+          result: {
+            type: 'object',
+            // properties: {},
+          },
+        },
+      },
+    ],
   },
 };
 

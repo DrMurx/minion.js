@@ -3,12 +3,15 @@ import { DefaultQueue } from './queue/queue.js';
 export { QuickRunner } from './queue/quick-runner.js';
 export {
   type Backend,
+  type ExecutorBackend,
+  type IteratorBackend,
   type JobDequeueOptions,
   type JobEnqueueOptions,
   type JobHandleBackend,
   type JobInfoList,
   type JobOptions,
   type JobPruneResult,
+  type QueueBackend,
   type WorkerBackend,
   type WorkerInfoList,
   type WorkerPruneResult,
@@ -22,6 +25,7 @@ export {
   type Job,
   type JobArgs,
   type JobDescriptor,
+  type JobError,
   type JobFactory,
   type JobId,
   type JobInfo,
@@ -29,7 +33,7 @@ export {
   type ListJobsOptions,
 } from './types/job.js';
 export { type DailyJobHistory, type QueueJobStatistics, type QueueStats } from './types/queue-stats.js';
-export { type Queue, type QueueOptions } from './types/queue.js';
+export { type Queue, type QueueEventEmitter, type QueueOptions } from './types/queue.js';
 export { type Task, type TaskHandlerFunction, type TaskManager } from './types/task.js';
 export {
   WorkerState,

@@ -108,10 +108,10 @@ export class Executor<BaseJob extends Job<JobArgs>> {
 
       if (this.notifier.listenerCount('job_progress') > 0) {
         const event = {
-          job: this.job,
           jobInfo: this.jobInfo,
           progress,
           duration: Date.now() - this.startedAt!.getTime(),
+          job: this.job,
         };
         this.notifier.emit('job_progress', event);
       }
@@ -151,8 +151,8 @@ export class Executor<BaseJob extends Job<JobArgs>> {
 
     if (this.notifier.listenerCount('job_started') > 0) {
       const event = {
-        job: this.job,
         jobInfo: this.jobInfo,
+        job: this.job,
       };
       this.notifier.emit('job_started', event);
     }
@@ -172,10 +172,10 @@ export class Executor<BaseJob extends Job<JobArgs>> {
 
       if (this.notifier.listenerCount('job_finished') > 0) {
         const event = {
-          job: this.job,
           jobInfo: this.jobInfo,
           state: this.state,
           duration: this.duration,
+          job: this.job,
         };
         this.notifier.emit('job_finished', event);
       }
@@ -194,10 +194,10 @@ export class Executor<BaseJob extends Job<JobArgs>> {
       this._jobInfo.finishedAt = new Date();
       if (this.notifier.listenerCount('job_succeeded') > 0) {
         const event = {
-          job: this.job,
           jobInfo: this.jobInfo,
           result: { ...result },
           duration: this.duration,
+          job: this.job,
         };
         this.notifier.emit('job_succeeded', event);
       }
@@ -220,10 +220,10 @@ export class Executor<BaseJob extends Job<JobArgs>> {
       this._jobInfo.finishedAt = new Date();
       if (this.notifier.listenerCount('job_failed') > 0) {
         const event = {
-          job: this.job,
           jobInfo: this.jobInfo,
           result: { ...result },
           duration: this.duration,
+          job: this.job,
         };
         this.notifier.emit('job_failed', event);
       }

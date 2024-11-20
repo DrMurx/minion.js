@@ -218,11 +218,11 @@ export interface QueueEvents<
   JobDescriptorRO = Readonly<JobDescriptor<InferJobArgs<BaseJob>>>,
   JobInfoRO = Readonly<JobInfo<InferJobArgs<BaseJob>>>,
 > {
-  job_started: [{ job: BaseJob; jobInfo: JobInfoRO }];
-  job_progress: [{ job: BaseJob; jobInfo: JobInfoRO; progress: number; duration: number }];
-  job_finished: [{ job: BaseJob; jobInfo: JobInfoRO; state: JobState; duration: number }];
-  job_succeeded: [{ job: BaseJob; jobInfo: JobInfoRO; result: Readonly<JobResult>; duration: number }];
-  job_failed: [{ job: BaseJob; jobInfo: JobInfoRO; result: Readonly<JobError>; duration: number }];
+  job_started: [{ jobInfo: JobInfoRO; job?: BaseJob }];
+  job_progress: [{ jobInfo: JobInfoRO; progress: number; duration: number; job?: BaseJob }];
+  job_finished: [{ jobInfo: JobInfoRO; state: JobState; duration: number; job?: BaseJob }];
+  job_succeeded: [{ jobInfo: JobInfoRO; result: Readonly<JobResult>; duration: number; job?: BaseJob }];
+  job_failed: [{ jobInfo: JobInfoRO; result: Readonly<JobError>; duration: number; job?: BaseJob }];
   job_expired: [{ jobInfo: JobDescriptorRO }];
   job_expunged: [{ jobInfo: JobDescriptorRO }];
   job_abandoned: [{ jobInfo: JobInfoRO }];

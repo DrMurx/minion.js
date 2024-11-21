@@ -10,6 +10,7 @@ import {
   type JobResult,
   type QueueEventEmitter,
 } from '@queuebone/core';
+import { WorkerProxy } from './worker-proxy.ts';
 
 /**
  * The server-side representation of a job executor on a REST worker.
@@ -19,6 +20,7 @@ export class ExecutorProxy<BaseJob extends Job<JobArgs>> {
 
   constructor(
     jobInfo: JobInfo<InferJobArgs<BaseJob>>,
+    private worker: WorkerProxy<BaseJob>,
     private backend: ExecutorBackend,
     private notifier: QueueEventEmitter<BaseJob>,
   ) {
@@ -70,7 +72,7 @@ export class ExecutorProxy<BaseJob extends Job<JobArgs>> {
         this.notifier.emit('job_progress', event);
       }
 
-      // await this._worker.heartbeat();
+      await this.worker.heartbeat();
     }
     return isUpdated;
   }

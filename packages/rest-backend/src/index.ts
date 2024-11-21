@@ -1,3 +1,5 @@
 export { RestBackend } from './backend.js';
-export { type WorkerProfile, type ServerQueueOptions } from './server/config.js';
-export { ServerQueue } from './server/queue.js';
+export { type WorkerProfile } from './server/config.js';
+export { DefaultProfileManager } from './server/profile-manager.js';
+export { routesPlugin, type PluginOptions } from './server/routes.js';
+export { type ProfileManager } from './server/types.js';

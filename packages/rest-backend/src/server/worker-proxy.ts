@@ -9,97 +9,121 @@ import {
   type WorkerBackend,
   type WorkerCommandDescriptor,
   type WorkerConfig,
-  type WorkerId,
   type WorkerInfo,
   type WorkerRegistrationOptions,
   type WorkerUpdateOptions,
 } from '@queuebone/core';
-import { WorkerProfileHolder } from './queue.ts';
+import { type WorkerProfileHolder } from './types.ts';
 
 /**
  * The server side representation of a REST worker.
  */
 export class WorkerProxy<BaseJob extends Job<JobArgs>> {
-  private _workerInfo: WorkerInfo;
+  /**
+   * ID of the worker, if registered
+   */
+  private _id: number | undefined = undefined;
+
+  private _state: WorkerState = WorkerState.Offline;
+
+  /**
+   * Worker configuration
+   */
+  private _config: WorkerConfig;
+
+  /**
+   * Additional metadata (stored in database)
+   */
+  private _metadata: Record<string, any>;
+
+  private _startedAt = new Date();
 
   protected lastHeartbeatAt = 0;
   protected lastInboxCheck = 0;
 
+  private finishedJobCount = 0;
+
   constructor(
     protected workerBackend: WorkerBackend,
     protected holder: WorkerProfileHolder<BaseJob>,
-    ip: string,
+    protected ip: string,
     protected notifier: QueueEventEmitter<BaseJob>,
   ) {
-    this._workerInfo = {
-      id: undefined!,
-      config: holder.config,
-      state: WorkerState.Offline,
-      host: '',
-      pid: 0,
-      finishedJobCount: 0,
-      metadata: {
-        name: holder.name,
-        host: ip,
-      },
-      startedAt: new Date(),
-      jobIds: [],
+    this._config = { ...holder.config };
+
+    this._metadata = {
+      name: holder.name,
+      host: ip,
     };
   }
 
-  get workerInfo(): WorkerInfo {
-    return this._workerInfo;
-  }
-
+  /**
+   * Returns a version of `workerInfo` which is cleared of all internal informat
+   */
   get clientWorkerInfo(): WorkerInfo {
-    return this._workerInfo;
+    const workerInfo: WorkerInfo = {
+      id: this._id ?? 0,
+      config: {
+        ...this._config,
+        heartbeatInterval: 0,
+      },
+      state: this._state,
+      host: this.ip,
+      pid: 0,
+      finishedJobCount: this.finishedJobCount,
+      metadata: this._metadata,
+      startedAt: this._startedAt,
+      jobIds: [],
+    };
+    return workerInfo;
   }
 
-  get id(): WorkerId | undefined {
-    return this._workerInfo.id;
+  set state(state: WorkerState) {
+    this._state = state;
   }
+
+  // get state(): WorkerState {
+  //   return this._state;
+  // }
 
   protected get isRegistered(): boolean {
-    return this._workerInfo.id !== undefined;
-  }
-
-  get config(): Readonly<WorkerConfig> {
-    return this._workerInfo.config;
+    return this._id !== undefined;
   }
 
   get needsInboxCheck(): boolean {
-    return this.lastInboxCheck + this.config.inboxCheckInterval < Date.now();
+    if (this._config.inboxCheckInterval === 0) return false;
+    return this.lastInboxCheck + this._config.inboxCheckInterval < Date.now();
   }
 
   get needsHeartbeat(): boolean {
-    return this.lastHeartbeatAt + this.config.heartbeatInterval < Date.now();
-  }
-
-  get state(): WorkerState {
-    return this._workerInfo.state;
+    if (this._config.heartbeatInterval === 0) return false;
+    return this.lastHeartbeatAt + this._config.heartbeatInterval < Date.now();
   }
 
   async getNextJob(taskNames: string[], minPriority: number): Promise<JobInfo<InferJobArgs<BaseJob>> | null> {
-    if (this.id === undefined) return null;
+    if (this._id === undefined) return null;
+    const { queueNames, dequeueTimeout } = this._config;
+
     const _options = <JobDequeueOptions>{
-      queueNames: this.config.queueNames,
+      queueNames,
       minPriority,
     };
-    const { dequeueTimeout } = this.config;
     const jobInfo = await this.workerBackend.assignNextJob<InferJobArgs<BaseJob>>(
-      this.id,
+      this._id,
       taskNames,
       dequeueTimeout,
       _options,
     );
 
-    if (jobInfo !== null) {
-      if (this.notifier.listenerCount('job_started') > 0) {
-        const event = {
-          jobInfo,
-        };
-        this.notifier.emit('job_started', event);
-      }
+    await this.heartbeat();
+
+    if (jobInfo === null) return null;
+
+    if (this.notifier.listenerCount('job_started') > 0) {
+      const event = {
+        jobInfo,
+      };
+      this.notifier.emit('job_started', event);
     }
 
     return jobInfo;
@@ -108,13 +132,17 @@ export class WorkerProxy<BaseJob extends Job<JobArgs>> {
   async register(): Promise<this> {
     if (!this.isRegistered) {
       const options: WorkerRegistrationOptions = {
-        config: this.config,
-        metadata: this._workerInfo.metadata,
+        config: this._config,
+        metadata: this._metadata,
       };
       const workerInfo = await this.workerBackend.registerWorker(options);
-      this._workerInfo = workerInfo;
-      this.notifier.emit('worker_registered', { workerInfo: this.workerInfo });
-      this.holder.activeWorkers.set(this.id!, this);
+      this._id = workerInfo.id;
+      this._config = workerInfo.config;
+      this._state = WorkerState.Online;
+      this._metadata = workerInfo.metadata;
+      this.notifier.emit('worker_registered', { workerInfo });
+      this.holder.activeWorkers.set(workerInfo.id, this);
+      this.finishedJobCount = 0;
       this.lastHeartbeatAt = Date.now();
     } else {
       await this.heartbeat(true);
@@ -122,58 +150,40 @@ export class WorkerProxy<BaseJob extends Job<JobArgs>> {
     return this;
   }
 
-  async update(state: WorkerState): Promise<WorkerInfo> {
-    this._workerInfo.state = state;
-    const options: WorkerUpdateOptions = {
-      config: this.config,
-      state: this.state,
-      finishedJobCount: this._workerInfo.finishedJobCount,
-      metadata: this._workerInfo.metadata,
-    };
-    const workerInfo = await this.workerBackend.updateWorker(this.id!, options);
-    if (workerInfo) {
-      this._workerInfo.config = workerInfo.config;
-      this._workerInfo.metadata = workerInfo.metadata;
-    }
-    this.lastHeartbeatAt = Date.now();
-    return this._workerInfo;
-  }
-
-  async heartbeat(force: boolean = false): Promise<this> {
+  async heartbeat(force: boolean = false): Promise<void> {
     if ((force || this.needsHeartbeat) && this.isRegistered) {
       const options: WorkerUpdateOptions = {
-        config: this.config,
-        state: this.state,
-        finishedJobCount: this._workerInfo.finishedJobCount,
-        metadata: this._workerInfo.metadata,
+        config: this._config,
+        state: this._state,
+        finishedJobCount: this.finishedJobCount,
+        metadata: this._metadata,
       };
-      const workerInfo = await this.workerBackend.updateWorker(this.id!, options);
+      const workerInfo = await this.workerBackend.updateWorker(this._id!, options);
       if (workerInfo) {
-        this._workerInfo.config = workerInfo.config;
-        this._workerInfo.metadata = workerInfo.metadata;
+        this._config = workerInfo.config;
+        this._metadata = workerInfo.metadata;
       }
       this.lastHeartbeatAt = Date.now();
     }
-    return this;
   }
 
-  async getInbox(state: WorkerState): Promise<WorkerCommandDescriptor[]> {
-    this._workerInfo.state = state;
+  async getInbox(): Promise<WorkerCommandDescriptor[]> {
     const options: WorkerUpdateOptions = {
-      state: state,
-      finishedJobCount: this._workerInfo.finishedJobCount,
+      state: this._state,
+      finishedJobCount: this.finishedJobCount,
     };
-    return await this.workerBackend.checkWorkerInbox(this.id!, options);
+    const commands = await this.workerBackend.checkWorkerInbox(this._id!, options);
+    this.lastHeartbeatAt = Date.now();
+    return commands;
   }
 
   async unregister(): Promise<this> {
-    if (this.isRegistered) {
-      const workerId = this.id!;
-      await this.workerBackend.unregisterWorker(workerId);
-      this._workerInfo.id = undefined!;
-      this._workerInfo.state = WorkerState.Offline;
-      this.notifier.emit('worker_unregistered', { workerId });
-      this.holder.activeWorkers.delete(workerId);
+    if (this._id !== undefined) {
+      await this.workerBackend.unregisterWorker(this._id);
+      this._state = WorkerState.Offline;
+      this.notifier.emit('worker_unregistered', { workerId: this._id });
+      this.holder.activeWorkers.delete(this._id);
+      this._id = undefined!;
     }
     return this;
   }

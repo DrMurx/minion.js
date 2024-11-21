@@ -1,8 +1,4 @@
-import { type Job, type JobArgs, type QueueOptions, type WorkerConfig } from '@queuebone/core';
-
-export interface ServerQueueOptions<BaseJob extends Job<JobArgs>> extends QueueOptions<BaseJob> {
-  workerProfiles?: WorkerProfile[];
-}
+import { type WorkerConfig } from '@queuebone/core';
 
 export interface WorkerProfile {
   /**

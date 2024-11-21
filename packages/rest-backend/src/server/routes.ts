@@ -1,20 +1,6 @@
-import bearerAuthPlugin from '@fastify/bearer-auth';
 import { type Backend, type Job, type JobArgs, type QueueEventEmitter } from '@queuebone/core';
-import {
-  type ContextConfigDefault,
-  type FastifyBaseLogger,
-  type FastifyPluginAsync,
-  type FastifySchema,
-  type FastifyTypeProvider,
-  type FastifyTypeProviderDefault,
-  type RawRequestDefaultExpression,
-  type RawServerBase,
-  type RawServerDefault,
-  type RouteGenericInterface,
-} from 'fastify';
-import { type FastifyRequestType, type ResolveFastifyRequestType } from 'fastify/types/type-provider';
+import { type FastifyPluginAsync } from 'fastify';
 import { ExecutorProxy } from './executor-proxy.ts';
-import { type WorkerProfileHolder } from './queue.ts';
 import {
   type AssignNextJobAPI,
   assignNextJobSchema,
@@ -29,50 +15,33 @@ import {
   type UpdateWorkerAPI,
   updateWorkerSchema,
   type WorkerAPI,
-} from './server-schema.ts';
+} from './schemas.ts';
+import { type ProfileManager } from './types.ts';
 import { WorkerProxy } from './worker-proxy.ts';
 
-/* eslint-disable @typescript-eslint/no-unused-vars */
-declare module 'fastify' {
-  export interface FastifyRequest<
-    RouteGeneric extends RouteGenericInterface = RouteGenericInterface,
-    RawServer extends RawServerBase = RawServerDefault,
-    RawRequest extends RawRequestDefaultExpression<RawServer> = RawRequestDefaultExpression<RawServer>,
-    SchemaCompiler extends FastifySchema = FastifySchema,
-    TypeProvider extends FastifyTypeProvider = FastifyTypeProviderDefault,
-    ContextConfig = ContextConfigDefault,
-    Logger extends FastifyBaseLogger = FastifyBaseLogger,
-    RequestType extends FastifyRequestType = ResolveFastifyRequestType<TypeProvider, SchemaCompiler, RouteGeneric>,
-  > {
-    holder: WorkerProfileHolder<Job<JobArgs>>;
-    worker: WorkerProxy<Job<JobArgs>>;
-  }
-}
-/* eslint-enable @typescript-eslint/no-unused-vars */
-
-interface ServerRouteOptions<BaseJob extends Job<JobArgs>> {
-  holders: Map<string, WorkerProfileHolder<BaseJob>>;
+export interface PluginOptions<BaseJob extends Job<JobArgs>> {
+  profileManager: ProfileManager<BaseJob>;
   backend: Backend;
   notifier: QueueEventEmitter<BaseJob>;
 }
 
-export const routes: FastifyPluginAsync<ServerRouteOptions<Job<JobArgs>>> = async (fastify, options) => {
-  const { holders, backend, notifier } = options;
-  fastify.register(bearerAuthPlugin, {
-    keys: [],
-    auth: (key) => holders.has(key), // This is not timing safe!
+export const routesPlugin: FastifyPluginAsync<PluginOptions<Job<JobArgs>>> = async (fastify, options) => {
+  const { profileManager, backend, notifier } = options;
+
+  // Plug in event listener to remove lost workers
+  notifier.on('worker_lost', ({ workerInfo }) => {
+    profileManager.dropWorker(workerInfo.id);
   });
 
   fastify.decorateRequest('holder');
-
   fastify.addHook('preHandler', async (request, reply) => {
     const authorization = request.headers.authorization;
     if (authorization === undefined || !authorization.startsWith('Bearer ')) {
-      return reply.status(401).send();
+      return reply.status(401).send(); // 401 = unauthorized
     }
 
-    const key = authorization.substring(7)!;
-    const holder = holders.get(key);
+    const token = authorization.substring(7)!;
+    const holder = profileManager.timingSafeGet(token)!;
     if (holder === undefined) {
       return reply.status(401).send(); // 401 = unauthorized
     }
@@ -92,10 +61,10 @@ export const routes: FastifyPluginAsync<ServerRouteOptions<Job<JobArgs>>> = asyn
     return serverWorker.clientWorkerInfo;
   });
 
+  // All /worker/:id routes
   fastify.register(
     async (fastify) => {
       fastify.decorateRequest('worker');
-
       fastify.addHook<WorkerAPI>('preHandler', async (request, reply) => {
         const holder = request.holder;
         const { id } = request.params;
@@ -109,9 +78,10 @@ export const routes: FastifyPluginAsync<ServerRouteOptions<Job<JobArgs>>> = asyn
       /**
        * Update a worker
        */
-      fastify.patch<UpdateWorkerAPI>('', { schema: updateWorkerSchema }, async (request, reply) => {
-        const workerInfo = await request.worker.update(request.body.state);
-        return workerInfo !== undefined ? workerInfo : reply.status(404).send(); // 404 = not found
+      fastify.patch<UpdateWorkerAPI>('', { schema: updateWorkerSchema }, async (request) => {
+        request.worker.state = request.body.state;
+        await request.worker.heartbeat(true);
+        return request.worker.clientWorkerInfo;
       });
 
       /**
@@ -121,8 +91,12 @@ export const routes: FastifyPluginAsync<ServerRouteOptions<Job<JobArgs>>> = asyn
         await request.worker.unregister();
       });
 
+      /**
+       * Query the worker's inbox.
+       */
       fastify.post<CheckWorkerInboxAPI>('/inbox', { schema: checkWorkerInboxSchema }, async (request, reply) => {
-        const commands = await request.worker.getInbox(request.body.state);
+        request.worker.state = request.body.state;
+        const commands = await request.worker.getInbox();
         return commands.length !== 0 ? commands : reply.status(204).send(); // 204 = No content
       });
 
@@ -143,16 +117,15 @@ export const routes: FastifyPluginAsync<ServerRouteOptions<Job<JobArgs>>> = asyn
 
     const { id: jobId, attempt } = request.params;
     const jobInfo = await backend.getJobInfo<JobArgs>(jobId);
-    if (
-      jobInfo === undefined ||
-      jobInfo.attempt !== attempt ||
-      jobInfo.workerId === undefined ||
-      !holder.activeWorkers.has(jobInfo.workerId)
-    ) {
+    if (jobInfo === undefined || jobInfo.attempt !== attempt || jobInfo.workerId === undefined) {
+      return reply.status(404).send(); // 404 = not found
+    }
+    const worker = holder.activeWorkers.get(jobInfo.workerId);
+    if (worker === undefined) {
       return reply.status(404).send(); // 404 = not found
     }
 
-    const executor = new ExecutorProxy(jobInfo, backend, notifier);
+    const executor = new ExecutorProxy(jobInfo, worker, backend, notifier);
 
     let responseCode = 0;
 

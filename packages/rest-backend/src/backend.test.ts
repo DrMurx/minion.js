@@ -4,7 +4,8 @@ import Fastify from 'fastify';
 import os from 'os';
 import t from 'tap';
 import { RestBackend } from './backend.js';
-import { ServerQueue } from './server/queue.js';
+import { DefaultProfileManager } from './server/profile-manager.js';
+import { routesPlugin } from './server/routes.js';
 
 const skip = process.env.TEST_ONLINE === undefined ? { skip: 'set TEST_ONLINE to enable this test' } : {};
 const SCHEMA = 'queue_http_backend_test';
@@ -19,29 +20,34 @@ t.test('HTTP backend', skip, async (t) => {
 
   // Create server components
   const serverBackend = new PgBackend(pool);
+  const serverQueue = new DefaultQueue(serverBackend, {
+    backoffStrategy: () => 0, // No backoff for this test
+  });
+  const profileManager = new DefaultProfileManager([
+    {
+      name: 'test-worker-1',
+      token: 'test-token-1',
+      config: {
+        queueNames: ['default'],
+        heartbeatInterval: 60 * 60 * 1000,
+      },
+      maxWorkers: 2,
+    },
+    {
+      name: 'test-worker-2',
+      token: 'test-token-2',
+      config: {
+        queueNames: ['default'],
+      },
+    },
+  ]);
   const fastify = Fastify({
     logger: false,
   });
-  const serverQueue = new ServerQueue(fastify, serverBackend, {
-    backoffStrategy: () => 0, // No backoff for this test
-    workerProfiles: [
-      {
-        name: 'test-worker-1',
-        token: 'test-token-1',
-        config: {
-          queueNames: ['default'],
-          heartbeatInterval: 60 * 60 * 1000,
-        },
-        maxWorkers: 2,
-      },
-      {
-        name: 'test-worker-2',
-        token: 'test-token-2',
-        config: {
-          queueNames: ['default'],
-        },
-      },
-    ],
+  fastify.register(routesPlugin, {
+    profileManager,
+    backend: serverBackend,
+    notifier: serverQueue,
   });
   await serverQueue.start();
   fastify.listen({ port: PORT });
@@ -81,7 +87,7 @@ t.test('HTTP backend', skip, async (t) => {
       t.ok(true);
     }
 
-    t.equal(worker1.config.heartbeatInterval, 3600000);
+    t.equal(worker1.config.heartbeatInterval, 0);
 
     const batch1 = (await serverBackend.getWorkerInfos(0, 10, {})).workers;
     t.equal(batch1[0].id, worker1.id);

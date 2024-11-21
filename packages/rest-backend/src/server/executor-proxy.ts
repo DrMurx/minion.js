@@ -11,7 +11,10 @@ import {
   type QueueEventEmitter,
 } from '@queuebone/core';
 
-export class Executor<BaseJob extends Job<JobArgs>> {
+/**
+ * The server-side representation of a job executor on a REST worker.
+ */
+export class ExecutorProxy<BaseJob extends Job<JobArgs>> {
   private _jobInfo: JobInfo<InferJobArgs<BaseJob>>;
 
   constructor(

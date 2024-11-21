@@ -9,7 +9,7 @@ import {
   type WorkerInfo,
   WorkerState,
 } from '@queuebone/core';
-import { type ClientWorkerUpdateOptions } from './backend.js';
+import { type ClientWorkerUpdateOptions } from '../backend.js';
 
 export type UpdateJobAPI = {
   Params: { id: JobId; attempt: number };
@@ -72,6 +72,20 @@ export type RegisterWorkerAPI = {
 };
 
 export const registerWorkerSchema = {};
+
+export type WorkerAPI = {
+  Params: { id: WorkerId };
+};
+
+export const workerSchema = {
+  params: {
+    type: 'object',
+    required: ['id'],
+    properties: {
+      id: { type: 'number' },
+    },
+  },
+};
 
 export type UpdateWorkerAPI = {
   Params: { id: WorkerId };

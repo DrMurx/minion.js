@@ -14,35 +14,44 @@ import {
   type WorkerRegistrationOptions,
   type WorkerUpdateOptions,
 } from '@queuebone/core';
+import { WorkerProfileHolder } from './queue.ts';
 
 /**
- * Default worker class.
+ * The server side representation of a REST worker.
  */
-export class Worker<BaseJob extends Job<JobArgs>> {
+export class WorkerProxy<BaseJob extends Job<JobArgs>> {
   private _workerInfo: WorkerInfo;
 
-  private lastHeartbeatAt = 0;
-  private lastInboxCheck = 0;
+  protected lastHeartbeatAt = 0;
+  protected lastInboxCheck = 0;
 
   constructor(
-    private workerBackend: WorkerBackend,
-    options: WorkerRegistrationOptions,
-    private notifier: QueueEventEmitter<BaseJob>,
+    protected workerBackend: WorkerBackend,
+    protected holder: WorkerProfileHolder<BaseJob>,
+    ip: string,
+    protected notifier: QueueEventEmitter<BaseJob>,
   ) {
     this._workerInfo = {
       id: undefined!,
-      config: options.config,
+      config: holder.config,
       state: WorkerState.Offline,
       host: '',
       pid: 0,
       finishedJobCount: 0,
-      metadata: options.metadata,
+      metadata: {
+        name: holder.name,
+        host: ip,
+      },
       startedAt: new Date(),
       jobIds: [],
     };
   }
 
   get workerInfo(): WorkerInfo {
+    return this._workerInfo;
+  }
+
+  get clientWorkerInfo(): WorkerInfo {
     return this._workerInfo;
   }
 
@@ -102,8 +111,10 @@ export class Worker<BaseJob extends Job<JobArgs>> {
         config: this.config,
         metadata: this._workerInfo.metadata,
       };
-      this._workerInfo = await this.workerBackend.registerWorker(options);
+      const workerInfo = await this.workerBackend.registerWorker(options);
+      this._workerInfo = workerInfo;
       this.notifier.emit('worker_registered', { workerInfo: this.workerInfo });
+      this.holder.activeWorkers.set(this.id!, this);
       this.lastHeartbeatAt = Date.now();
     } else {
       await this.heartbeat(true);
@@ -157,10 +168,12 @@ export class Worker<BaseJob extends Job<JobArgs>> {
 
   async unregister(): Promise<this> {
     if (this.isRegistered) {
-      await this.workerBackend.unregisterWorker(this.id!);
-      this._workerInfo.state = WorkerState.Offline;
-      this.notifier.emit('worker_unregistered', { workerId: this.id! });
+      const workerId = this.id!;
+      await this.workerBackend.unregisterWorker(workerId);
       this._workerInfo.id = undefined!;
+      this._workerInfo.state = WorkerState.Offline;
+      this.notifier.emit('worker_unregistered', { workerId });
+      this.holder.activeWorkers.delete(workerId);
     }
     return this;
   }

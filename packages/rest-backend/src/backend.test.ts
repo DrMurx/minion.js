@@ -4,7 +4,7 @@ import Fastify from 'fastify';
 import os from 'os';
 import t from 'tap';
 import { RestBackend } from './backend.js';
-import { RestServerQueue } from './server.js';
+import { ServerQueue } from './server/queue.js';
 
 const skip = process.env.TEST_ONLINE === undefined ? { skip: 'set TEST_ONLINE to enable this test' } : {};
 const SCHEMA = 'queue_http_backend_test';
@@ -22,9 +22,9 @@ t.test('HTTP backend', skip, async (t) => {
   const fastify = Fastify({
     logger: false,
   });
-  const serverQueue = new RestServerQueue(fastify, serverBackend, {
+  const serverQueue = new ServerQueue(fastify, serverBackend, {
     backoffStrategy: () => 0, // No backoff for this test
-    remoteWorkerConfigs: [
+    workerProfiles: [
       {
         name: 'test-worker-1',
         token: 'test-token-1',

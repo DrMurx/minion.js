@@ -13,6 +13,7 @@
     "**/*": "prettier --write --ignore-unknown"
   },
   "devDependencies": {
+    "@types/node": "^22.9.0",
     "globals": "^15.10.0",
     "husky": "^9.1.6",
     "lint-staged": "^15.2.10"

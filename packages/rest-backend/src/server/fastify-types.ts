@@ -16,7 +16,7 @@ import { type WorkerProxy } from './worker-proxy.js';
 
 /* eslint-disable @typescript-eslint/no-unused-vars */
 declare module 'fastify' {
-  interface FastifyRequest<
+  export interface FastifyRequest<
     RouteGeneric extends RouteGenericInterface = RouteGenericInterface,
     RawServer extends RawServerBase = RawServerDefault,
     RawRequest extends RawRequestDefaultExpression<RawServer> = RawRequestDefaultExpression<RawServer>,

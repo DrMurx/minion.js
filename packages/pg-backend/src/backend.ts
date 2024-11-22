@@ -368,34 +368,31 @@ export class PgBackend implements Backend {
     ignoreQueues: string[],
   ): Promise<JobPruneResult<Args>> {
     // Delete `pending`/`scheduled` jobs past expiration date
-    const expiredJobsResult = await this.query<JobRecord<Args>>(
+    const expiredJobsResult = await this.runJobQuery<Args>(
       `DELETE FROM ${JOB_TABLE}
       WHERE state IN ('${JobState.Pending}', '${JobState.Scheduled}')
-        AND expires_at <= NOW()
-      RETURNING ${this.jobRecordSql}`,
+        AND expires_at <= NOW()`,
     );
 
     // Delete `succeeded` jobs after the expunge period
-    const expungedJobsResult = await this.query<JobRecord<Args>>(
+    const expungedJobsResult = await this.runJobQuery<Args>(
       `DELETE FROM ${JOB_TABLE}
       WHERE state = '${JobState.Succeeded}'
-        AND NOW() - finished_at >= $1 * INTERVAL '1 millisecond'
-      RETURNING ${this.jobRecordSql}`,
+        AND NOW() - finished_at >= $1 * INTERVAL '1 millisecond'`,
       [expungePeriod],
     );
 
     // Mark `pending`/`scheduled` jobs as `unattended` if they are due, but in the queue past `unattendedPeriod`.
-    const unattendedJobsResult = await this.query<JobRecord<Args>>(
+    const unattendedJobsResult = await this.runJobQuery<Args>(
       `UPDATE ${JOB_TABLE} SET
         state = '${JobState.Unattended}'
       WHERE state IN ('${JobState.Pending}', '${JobState.Scheduled}')
-        AND NOW() - delay_until > $1 * INTERVAL '1 millisecond'
-      RETURNING ${this.jobRecordSql}`,
+        AND NOW() - delay_until > $1 * INTERVAL '1 millisecond'`,
       [unattendedPeriod],
     );
 
     // Mark `running` jobs as `abandoned` if they are assigned to an `offline`, `lost`, or non-existing worker.
-    const abandonedJobsResult = await this.query<JobRecord<Args>>(
+    const abandonedJobsResult = await this.runJobQuery<Args>(
       `UPDATE ${JOB_TABLE} AS j
       SET result = $1,
           state = '${JobState.Abandoned}',
@@ -407,8 +404,7 @@ export class PgBackend implements Backend {
           FROM ${WORKER_TABLE}
           WHERE id = j.worker_id
             AND state IN ('${WorkerState.Online}', '${WorkerState.Busy}', '${WorkerState.Idle}')
-        )
-      RETURNING ${this.jobRecordSql}`,
+        )`,
       [JSON.stringify({ name: 'WorkerGoneError', message: 'Worker went away' }), ignoreQueues],
     );
 
@@ -423,7 +419,7 @@ export class PgBackend implements Backend {
   }
 
   /**
-   * Returns the information about jobs in batches.
+   * Returns the information about a specific job.
    */
   async getJobInfo<Args extends JobArgs>(jobId: JobId): Promise<JobInfo<Args> | undefined> {
     const results = await this.query<JobInfo<Args>>(
@@ -444,6 +440,9 @@ export class PgBackend implements Backend {
     return jobRecord;
   }
 
+  /**
+   * Returns the information about jobs in batches.
+   */
   async getJobInfos<Args extends JobArgs>(
     offset: number,
     limit: number,

@@ -86,7 +86,7 @@ export class PgBackend implements Backend {
   /**
    * Specialized query method for job-related non-select queries, adding a RETURNING clause to get the job infos
    */
-  protected async runJobQuery<Args extends JobArgs>(
+  protected async queryForJobRecord<Args extends JobArgs>(
     sql: string,
     values?: QueryConfigValues<any>,
   ): Promise<QueryResult<JobRecord<Args>>> {
@@ -109,7 +109,7 @@ export class PgBackend implements Backend {
     args: Args,
     options: JobEnqueueOptions,
   ): Promise<JobRecord<Args>> {
-    const results = await this.runJobQuery<Args>(
+    const results = await this.queryForJobRecord<Args>(
       `INSERT INTO ${JOB_TABLE} (
         queue_name,
         task_name,
@@ -161,7 +161,7 @@ export class PgBackend implements Backend {
     options: JobOptions,
   ): Promise<JobRecord<Args> | undefined> {
     const delayFor = options.delayFor ?? 0;
-    const results = await this.runJobQuery<Args>(
+    const results = await this.queryForJobRecord<Args>(
       `UPDATE ${JOB_TABLE} SET
         queue_name = COALESCE($1, queue_name),
         state = $2,
@@ -245,7 +245,7 @@ export class PgBackend implements Backend {
     state: JobState.Succeeded | JobState.Failed | JobState.Aborted,
     result: JobResult,
   ): Promise<boolean> {
-    const results = await this.runJobQuery<JobArgs>(
+    const results = await this.queryForJobRecord<JobArgs>(
       `UPDATE ${JOB_TABLE}
         SET result = $1,
             state = $2,
@@ -289,7 +289,7 @@ export class PgBackend implements Backend {
     const minPriority = options.minPriority;
     const queueNames = Array.isArray(options.queueNames) ? options.queueNames : [options.queueNames];
 
-    const results = await this.runJobQuery<Args>(
+    const results = await this.queryForJobRecord<Args>(
       `UPDATE ${JOB_TABLE}
       SET state = '${JobState.Running}',
           progress = 0.0,
@@ -368,14 +368,14 @@ export class PgBackend implements Backend {
     ignoreQueues: string[],
   ): Promise<JobPruneResult<Args>> {
     // Delete `pending`/`scheduled` jobs past expiration date
-    const expiredJobsResult = await this.runJobQuery<Args>(
+    const expiredJobsResult = await this.queryForJobRecord<Args>(
       `DELETE FROM ${JOB_TABLE}
       WHERE state IN ('${JobState.Pending}', '${JobState.Scheduled}')
         AND expires_at <= NOW()`,
     );
 
     // Delete `succeeded` jobs after the expunge period
-    const expungedJobsResult = await this.runJobQuery<Args>(
+    const expungedJobsResult = await this.queryForJobRecord<Args>(
       `DELETE FROM ${JOB_TABLE}
       WHERE state = '${JobState.Succeeded}'
         AND NOW() - finished_at >= $1 * INTERVAL '1 millisecond'`,
@@ -383,7 +383,7 @@ export class PgBackend implements Backend {
     );
 
     // Mark `pending`/`scheduled` jobs as `unattended` if they are due, but in the queue past `unattendedPeriod`.
-    const unattendedJobsResult = await this.runJobQuery<Args>(
+    const unattendedJobsResult = await this.queryForJobRecord<Args>(
       `UPDATE ${JOB_TABLE} SET
         state = '${JobState.Unattended}'
       WHERE state IN ('${JobState.Pending}', '${JobState.Scheduled}')
@@ -392,7 +392,7 @@ export class PgBackend implements Backend {
     );
 
     // Mark `running` jobs as `abandoned` if they are assigned to an `offline`, `lost`, or non-existing worker.
-    const abandonedJobsResult = await this.runJobQuery<Args>(
+    const abandonedJobsResult = await this.queryForJobRecord<Args>(
       `UPDATE ${JOB_TABLE} AS j
       SET result = $1,
           state = '${JobState.Abandoned}',

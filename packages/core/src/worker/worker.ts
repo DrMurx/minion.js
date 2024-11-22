@@ -5,15 +5,15 @@ import {
   type WorkerBackend,
   type WorkerRegistrationOptions,
 } from '../types/backend.js';
-import { type JobFactory, type InferJobArgs, type Job, type JobArgs } from '../types/job.js';
+import { type InferJobArgs, type Job, type JobArgs, type JobFactory } from '../types/job.js';
 import { type QueueEventEmitter } from '../types/queue.js';
 import { type Task, type TaskManager } from '../types/task.js';
 import {
   WorkerState,
-  type WorkerInstance,
   type WorkerCommandHandler,
   type WorkerConfig,
   type WorkerId,
+  type WorkerInstance,
   type WorkerOptions,
 } from '../types/worker.js';
 import { WorkerCommandManager } from './command-manager.js';
@@ -179,15 +179,20 @@ export class DefaultWorker<BaseJob extends Job<JobArgs>> implements WorkerInstan
   }
 
   async getNextExecutor(wait = 0, options: Partial<JobDequeueOptions> = {}): Promise<Executor<BaseJob> | null> {
-    if (this.id === undefined) return null;
+    if (this._id === undefined) return null;
     const _options = <JobDequeueOptions>{
       queueNames: this._config.queueNames,
       ...options,
     };
     const taskNames = this.taskManager.getTaskNames();
-    const jobInfo = await this.workerBackend.assignNextJob<InferJobArgs<BaseJob>>(this.id, taskNames, wait, _options);
-    if (jobInfo === null) return null;
-    return new Executor<BaseJob>(jobInfo, this, this.jobBackend, this.jobFactory, this.notifier);
+    const jobRecord = await this.workerBackend.assignNextJob<InferJobArgs<BaseJob>>(
+      this._id,
+      taskNames,
+      wait,
+      _options,
+    );
+    if (jobRecord === null) return null;
+    return new Executor<BaseJob>(jobRecord, this, this.jobBackend, this.jobFactory, this.notifier);
   }
 
   async terminate(reason?: string): Promise<void> {

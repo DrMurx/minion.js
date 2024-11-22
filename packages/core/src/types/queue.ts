@@ -8,11 +8,10 @@ import {
   type Job,
   type JobArgs,
   type JobBackoffStrategy,
-  type JobDescriptor,
   type JobError,
   type JobFactory,
   type JobId,
-  type JobInfo,
+  type JobRecord,
   type JobResult,
   type JobResultOptions,
   type ListJobsOptions,
@@ -112,7 +111,7 @@ export interface Producer<BaseJob extends Job<JobArgs>> {
   listJobInfos<Args extends InferJobArgs<BaseJob> = InferJobArgs<BaseJob>>(
     options?: ListJobsOptions,
     chunkSize?: number,
-  ): BackendIterator<JobInfo<Args>>;
+  ): BackendIterator<JobRecord<Args>>;
 }
 
 export interface Consumer<BaseJob extends Job<JobArgs>> {
@@ -215,18 +214,17 @@ export interface QueueOptions<BaseJob extends Job<JobArgs>> extends PruneOptions
 
 export interface QueueEvents<
   BaseJob extends Job<JobArgs>,
-  JobDescriptorRO = Readonly<JobDescriptor<InferJobArgs<BaseJob>>>,
-  JobInfoRO = Readonly<JobInfo<InferJobArgs<BaseJob>>>,
+  ReadonlyJobRecord = Readonly<JobRecord<InferJobArgs<BaseJob>>>,
 > {
-  job_started: [{ jobInfo: JobInfoRO; job?: BaseJob }];
-  job_progress: [{ jobInfo: JobInfoRO; progress: number; duration: number; job?: BaseJob }];
-  job_finished: [{ jobInfo: JobInfoRO; state: JobState; duration: number; job?: BaseJob }];
-  job_succeeded: [{ jobInfo: JobInfoRO; result: Readonly<JobResult>; duration: number; job?: BaseJob }];
-  job_failed: [{ jobInfo: JobInfoRO; result: Readonly<JobError>; duration: number; job?: BaseJob }];
-  job_expired: [{ jobInfo: JobDescriptorRO }];
-  job_expunged: [{ jobInfo: JobDescriptorRO }];
-  job_abandoned: [{ jobInfo: JobInfoRO }];
-  job_unattended: [{ jobInfo: JobDescriptorRO }];
+  job_started: [{ jobRecord: ReadonlyJobRecord; job?: BaseJob }];
+  job_progress: [{ jobRecord: ReadonlyJobRecord; progress: number; duration: number; job?: BaseJob }];
+  job_finished: [{ jobRecord: ReadonlyJobRecord; state: JobState; duration: number; job?: BaseJob }];
+  job_succeeded: [{ jobRecord: ReadonlyJobRecord; result: Readonly<JobResult>; duration: number; job?: BaseJob }];
+  job_failed: [{ jobRecord: ReadonlyJobRecord; result: Readonly<JobError>; duration: number; job?: BaseJob }];
+  job_expired: [{ jobRecord: ReadonlyJobRecord }];
+  job_expunged: [{ jobRecord: ReadonlyJobRecord }];
+  job_abandoned: [{ jobRecord: ReadonlyJobRecord }];
+  job_unattended: [{ jobRecord: ReadonlyJobRecord }];
   worker_registered: [{ workerInfo: Readonly<WorkerInfo> }];
   worker_unregistered: [{ workerId: WorkerId }];
   worker_lost: [{ workerInfo: Readonly<WorkerInfo> }];

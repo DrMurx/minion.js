@@ -11,8 +11,8 @@ import {
   type RouteGenericInterface,
 } from 'fastify';
 import { type FastifyRequestType, type ResolveFastifyRequestType } from 'fastify/types/type-provider';
-import { type WorkerProfileHolder } from './types.ts';
-import { type WorkerProxy } from './worker-proxy.ts';
+import { type WorkerProfileHolder } from './types.js';
+import { type WorkerProxy } from './worker-proxy.js';
 
 /* eslint-disable @typescript-eslint/no-unused-vars */
 declare module 'fastify' {

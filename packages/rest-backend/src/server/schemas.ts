@@ -1,7 +1,7 @@
 import {
   type JobArgs,
-  type JobDescriptor,
   type JobId,
+  type JobRecord,
   type JobResult,
   JobState,
   type WorkerCommandDescriptor,
@@ -136,7 +136,7 @@ export type AssignNextJobAPI = {
       minPriority?: number;
     };
   };
-  Reply: JobDescriptor<JobArgs> | void;
+  Reply: JobRecord<JobArgs> | void;
 };
 
 export const assignNextJobSchema = {

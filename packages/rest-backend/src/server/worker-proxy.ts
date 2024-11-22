@@ -4,7 +4,7 @@ import {
   type Job,
   type JobArgs,
   type JobDequeueOptions,
-  type JobInfo,
+  type JobRecord,
   type QueueEventEmitter,
   type WorkerBackend,
   type WorkerCommandDescriptor,
@@ -13,7 +13,7 @@ import {
   type WorkerRegistrationOptions,
   type WorkerUpdateOptions,
 } from '@queuebone/core';
-import { type WorkerProfileHolder } from './types.ts';
+import { type WorkerProfileHolder } from './types.js';
 
 /**
  * The server side representation of a REST worker.
@@ -100,7 +100,7 @@ export class WorkerProxy<BaseJob extends Job<JobArgs>> {
     return this.lastHeartbeatAt + this._config.heartbeatInterval < Date.now();
   }
 
-  async getNextJob(taskNames: string[], minPriority: number): Promise<JobInfo<InferJobArgs<BaseJob>> | null> {
+  async getNextJob(taskNames: string[], minPriority: number): Promise<JobRecord<InferJobArgs<BaseJob>> | null> {
     if (this._id === undefined) return null;
     const { queueNames, dequeueTimeout } = this._config;
 
@@ -108,7 +108,7 @@ export class WorkerProxy<BaseJob extends Job<JobArgs>> {
       queueNames,
       minPriority,
     };
-    const jobInfo = await this.workerBackend.assignNextJob<InferJobArgs<BaseJob>>(
+    const jobRecord = await this.workerBackend.assignNextJob<InferJobArgs<BaseJob>>(
       this._id,
       taskNames,
       dequeueTimeout,
@@ -117,16 +117,16 @@ export class WorkerProxy<BaseJob extends Job<JobArgs>> {
 
     await this.heartbeat();
 
-    if (jobInfo === null) return null;
+    if (jobRecord === null) return null;
 
     if (this.notifier.listenerCount('job_started') > 0) {
       const event = {
-        jobInfo,
+        jobRecord,
       };
       this.notifier.emit('job_started', event);
     }
 
-    return jobInfo;
+    return jobRecord;
   }
 
   async register(): Promise<this> {

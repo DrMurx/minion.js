@@ -8,6 +8,7 @@ import {
   type JobInfo,
   type JobInfoList,
   type JobPruneResult,
+  type JobRecord,
   type JobResult,
   type QueueJobStatistics,
   type QueueStats,
@@ -43,11 +44,11 @@ export class RestBackend implements Backend {
     // do nothing - this is a server only operation
   }
 
-  async addJob<Args extends JobArgs>(): Promise<JobInfo<Args>> {
+  async addJob<Args extends JobArgs>(): Promise<JobRecord<Args>> {
     throw new Error('Unsupported function: addJob');
   }
 
-  async retryJob<Args extends JobArgs>(): Promise<JobInfo<Args> | undefined> {
+  async retryJob<Args extends JobArgs>(): Promise<JobRecord<Args> | undefined> {
     // do nothing - this is a server only operation
     return undefined;
   }
@@ -107,7 +108,7 @@ export class RestBackend implements Backend {
     taskNames: string[],
     _: number,
     options: JobDequeueOptions,
-  ): Promise<JobInfo<Args> | null> {
+  ): Promise<JobRecord<Args> | null> {
     try {
       const body = {
         taskNames,
@@ -115,7 +116,7 @@ export class RestBackend implements Backend {
           minPriority: options.minPriority,
         },
       };
-      const response = await this._axios.post<JobInfo<Args>>(`/workers/${id}/nextjob`, body);
+      const response = await this._axios.post<JobRecord<Args>>(`/workers/${id}/nextjob`, body);
       return response.status === 200 ? response.data : null;
     } catch (_) {
       return null;

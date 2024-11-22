@@ -24,11 +24,11 @@ export {
   type InferJobArgs,
   type Job,
   type JobArgs,
-  type JobDescriptor,
   type JobError,
   type JobFactory,
   type JobId,
   type JobInfo,
+  type JobRecord,
   type JobResult,
   type ListJobsOptions,
 } from './types/job.js';

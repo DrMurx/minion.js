@@ -101,23 +101,23 @@ export class QueuePruner<BaseJob extends Job<JobArgs>> {
 
     const { expiredJobs, expungedJobs, abandonedJobs, unattendedJobs } = jobPruneResult;
     if (this.notifier.listenerCount('job_expired') > 0) {
-      for (const jobInfo of expiredJobs) {
-        this.notifier.emit('job_expired', { jobInfo });
+      for (const jobRecord of expiredJobs) {
+        this.notifier.emit('job_expired', { jobRecord });
       }
     }
     if (this.notifier.listenerCount('job_expunged') > 0) {
-      for (const jobInfo of expungedJobs) {
-        this.notifier.emit('job_expunged', { jobInfo });
+      for (const jobRecord of expungedJobs) {
+        this.notifier.emit('job_expunged', { jobRecord });
       }
     }
     if (this.notifier.listenerCount('job_abandoned') > 0) {
-      for (const jobInfo of abandonedJobs) {
-        this.notifier.emit('job_abandoned', { jobInfo });
+      for (const jobRecord of abandonedJobs) {
+        this.notifier.emit('job_abandoned', { jobRecord });
       }
     }
     if (this.notifier.listenerCount('job_unattended') > 0) {
-      for (const jobInfo of unattendedJobs) {
-        this.notifier.emit('job_unattended', { jobInfo });
+      for (const jobRecord of unattendedJobs) {
+        this.notifier.emit('job_unattended', { jobRecord });
       }
     }
   }

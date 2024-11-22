@@ -3,13 +3,13 @@ import {
   type DailyJobHistory,
   type JobArgs,
   type JobDequeueOptions,
-  type JobDescriptor,
   type JobEnqueueOptions,
   type JobId,
   type JobInfo,
   type JobInfoList,
   type JobOptions,
   type JobPruneResult,
+  type JobRecord,
   type JobResult,
   JobState,
   type ListJobsOptions,
@@ -27,7 +27,13 @@ import {
   type WorkerUpdateOptions,
 } from '@queuebone/core';
 import os from 'os';
-import pg, { QueryConfigValues, QueryResult, QueryResultRow } from 'pg';
+import pg, {
+  type ClientBase,
+  type Notification,
+  type QueryConfigValues,
+  type QueryResult,
+  type QueryResultRow,
+} from 'pg';
 import { createPool } from './factory.js';
 import { Migration, type MigrationStep } from './migration.js';
 
@@ -48,7 +54,7 @@ export class PgBackend implements Backend {
   private _pool: pg.Pool;
   private _schema: string | undefined;
   private autoclosePool = false;
-  private requeueHandler: (jobInfo: JobInfo<any>) => Promise<void> = async () => {};
+  private requeueHandler: (jobRecord: JobRecord<any>) => Promise<void> = async () => {};
 
   constructor(config: string | pg.Pool) {
     if (config instanceof pg.Pool) {
@@ -66,7 +72,7 @@ export class PgBackend implements Backend {
     return this._pool;
   }
 
-  setRequeueHandler<Args extends JobArgs>(handler: (jobInfo: JobInfo<Args>) => Promise<void>): void {
+  setRequeueHandler<Args extends JobArgs>(handler: (jobRecord: JobRecord<Args>) => Promise<void>): void {
     this.requeueHandler = handler;
   }
 
@@ -77,14 +83,33 @@ export class PgBackend implements Backend {
     return this._pool.query<R>(sql, values);
   }
 
+  /**
+   * Specialized query method for job-related non-select queries, adding a RETURNING clause to get the job infos
+   */
+  protected async runJobQuery<Args extends JobArgs>(
+    sql: string,
+    values?: QueryConfigValues<any>,
+  ): Promise<QueryResult<JobRecord<Args>>> {
+    const result = await this.query<JobRecord<Args>>(`${sql} RETURNING ${this.jobRecordSql}`, values);
+    // Fix invalid typing of the `parentJobIds` array
+    result.rows.forEach((jobRecord) => {
+      if (jobRecord.parentJobIds.length > 0) jobRecord.parentJobIds = jobRecord.parentJobIds.map(Number);
+    });
+    return result;
+  }
+
   protected async getSchema(): Promise<string> {
     if (this._schema) return this._schema;
     const results = await this.query<{ current_schema: string }>(`SELECT current_schema`);
     return (this._schema = results.rows[0].current_schema);
   }
 
-  async addJob<Args extends JobArgs>(taskName: string, args: Args, options: JobEnqueueOptions): Promise<JobInfo<Args>> {
-    const results = await this.query<JobInfo<Args>>(
+  async addJob<Args extends JobArgs>(
+    taskName: string,
+    args: Args,
+    options: JobEnqueueOptions,
+  ): Promise<JobRecord<Args>> {
+    const results = await this.runJobQuery<Args>(
       `INSERT INTO ${JOB_TABLE} (
         queue_name,
         task_name,
@@ -110,8 +135,7 @@ export class PgBackend implements Backend {
         $10,
         NOW() + $11 * INTERVAL '1 millisecond',
         CASE WHEN $12::BIGINT IS NOT NULL THEN NOW() + $12::BIGINT * INTERVAL '1 millisecond' END
-      )
-      RETURNING ${this.jobInfoSql}`,
+      )`,
       [
         options.queueName,
         taskName,
@@ -128,20 +152,16 @@ export class PgBackend implements Backend {
       ],
     );
 
-    const jobInfo = results.rows[0];
-    if (jobInfo !== undefined) {
-      if (jobInfo.parentJobIds.length > 0) jobInfo.parentJobIds = jobInfo.parentJobIds.map(Number);
-    }
-    return jobInfo;
+    return results.rows[0];
   }
 
   async retryJob<Args extends JobArgs>(
     id: JobId,
     attempt: number,
     options: JobOptions,
-  ): Promise<JobInfo<Args> | undefined> {
+  ): Promise<JobRecord<Args> | undefined> {
     const delayFor = options.delayFor ?? 0;
-    const results = await this.query<JobInfo<Args>>(
+    const results = await this.runJobQuery<Args>(
       `UPDATE ${JOB_TABLE} SET
         queue_name = COALESCE($1, queue_name),
         state = $2,
@@ -156,8 +176,7 @@ export class PgBackend implements Backend {
         retried_at = NOW(),
         expires_at = CASE WHEN $9::BIGINT IS NULL THEN expires_at ELSE NOW() + $9::BIGINT * INTERVAL '1 millisecond' END
       WHERE id = $10
-        AND attempt = $11
-      RETURNING ${this.jobInfoSql}`,
+        AND attempt = $11`,
       [
         options.queueName,
         delayFor <= 0 ? JobState.Pending : JobState.Scheduled,
@@ -173,11 +192,7 @@ export class PgBackend implements Backend {
       ],
     );
 
-    const jobInfo = results.rows[0];
-    if (jobInfo !== undefined) {
-      if (jobInfo.parentJobIds.length > 0) jobInfo.parentJobIds = jobInfo.parentJobIds.map(Number);
-    }
-    return jobInfo;
+    return results.rows[0];
   }
 
   async cancelJob(id: JobId): Promise<boolean> {
@@ -207,8 +222,8 @@ export class PgBackend implements Backend {
       RETURNING metadata`,
       [records, id, attempt],
     );
-    const jobInfo = results.rows[0];
-    return jobInfo !== undefined ? jobInfo.metadata : undefined;
+    const row = results.rows[0];
+    return row !== undefined ? row.metadata : undefined;
   }
 
   async updateJobProgress(id: JobId, attempt: number, progress: number): Promise<boolean> {
@@ -230,7 +245,7 @@ export class PgBackend implements Backend {
     state: JobState.Succeeded | JobState.Failed | JobState.Aborted,
     result: JobResult,
   ): Promise<boolean> {
-    const results = await this.query<JobInfo>(
+    const results = await this.runJobQuery<JobArgs>(
       `UPDATE ${JOB_TABLE}
         SET result = $1,
             state = $2,
@@ -238,16 +253,15 @@ export class PgBackend implements Backend {
             finished_at = NOW()
       WHERE id = $4
         AND state = '${JobState.Running}'
-        AND attempt = $5
-      RETURNING ${this.jobInfoSql}`,
+        AND attempt = $5`,
       [JSON.stringify(result), state, state === JobState.Succeeded ? 1.0 : null, jobId, attempt],
     );
 
     // Unable to update row? (reasons: job has already been marked as finished, retried by a different worker, or record is gone)
-    const jobInfo = results.rows[0];
-    const isUpdated = jobInfo !== undefined;
+    const jobRecord = results.rows[0];
+    const isUpdated = jobRecord !== undefined;
     if (isUpdated) {
-      await this.requeueHandler(jobInfo);
+      await this.requeueHandler(jobRecord);
     }
     return isUpdated;
   }
@@ -257,7 +271,7 @@ export class PgBackend implements Backend {
     taskNames: string[],
     timeout: number,
     options: JobDequeueOptions,
-  ): Promise<JobInfo<Args> | null> {
+  ): Promise<JobRecord<Args> | null> {
     for (let repeat = 1; ; repeat--) {
       const dequeueJobInfo = await this.tryAssignNextJob<Args>(workerId, taskNames, options);
       if (dequeueJobInfo !== null) return dequeueJobInfo;
@@ -270,12 +284,12 @@ export class PgBackend implements Backend {
     workerId: WorkerId,
     taskNames: string[],
     options: JobDequeueOptions,
-  ): Promise<JobInfo<Args> | null> {
+  ): Promise<JobRecord<Args> | null> {
     const jobId = options.id;
     const minPriority = options.minPriority;
     const queueNames = Array.isArray(options.queueNames) ? options.queueNames : [options.queueNames];
 
-    const results = await this.query<JobInfo<Args>>(
+    const results = await this.runJobQuery<Args>(
       `UPDATE ${JOB_TABLE}
       SET state = '${JobState.Running}',
           progress = 0.0,
@@ -311,13 +325,11 @@ export class PgBackend implements Backend {
         ORDER BY priority DESC, id
         LIMIT 1
         FOR UPDATE SKIP LOCKED
-      )
-      RETURNING ${this.jobInfoSql}`,
+      )`,
       [workerId, jobId, queueNames, taskNames, minPriority],
     );
-    if ((results.rowCount ?? 0) <= 0) return null;
-
-    return results.rows[0] ?? null;
+    const jobRecord = results.rows[0];
+    return jobRecord !== undefined ? jobRecord : null;
   }
 
   /**
@@ -356,34 +368,34 @@ export class PgBackend implements Backend {
     ignoreQueues: string[],
   ): Promise<JobPruneResult<Args>> {
     // Delete `pending`/`scheduled` jobs past expiration date
-    const expiredJobsResult = await this.query<JobDescriptor<Args>>(
+    const expiredJobsResult = await this.query<JobRecord<Args>>(
       `DELETE FROM ${JOB_TABLE}
       WHERE state IN ('${JobState.Pending}', '${JobState.Scheduled}')
         AND expires_at <= NOW()
-      RETURNING ${this.jobDescriptorSql}`,
+      RETURNING ${this.jobRecordSql}`,
     );
 
     // Delete `succeeded` jobs after the expunge period
-    const expungedJobsResult = await this.query<JobInfo<Args>>(
+    const expungedJobsResult = await this.query<JobRecord<Args>>(
       `DELETE FROM ${JOB_TABLE}
       WHERE state = '${JobState.Succeeded}'
         AND NOW() - finished_at >= $1 * INTERVAL '1 millisecond'
-      RETURNING ${this.jobInfoSql}`,
+      RETURNING ${this.jobRecordSql}`,
       [expungePeriod],
     );
 
     // Mark `pending`/`scheduled` jobs as `unattended` if they are due, but in the queue past `unattendedPeriod`.
-    const unattendedJobsResult = await this.query<JobDescriptor<Args>>(
+    const unattendedJobsResult = await this.query<JobRecord<Args>>(
       `UPDATE ${JOB_TABLE} SET
         state = '${JobState.Unattended}'
       WHERE state IN ('${JobState.Pending}', '${JobState.Scheduled}')
         AND NOW() - delay_until > $1 * INTERVAL '1 millisecond'
-      RETURNING ${this.jobDescriptorSql}`,
+      RETURNING ${this.jobRecordSql}`,
       [unattendedPeriod],
     );
 
     // Mark `running` jobs as `abandoned` if they are assigned to an `offline`, `lost`, or non-existing worker.
-    const abandonedJobsResult = await this.query<JobInfo<Args>>(
+    const abandonedJobsResult = await this.query<JobRecord<Args>>(
       `UPDATE ${JOB_TABLE} AS j
       SET result = $1,
           state = '${JobState.Abandoned}',
@@ -396,11 +408,11 @@ export class PgBackend implements Backend {
           WHERE id = j.worker_id
             AND state IN ('${WorkerState.Online}', '${WorkerState.Busy}', '${WorkerState.Idle}')
         )
-      RETURNING ${this.jobInfoSql}`,
+      RETURNING ${this.jobRecordSql}`,
       [JSON.stringify({ name: 'WorkerGoneError', message: 'Worker went away' }), ignoreQueues],
     );
 
-    await Promise.allSettled(abandonedJobsResult.rows.map((jobInfo) => this.requeueHandler(jobInfo)));
+    await Promise.allSettled(abandonedJobsResult.rows.map((jobRecord) => this.requeueHandler(jobRecord)));
 
     return {
       expiredJobs: expiredJobsResult.rows,
@@ -416,7 +428,7 @@ export class PgBackend implements Backend {
   async getJobInfo<Args extends JobArgs>(jobId: JobId): Promise<JobInfo<Args> | undefined> {
     const results = await this.query<JobInfo<Args>>(
       `SELECT
-        ${this.jobInfoSql},
+        ${this.jobRecordSql},
         ARRAY(SELECT id FROM ${JOB_TABLE} WHERE parent_job_ids @> ARRAY[j.id]) AS "childJobIds",
         NOW() AS "time",
         COUNT(*) OVER() AS "total"
@@ -424,12 +436,12 @@ export class PgBackend implements Backend {
       WHERE id = $1`,
       [jobId],
     );
-    const jobInfo = results.rows[0];
-    if (jobInfo !== undefined) {
-      if (jobInfo.parentJobIds.length > 0) jobInfo.parentJobIds = jobInfo.parentJobIds.map(Number);
-      if (jobInfo.childJobIds.length) jobInfo.childJobIds = jobInfo.childJobIds.map(Number);
+    const jobRecord = results.rows[0];
+    if (jobRecord !== undefined) {
+      if (jobRecord.parentJobIds.length > 0) jobRecord.parentJobIds = jobRecord.parentJobIds.map(Number);
+      if (jobRecord.childJobIds.length) jobRecord.childJobIds = jobRecord.childJobIds.map(Number);
     }
-    return jobInfo;
+    return jobRecord;
   }
 
   async getJobInfos<Args extends JobArgs>(
@@ -439,7 +451,7 @@ export class PgBackend implements Backend {
   ): Promise<JobInfoList<Args>> {
     const results = await this.query<JobInfo<Args> & { total: number }>(
       `SELECT
-        ${this.jobInfoSql},
+        ${this.jobRecordSql},
         ARRAY(SELECT id FROM ${JOB_TABLE} WHERE parent_job_ids @> ARRAY[j.id]) AS "childJobIds",
         NOW() AS "time",
         COUNT(*) OVER() AS "total"
@@ -465,9 +477,9 @@ export class PgBackend implements Backend {
       ],
     );
     const total = removeTotal(results.rows);
-    results.rows.forEach((jobInfo) => {
-      if (jobInfo.parentJobIds.length) jobInfo.parentJobIds = jobInfo.parentJobIds.map(Number);
-      if (jobInfo.childJobIds.length) jobInfo.childJobIds = jobInfo.childJobIds.map(Number);
+    results.rows.forEach((jobRecord) => {
+      if (jobRecord.parentJobIds.length) jobRecord.parentJobIds = jobRecord.parentJobIds.map(Number);
+      if (jobRecord.childJobIds.length) jobRecord.childJobIds = jobRecord.childJobIds.map(Number);
     });
     return { total, jobs: results.rows };
   }
@@ -760,7 +772,7 @@ export class PgBackend implements Backend {
     this.requeueHandler = async () => {};
   }
 
-  protected get jobInfoSql() {
+  protected get jobRecordSql() {
     return `id,
 
       task_name AS "taskName",
@@ -788,15 +800,6 @@ export class PgBackend implements Backend {
       created_at AS "createdAt",
       expires_at AS "expiresAt"`;
   }
-  protected get jobDescriptorSql() {
-    return `id,
-
-      task_name AS "taskName",
-      args,
-
-      max_attempts AS "maxAttempts",
-      attempt`;
-  }
 }
 
 function removeTotal<T extends Array<{ total?: number }>>(results: T): number {
@@ -813,13 +816,13 @@ function removeTotal<T extends Array<{ total?: number }>>(results: T): number {
  * normally if notification was received, throws on timeout.
  */
 async function waitForPostgresNotification(
-  conn: pg.ClientBase,
+  conn: ClientBase,
   channel: string,
   expectedPayload: string,
   timeout: number,
 ): Promise<void> {
   let resolveFn = () => {};
-  const handler = (notification: pg.Notification) => {
+  const handler = (notification: Notification) => {
     if (notification.channel === channel && notification.payload === expectedPayload) resolveFn();
   };
   conn.on('notification', handler);

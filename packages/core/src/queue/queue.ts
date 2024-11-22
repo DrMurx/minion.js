@@ -9,7 +9,7 @@ import {
   type JobBackoffStrategy,
   type JobFactory,
   type JobId,
-  type JobInfo,
+  type JobRecord,
   type JobResult,
   type JobResultOptions,
   JobState,
@@ -96,8 +96,8 @@ export class DefaultQueue<BaseJob extends Job<JobArgs> = DefaultJob<JobArgs>>
     await this._backend.updateSchema();
 
     // Install a requeue handler which requeues failed or abandoned jobs
-    this._backend.setRequeueHandler<InferJobArgs<BaseJob>>((jobInfo) =>
-      this.retryFailedJob(jobInfo).catch((error) => console.error(error)),
+    this._backend.setRequeueHandler<InferJobArgs<BaseJob>>((jobRecord) =>
+      this.retryFailedJob(jobRecord).catch((error) => console.error(error)),
     );
     if (this._options.pruneEnabled) this.pruner.start();
   }
@@ -123,8 +123,8 @@ export class DefaultQueue<BaseJob extends Job<JobArgs> = DefaultJob<JobArgs>>
       delayFor: 0,
       ...options,
     };
-    const jobInfo = await this._backend.addJob(taskName, _args, _options);
-    return new DefaultJobHandle(this._backend, jobInfo);
+    const jobRecord = await this._backend.addJob(taskName, _args, _options);
+    return new DefaultJobHandle(this._backend, jobRecord);
   }
 
   async addJobWithAck<Result extends JobResult = JobResult, Args extends InferJobArgs<BaseJob> = InferJobArgs<BaseJob>>(
@@ -147,17 +147,17 @@ export class DefaultQueue<BaseJob extends Job<JobArgs> = DefaultJob<JobArgs>>
   }
 
   async getJob<Args extends InferJobArgs<BaseJob> = InferJobArgs<BaseJob>>(id: JobId): Promise<JobHandle<Args> | null> {
-    const jobInfo = await this._backend.getJobInfo<Args>(id);
-    if (jobInfo === undefined) return null;
-    return new DefaultJobHandle(this._backend, jobInfo);
+    const jobRecord = await this._backend.getJobInfo<Args>(id);
+    if (jobRecord === undefined) return null;
+    return new DefaultJobHandle(this._backend, jobRecord);
   }
 
   async getJobs<Args extends InferJobArgs<BaseJob> = InferJobArgs<BaseJob>>(
     options: ListJobsOptions,
   ): Promise<JobHandle<Args>[]> {
     const jobs: JobHandle<Args>[] = [];
-    for await (const jobInfo of this.listJobInfos<Args>(options)) {
-      jobs.push(new DefaultJobHandle(this._backend, jobInfo));
+    for await (const jobRecord of this.listJobInfos<Args>(options)) {
+      jobs.push(new DefaultJobHandle(this._backend, jobRecord));
     }
     return jobs;
   }
@@ -165,21 +165,21 @@ export class DefaultQueue<BaseJob extends Job<JobArgs> = DefaultJob<JobArgs>>
   listJobInfos<Args extends InferJobArgs<BaseJob> = InferJobArgs<BaseJob>>(
     options: ListJobsOptions = {},
     chunkSize: number = 10,
-  ): BackendIterator<JobInfo<Args>> {
-    return new BackendIterator<JobInfo<Args>>('jobs', this._backend, options, { chunkSize });
+  ): BackendIterator<JobRecord<Args>> {
+    return new BackendIterator<JobRecord<Args>>('jobs', this._backend, options, { chunkSize });
   }
 
   /**
    * Requeue unsuccessful jobs and backoff with the given backoff strategy
    */
-  protected async retryFailedJob(jobInfo: JobInfo<InferJobArgs<BaseJob>>): Promise<void> {
-    if (unsuccessfulJobStates.includes(jobInfo.state) && jobInfo.attempt < jobInfo.maxAttempts) {
+  protected async retryFailedJob(jobRecord: JobRecord<InferJobArgs<BaseJob>>): Promise<void> {
+    if (unsuccessfulJobStates.includes(jobRecord.state) && jobRecord.attempt < jobRecord.maxAttempts) {
       const options = {
         // Set maxAttempt to its current value (otherwise, `Backend.retryJob` increases it)
-        maxAttempts: jobInfo.maxAttempts,
-        delayFor: this.backoffStrategy(jobInfo),
+        maxAttempts: jobRecord.maxAttempts,
+        delayFor: this.backoffStrategy(jobRecord),
       };
-      await this._backend.retryJob(jobInfo.id, jobInfo.attempt, options);
+      await this._backend.retryJob(jobRecord.id, jobRecord.attempt, options);
     }
   }
 

@@ -1,8 +1,8 @@
 import {
   type JobArgs,
-  type JobDescriptor,
   type JobId,
   type JobInfo,
+  type JobRecord,
   type JobResult,
   JobState,
   type ListJobsOptions,
@@ -47,12 +47,12 @@ export interface QueueBackend {
   /**
    * Allows the Queue to define a handler that would be called when the Backend consideres a job worth requeueing
    */
-  setRequeueHandler<Args extends JobArgs>(handler: (jobInfo: JobInfo<Args>) => Promise<void>): void;
+  setRequeueHandler<Args extends JobArgs>(handler: (jobRecord: JobRecord<Args>) => Promise<void>): void;
 
   /**
    * Enqueue a new job with `pending` state.
    */
-  addJob<Args extends JobArgs>(taskName: string, args: Args, options: JobEnqueueOptions): Promise<JobInfo<Args>>;
+  addJob<Args extends JobArgs>(taskName: string, args: Args, options: JobEnqueueOptions): Promise<JobRecord<Args>>;
 
   /**
    * Prune jobs:
@@ -157,7 +157,7 @@ export interface JobHandleBackend extends ExecutorBackend {
     jobId: JobId,
     attempt: number,
     options: JobOptions,
-  ): Promise<JobInfo<Args> | undefined>;
+  ): Promise<JobRecord<Args> | undefined>;
 
   /**
    * Cancels a job as long as it hasn't been started.
@@ -183,7 +183,7 @@ export interface WorkerBackend {
     taskNames: string[],
     timeout: number,
     options: JobDequeueOptions,
-  ): Promise<JobInfo<Args> | null>;
+  ): Promise<JobRecord<Args> | null>;
 
   /**
    * Register a new worker with the given `options`.
@@ -285,19 +285,19 @@ export type JobPruneResult<Args extends JobArgs = JobArgs> = {
   /**
    * Jobs pending beyond their `expireAt` time, so they are no longer needed. Have been deleted.
    */
-  expiredJobs: JobDescriptor<Args>[];
+  expiredJobs: JobRecord<Args>[];
   /**
    * Jobs finished as `succeeded` but are beyond expunge period. Have been deleted.
    */
-  expungedJobs: JobInfo<Args>[];
+  expungedJobs: JobRecord<Args>[];
   /**
    * Jobs that have been picked up by a worker, but the worker faded away. Can be rescheduled.
    */
-  abandonedJobs: JobInfo<Args>[];
+  abandonedJobs: JobRecord<Args>[];
   /**
    * Jobs that are overdue but haven't been picked up for a given time. Can be rescheduled.
    */
-  unattendedJobs: JobDescriptor<Args>[];
+  unattendedJobs: JobRecord<Args>[];
 };
 
 export type WorkerPruneResult = {

@@ -1,6 +1,6 @@
 import { type Backend, type Job, type JobArgs, type QueueEventEmitter } from '@queuebone/core';
 import { type FastifyPluginAsync } from 'fastify';
-import { ExecutorProxy } from './executor-proxy.ts';
+import { ExecutorProxy } from './executor-proxy.js';
 import {
   type AssignNextJobAPI,
   assignNextJobSchema,
@@ -15,9 +15,9 @@ import {
   type UpdateWorkerAPI,
   updateWorkerSchema,
   type WorkerAPI,
-} from './schemas.ts';
-import { type ProfileManager } from './types.ts';
-import { WorkerProxy } from './worker-proxy.ts';
+} from './schemas.js';
+import { type ProfileManager } from './types.js';
+import { WorkerProxy } from './worker-proxy.js';
 
 export interface PluginOptions<BaseJob extends Job<JobArgs>> {
   profileManager: ProfileManager<BaseJob>;
@@ -105,8 +105,8 @@ export const routesPlugin: FastifyPluginAsync<PluginOptions<Job<JobArgs>>> = asy
        */
       fastify.post<AssignNextJobAPI>('/nextjob', { schema: assignNextJobSchema }, async (request, reply) => {
         const { taskNames, options } = request.body;
-        const jobInfo = await request.worker.getNextJob(taskNames, options.minPriority ?? 0);
-        return jobInfo !== null ? jobInfo : reply.status(204).send(); // 204 = No content
+        const jobRecord = await request.worker.getNextJob(taskNames, options.minPriority ?? 0);
+        return jobRecord !== null ? jobRecord : reply.status(204).send(); // 204 = No content
       });
     },
     { prefix: '/workers/:id' },
@@ -116,16 +116,16 @@ export const routesPlugin: FastifyPluginAsync<PluginOptions<Job<JobArgs>>> = asy
     const holder = request.holder;
 
     const { id: jobId, attempt } = request.params;
-    const jobInfo = await backend.getJobInfo<JobArgs>(jobId);
-    if (jobInfo === undefined || jobInfo.attempt !== attempt || jobInfo.workerId === undefined) {
+    const jobRecord = await backend.getJobInfo<JobArgs>(jobId);
+    if (jobRecord === undefined || jobRecord.attempt !== attempt || jobRecord.workerId === undefined) {
       return reply.status(404).send(); // 404 = not found
     }
-    const worker = holder.activeWorkers.get(jobInfo.workerId);
+    const worker = holder.activeWorkers.get(jobRecord.workerId);
     if (worker === undefined) {
       return reply.status(404).send(); // 404 = not found
     }
 
-    const executor = new ExecutorProxy(jobInfo, worker, backend, notifier);
+    const executor = new ExecutorProxy(jobRecord, worker, backend, notifier);
 
     let responseCode = 0;
 
@@ -148,15 +148,15 @@ export const routesPlugin: FastifyPluginAsync<PluginOptions<Job<JobArgs>>> = asy
     const state = request.body.state;
     const result = request.body.result;
     if (state !== undefined && result !== undefined) {
-      jobInfo.state = state;
-      jobInfo.result = result;
+      jobRecord.state = state;
+      jobRecord.result = result;
       const isUpdated = await executor.markFinished(state, result);
       if (!isUpdated) {
         responseCode = 404;
       }
     }
     if (responseCode === 0) {
-      return executor.jobInfo;
+      return executor.jobRecord;
     }
     return reply.status(responseCode).send();
   });

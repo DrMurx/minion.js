@@ -1,7 +1,7 @@
 import { DefaultWorker, type Job, type JobArgs, type WorkerId } from '@queuebone/core';
-import { timingSafeCompare } from './compare.ts';
-import { type WorkerProfile } from './config.ts';
-import { type ProfileManager, type WorkerProfileHolder } from './types.ts';
+import { timingSafeCompare } from './compare.js';
+import { type WorkerProfile } from './config.js';
+import { type ProfileManager, type WorkerProfileHolder } from './types.js';
 
 export class DefaultProfileManager<BaseJob extends Job<JobArgs>> extends Map implements ProfileManager<BaseJob> {
   private keyBuffers: Buffer[] = [];

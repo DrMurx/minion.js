@@ -1,115 +1,119 @@
 import { type JobHandleBackend, type JobOptions } from '../types/backend.js';
 import { type JobHandle } from '../types/job-handle.js';
-import { JobState, type JobArgs, type JobId, type JobInfo, type JobResult } from '../types/job.js';
+import { JobState, type JobArgs, type JobId, type JobRecord, type JobResult } from '../types/job.js';
 import { type WorkerId } from '../types/worker.js';
 
 /**
  * Job Handle
  */
 export class DefaultJobHandle<Args extends JobArgs = JobArgs> implements JobHandle<Args> {
-  private jobInfo: JobInfo<Args>;
+  private jobRecord: JobRecord<Args>;
+  private updateTime: Date;
 
   constructor(
     private backend: JobHandleBackend,
-    jobInfo: JobInfo<Args>,
+    jobRecord: JobRecord<Args>,
   ) {
-    this.jobInfo = { ...jobInfo };
+    this.jobRecord = { ...jobRecord };
+    this.updateTime = new Date();
   }
 
   get id(): JobId {
-    return this.jobInfo.id;
+    return this.jobRecord.id;
   }
 
   get queueName(): string {
-    return this.jobInfo.queueName;
+    return this.jobRecord.queueName;
   }
 
   get taskName(): string {
-    return this.jobInfo.taskName;
+    return this.jobRecord.taskName;
   }
 
   get args(): Args {
-    return this.jobInfo.args;
+    return this.jobRecord.args;
   }
 
   get result(): JobResult | undefined {
-    return this.jobInfo.result;
+    return this.jobRecord.result;
   }
 
   get state(): JobState {
-    return this.jobInfo.state;
+    return this.jobRecord.state;
   }
 
   get priority(): number {
-    return this.jobInfo.priority;
+    return this.jobRecord.priority;
   }
 
   get progress(): number {
-    return this.jobInfo.progress;
+    return this.jobRecord.progress;
   }
 
   get maxAttempts(): number {
-    return this.jobInfo.maxAttempts;
+    return this.jobRecord.maxAttempts;
   }
 
   get attempt(): number {
-    return this.jobInfo.attempt;
+    return this.jobRecord.attempt;
   }
 
   get parentJobIds(): JobId[] {
-    return this.jobInfo.parentJobIds;
+    return this.jobRecord.parentJobIds;
   }
 
   get laxDependency(): boolean {
-    return this.jobInfo.laxDependency;
+    return this.jobRecord.laxDependency;
   }
 
   get workerId(): WorkerId | undefined {
-    return this.jobInfo.workerId;
+    return this.jobRecord.workerId;
   }
 
   get metadata(): Record<string, any> {
-    return this.jobInfo.metadata;
+    return this.jobRecord.metadata;
   }
 
   get delayUntil(): Date {
-    return this.jobInfo.delayUntil;
+    return this.jobRecord.delayUntil;
   }
 
   get startedAt(): Date | undefined {
-    return this.jobInfo.startedAt;
+    return this.jobRecord.startedAt;
   }
 
   get retriedAt(): Date | undefined {
-    return this.jobInfo.retriedAt;
+    return this.jobRecord.retriedAt;
   }
 
   get finishedAt(): Date | undefined {
-    return this.jobInfo.finishedAt;
+    return this.jobRecord.finishedAt;
   }
 
   get createdAt(): Date {
-    return this.jobInfo.createdAt;
+    return this.jobRecord.createdAt;
   }
 
   get expiresAt(): Date | undefined {
-    return this.jobInfo.expiresAt;
+    return this.jobRecord.expiresAt;
   }
 
   get time(): Date {
-    return this.jobInfo.time;
+    return this.updateTime;
   }
 
   async getChildJobIds(): Promise<JobId[]> {
-    // Todo: remove childJobIds from regular getJobInfo and move it into dedicated backend method
-    await this.sync();
-    return this.jobInfo.childJobIds;
+    const jobInfo = await this.backend.getJobInfo<Args>(this.id);
+    if (jobInfo !== undefined) {
+      return jobInfo.childJobIds;
+    }
+    return [];
   }
 
   async retry(options: JobOptions = {}): Promise<JobHandle<Args> | null> {
-    const jobInfo = await this.backend.retryJob<Args>(this.id, this.attempt, options);
-    if (jobInfo !== undefined) {
-      return new DefaultJobHandle(this.backend, jobInfo);
+    const jobRecord = await this.backend.retryJob<Args>(this.id, this.attempt, options);
+    if (jobRecord !== undefined) {
+      return new DefaultJobHandle(this.backend, jobRecord);
     }
     return null;
   }
@@ -118,7 +122,7 @@ export class DefaultJobHandle<Args extends JobArgs = JobArgs> implements JobHand
     const metadata = await this.backend.amendJobMetadata(this.id, this.attempt, records);
     const isUpdated = metadata !== undefined;
     if (isUpdated) {
-      this.jobInfo.metadata = metadata;
+      this.jobRecord.metadata = metadata;
     }
     return isUpdated;
   }
@@ -138,7 +142,8 @@ export class DefaultJobHandle<Args extends JobArgs = JobArgs> implements JobHand
   async sync(): Promise<boolean> {
     const jobInfo = await this.backend.getJobInfo<Args>(this.id);
     if (jobInfo !== undefined) {
-      this.jobInfo = jobInfo;
+      this.jobRecord = jobInfo;
+      this.updateTime = jobInfo.time;
     }
     return jobInfo !== undefined;
   }

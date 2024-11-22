@@ -1,6 +1,6 @@
 import { type Job, type JobArgs, type WorkerConfig, type WorkerId } from '@queuebone/core';
-import { type WorkerProfile } from './config.ts';
-import { type WorkerProxy } from './worker-proxy.ts';
+import { type WorkerProfile } from './config.js';
+import { type WorkerProxy } from './worker-proxy.js';
 
 export interface WorkerProfileHolder<BaseJob extends Job<JobArgs>> {
   name: string;

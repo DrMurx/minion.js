@@ -1,5 +1,5 @@
 import t from 'tap';
-import { JobState, type JobInfo } from '../types/job.js';
+import { JobState, type JobRecord } from '../types/job.js';
 import { defaultBackoffStrategy } from './backoff-strategy.js';
 
 t.test('Default backoff strategy', async (t) => {
@@ -12,7 +12,7 @@ t.test('Default backoff strategy', async (t) => {
     [5, 640],
     [25, 390640],
   ]) {
-    const jobInfo: JobInfo = {
+    const jobRecord: JobRecord = {
       id: 0,
       queueName: '',
       taskName: '',
@@ -25,7 +25,6 @@ t.test('Default backoff strategy', async (t) => {
       attempt: attempt,
 
       parentJobIds: [],
-      childJobIds: [],
       laxDependency: false,
 
       metadata: {},
@@ -34,10 +33,8 @@ t.test('Default backoff strategy', async (t) => {
       startedAt: new Date(),
 
       createdAt: new Date(),
-
-      time: new Date(),
     };
-    t.equal(defaultBackoffStrategy(jobInfo), expectedDelay);
+    t.equal(defaultBackoffStrategy(jobRecord), expectedDelay);
   }
 
   t.end();

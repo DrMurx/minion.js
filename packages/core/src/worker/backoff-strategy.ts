@@ -1,6 +1,6 @@
-import { type JobArgs, type JobBackoffStrategy, type JobInfo, JobState } from '../types/job.js';
+import { type JobArgs, type JobBackoffStrategy, type JobRecord, JobState } from '../types/job.js';
 
-export const defaultBackoffStrategy: JobBackoffStrategy = <Args extends JobArgs>(jobInfo: JobInfo<Args>) => {
-  if (jobInfo.state === JobState.Abandoned) return 0;
-  return jobInfo.attempt ** 4 + 15;
+export const defaultBackoffStrategy: JobBackoffStrategy = <Args extends JobArgs>(jobRecord: JobRecord<Args>) => {
+  if (jobRecord.state === JobState.Abandoned) return 0;
+  return jobRecord.attempt ** 4 + 15;
 };

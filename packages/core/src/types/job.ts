@@ -37,7 +37,7 @@ export type InferJobArgs<J extends Job<JobArgs>> = J extends Job<infer A> ? A : 
 /**
  * Return the backoff delay for a failed job in ms.
  */
-export type JobBackoffStrategy<Args extends JobArgs = JobArgs> = (jobInfo: JobInfo<Args>) => number;
+export type JobBackoffStrategy<Args extends JobArgs = JobArgs> = (jobRecord: JobRecord<Args>) => number;
 
 export interface JobFactory<BaseJob extends Job<JobArgs>> {
   createJobObject<ResultJob extends BaseJob>(executor: Executor<ResultJob>): ResultJob;
@@ -90,17 +90,7 @@ export const unsuccessfulJobStates = [
   JobState.Canceled,
 ];
 
-export interface JobDescriptor<Args extends JobArgs = JobArgs> {
-  id: JobId;
-
-  taskName: string;
-  args: Args;
-
-  maxAttempts: number;
-  attempt: number;
-}
-
-export interface JobInfo<Args extends JobArgs = JobArgs> {
+export interface JobRecord<Args extends JobArgs = JobArgs> {
   id: JobId;
 
   queueName: string;
@@ -115,7 +105,6 @@ export interface JobInfo<Args extends JobArgs = JobArgs> {
   attempt: number;
 
   parentJobIds: JobId[];
-  childJobIds: JobId[];
   laxDependency: boolean;
 
   workerId?: WorkerId;
@@ -128,7 +117,10 @@ export interface JobInfo<Args extends JobArgs = JobArgs> {
 
   createdAt: Date;
   expiresAt?: Date;
+}
 
+export interface JobInfo<Args extends JobArgs = JobArgs> extends JobRecord<Args> {
+  childJobIds: JobId[];
   time: Date;
 }
 

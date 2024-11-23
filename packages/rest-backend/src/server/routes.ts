@@ -1,3 +1,6 @@
+/* eslint-disable @typescript-eslint/triple-slash-reference */
+/// <reference path="./fastify-declare.ts" />
+
 import { type Backend, type Job, type JobArgs, type QueueEventEmitter } from '@queuebone/core';
 import { type FastifyPluginAsync } from 'fastify';
 import { ExecutorProxy } from './executor-proxy.js';

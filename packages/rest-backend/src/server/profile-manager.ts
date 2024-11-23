@@ -4,11 +4,15 @@ import { type WorkerProfile } from './config.js';
 import { type ProfileManager, type WorkerProfileHolder } from './types.js';
 
 export class DefaultProfileManager<BaseJob extends Job<JobArgs>> extends Map implements ProfileManager<BaseJob> {
+  public static readonly DEFAULT_CONFIG = {
+    maxWorkers: Number.MAX_SAFE_INTEGER,
+  };
+
   private keyBuffers: Buffer[] = [];
 
   constructor(
     profiles: WorkerProfile[] = [],
-    private queueNames: string[] = [],
+    private defaultQueueNames: string[] = [],
   ) {
     super();
     profiles.forEach((profile) => this.addProfile(profile));
@@ -53,13 +57,13 @@ export class DefaultProfileManager<BaseJob extends Job<JobArgs>> extends Map imp
     }
 
     const holder: WorkerProfileHolder<BaseJob> = {
+      ...DefaultProfileManager.DEFAULT_CONFIG,
       ...profile,
       config: {
         ...DefaultWorker.DEFAULT_CONFIG,
-        queueNames: this.queueNames,
+        queueNames: this.defaultQueueNames,
         ...(profile.config ?? {}),
       },
-      maxWorkers: profile.maxWorkers ?? 1,
       activeWorkers: new Map(),
     };
 

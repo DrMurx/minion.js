@@ -1,3 +1,5 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
+
 import { type Job, type JobArgs } from '@queuebone/core';
 import {
   type ContextConfigDefault,
@@ -14,7 +16,6 @@ import { type FastifyRequestType, type ResolveFastifyRequestType } from 'fastify
 import { type WorkerProfileHolder } from './types.js';
 import { type WorkerProxy } from './worker-proxy.js';
 
-/* eslint-disable @typescript-eslint/no-unused-vars */
 declare module 'fastify' {
   export interface FastifyRequest<
     RouteGeneric extends RouteGenericInterface = RouteGenericInterface,
@@ -30,4 +31,3 @@ declare module 'fastify' {
     worker: WorkerProxy<Job<JobArgs>>;
   }
 }
-/* eslint-enable @typescript-eslint/no-unused-vars */

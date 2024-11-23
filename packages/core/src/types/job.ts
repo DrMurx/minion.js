@@ -1,5 +1,5 @@
 import { type Executor } from '../worker/executor.js';
-import { type WorkerId } from './worker.js';
+import { type RunningWorker, type WorkerId } from './worker.js';
 
 /**
  * A limited interface for a running `Job` when it is passed to a `Task` handler
@@ -7,11 +7,14 @@ import { type WorkerId } from './worker.js';
 export interface Job<Args extends JobArgs> {
   get id(): JobId;
   get taskName(): string;
-  get args(): Args;
+  get args(): Readonly<Args>;
+  get result(): Readonly<JobResult> | undefined;
   get progress(): number;
   get attempt(): number;
   get maxAttempts(): number;
   get state(): JobState;
+  get worker(): RunningWorker<Job<Args>>;
+  get metadata(): Readonly<Record<string, any>>;
 
   get abortSignal(): AbortSignal;
 

@@ -38,7 +38,7 @@ export class Executor<BaseJob extends Job<JobArgs>> {
     return this._job;
   }
 
-  get jobRecord(): JobRecord<InferJobArgs<BaseJob>> {
+  get jobRecord(): Readonly<JobRecord<InferJobArgs<BaseJob>>> {
     return { ...this._jobRecord };
   }
 
@@ -50,11 +50,11 @@ export class Executor<BaseJob extends Job<JobArgs>> {
     return this._jobRecord.taskName;
   }
 
-  get args(): InferJobArgs<BaseJob> {
+  get args(): Readonly<InferJobArgs<BaseJob>> {
     return this._jobRecord.args;
   }
 
-  get result(): JobResult | undefined {
+  get result(): Readonly<JobResult> | undefined {
     return this._jobRecord.result;
   }
 
@@ -74,6 +74,14 @@ export class Executor<BaseJob extends Job<JobArgs>> {
     return this._jobRecord.attempt;
   }
 
+  get worker(): RunningWorker<BaseJob> {
+    return this._worker;
+  }
+
+  get metadata(): Readonly<Record<string, any>> {
+    return this._jobRecord.metadata;
+  }
+
   get startedAt(): Date | undefined {
     return this._jobRecord.startedAt;
   }
@@ -91,10 +99,6 @@ export class Executor<BaseJob extends Job<JobArgs>> {
       }
     }
     return 0;
-  }
-
-  get worker(): RunningWorker<BaseJob> {
-    return this._worker;
   }
 
   get abortSignal(): AbortSignal {

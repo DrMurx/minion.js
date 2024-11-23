@@ -16,11 +16,11 @@ export class DefaultJob<Args extends JobArgs> implements Job<Args> {
     return this.executor.taskName;
   }
 
-  get args(): Args {
+  get args(): Readonly<Args> {
     return this.executor.args;
   }
 
-  get result(): JobResult | undefined {
+  get result(): Readonly<JobResult> | undefined {
     return this.executor.result;
   }
 
@@ -42,6 +42,10 @@ export class DefaultJob<Args extends JobArgs> implements Job<Args> {
 
   get worker(): RunningWorker<Job<Args>> {
     return this.executor.worker;
+  }
+
+  get metadata(): Readonly<Record<string, any>> {
+    return this.executor.metadata;
   }
 
   get abortSignal(): AbortSignal {

@@ -45,7 +45,7 @@ t.test('Worker', skip, async (t) => {
     t.same(await queue.getWorkerInfo(worker), undefined);
     await worker.register();
     t.not(worker.id, id);
-    t.equal((await queue.getWorkerInfo(worker))!.host, os.hostname());
+    t.equal((await queue.getWorkerInfo(worker))!.metadata[':hostname'], os.hostname());
     await worker.unregister();
     t.same(await queue.getWorkerInfo(worker), undefined);
   });

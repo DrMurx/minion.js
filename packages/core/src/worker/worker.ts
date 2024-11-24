@@ -1,3 +1,4 @@
+import { hostname } from 'os';
 import {
   WorkerUpdateOptions,
   type ExecutorBackend,
@@ -214,7 +215,11 @@ export class DefaultWorker<BaseJob extends Job<JobArgs>> implements WorkerInstan
     if (!this.isRegistered) {
       const options: WorkerRegistrationOptions = {
         config: this._config,
-        metadata: this._metadata,
+        metadata: {
+          ...this._metadata,
+          ':hostname': hostname(),
+          ':pid': process.pid,
+        },
       };
       const workerInfo = await this.workerBackend.registerWorker(options);
       this._id = workerInfo.id;

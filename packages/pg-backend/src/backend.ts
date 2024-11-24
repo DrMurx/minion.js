@@ -26,7 +26,6 @@ import {
   WorkerState,
   type WorkerUpdateOptions,
 } from '@queuebone/core';
-import os from 'os';
 import pg, {
   type ClientBase,
   type Notification,
@@ -48,8 +47,6 @@ const JOB_NOTIFICATION_TRIGGER = 'queue_jobs_notify_workers_trigger';
  */
 export class PgBackend implements Backend {
   public readonly name = 'Pg';
-
-  private hostname = os.hostname();
 
   private _pool: pg.Pool;
   private _schema: string | undefined;
@@ -488,27 +485,23 @@ export class PgBackend implements Backend {
       `INSERT INTO ${WORKER_TABLE} (
         config,
         state,
-        host,
-        pid,
         finished_job_count,
         metadata
       )
       VALUES (
-        $1, $2, $3, $4, $5, $6
+        $1, $2, $3, $4
       )
       RETURNING id,
 
         config,
         state,
-        host,
-        pid,
 
         finished_job_count AS "finishedJobCount",
         metadata,
 
         started_at AS "startedAt",
         last_seen_at AS "lastSeenAt"`,
-      [options.config, WorkerState.Online, this.hostname, process.pid, 0, options.metadata],
+      [options.config, WorkerState.Online, 0, options.metadata],
     );
     const workerInfo = results.rows[0];
     if (workerInfo) workerInfo.jobIds = [];
@@ -529,8 +522,6 @@ export class PgBackend implements Backend {
 
         config,
         state,
-        host,
-        pid,
 
         finished_job_count AS "finishedJobCount",
         metadata,
@@ -583,8 +574,6 @@ export class PgBackend implements Backend {
         id,
         config,
         state,
-        host,
-        pid,
         finished_job_count AS "finishedJobCount",
         metadata,
         started_at AS "startedAt",
@@ -605,8 +594,6 @@ export class PgBackend implements Backend {
 
         config,
         state,
-        host,
-        pid,
 
         finished_job_count AS "finishedJobCount",
         metadata,
@@ -636,8 +623,6 @@ export class PgBackend implements Backend {
 
         config,
         state,
-        host,
-        pid,
 
         finished_job_count AS "finishedJobCount",
         metadata,
@@ -931,8 +916,6 @@ const queueDatabaseUpgrades: MigrationStep[] = [
 
         config             JSONB CHECK(JSONB_TYPEOF(config) = 'object') NOT NULL DEFAULT '{}',
         state              ${WORKER_TABLE}_state NOT NULL,
-        host               TEXT NOT NULL,
-        pid                INT NOT NULL,
 
         finished_job_count BIGINT NOT NULL DEFAULT 0,
         metadata           JSONB CHECK(JSONB_TYPEOF(metadata) = 'object') NOT NULL DEFAULT '{}',

@@ -46,13 +46,14 @@ t.test('PostgreSQL backend', skip, async (t) => {
     const batch1 = results2.workers;
     t.equal(batch1[0].id, worker1.id);
     t.equal(batch1[0].state, WorkerState.Online);
-    t.equal(batch1[0].host, os.hostname());
-    t.equal(batch1[0].pid, process.pid);
+    t.same(Object.keys(batch1[0].metadata).sort(), [':hostname', ':pid']);
+    t.equal(batch1[0].metadata[':pid'], process.pid);
+    t.equal(batch1[0].metadata[':hostname'], os.hostname());
     t.same(batch1[0].startedAt instanceof Date, true);
     t.equal(batch1[1].id, worker2.id);
     t.equal(batch1[1].state, WorkerState.Online);
-    t.equal(batch1[1].host, os.hostname());
-    t.equal(batch1[1].pid, process.pid);
+    t.equal(batch1[1].metadata[':pid'], process.pid);
+    t.equal(batch1[1].metadata[':hostname'], os.hostname());
     t.same(batch1[1].startedAt instanceof Date, true);
     t.notOk(batch1[2]);
 

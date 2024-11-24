@@ -152,8 +152,6 @@ export interface WorkerInfo {
 
   config: WorkerConfig;
   state: WorkerState;
-  host: string;
-  pid: number;
 
   finishedJobCount: number;
   metadata: Record<string, any>;

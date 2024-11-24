@@ -13,6 +13,7 @@ import {
   type WorkerRegistrationOptions,
   type WorkerUpdateOptions,
 } from '@queuebone/core';
+import { hostname } from 'os';
 import { type WorkerProfileHolder } from './types.js';
 
 /**
@@ -52,8 +53,10 @@ export class WorkerProxy<BaseJob extends Job<JobArgs>> {
     this._config = { ...holder.config };
 
     this._metadata = {
-      name: holder.name,
-      host: ip,
+      ':hostname': hostname(),
+      ':pid': process.pid,
+      ':profile': holder.name,
+      ':remote': ip,
     };
   }
 
@@ -68,8 +71,6 @@ export class WorkerProxy<BaseJob extends Job<JobArgs>> {
         heartbeatInterval: 0,
       },
       state: this._state,
-      host: this.ip,
-      pid: 0,
       finishedJobCount: this.finishedJobCount,
       metadata: this._metadata,
       startedAt: this._startedAt,

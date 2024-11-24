@@ -93,16 +93,15 @@ t.test('HTTP backend', skip, async (t) => {
     t.equal(batch1[0].id, worker1.id);
     t.equal(batch1[0].config.heartbeatInterval, 3600000);
     t.equal(batch1[0].state, WorkerState.Online);
-    t.same(Object.keys(batch1[0].metadata), ['host', 'name']);
-    t.equal(batch1[0].metadata.name, 'test-worker-1');
-    t.ok(batch1[0].metadata.host);
-    t.equal(batch1[0].host, os.hostname());
-    t.equal(batch1[0].pid, process.pid);
+    t.same(Object.keys(batch1[0].metadata).sort(), [':hostname', ':pid', ':profile', ':remote']);
+    t.equal(batch1[0].metadata[':pid'], process.pid);
+    t.equal(batch1[0].metadata[':hostname'], os.hostname());
+    t.equal(batch1[0].metadata[':profile'], 'test-worker-1');
+    t.equal(batch1[0].metadata[':remote'], '127.0.0.1');
     t.equal(batch1[0].startedAt instanceof Date, true);
     t.equal(batch1[1].id, worker2.id);
-    t.same(Object.keys(batch1[1].metadata), ['host', 'name']);
-    t.equal(batch1[1].metadata.name, 'test-worker-1');
-    t.ok(batch1[1].metadata.host);
+    t.same(Object.keys(batch1[1].metadata).sort(), [':hostname', ':pid', ':profile', ':remote']);
+    t.equal(batch1[1].metadata[':profile'], 'test-worker-1');
     t.notOk(batch1[2]);
 
     await worker1.setMetadata('whatever', 'can not update remotely');
@@ -110,7 +109,7 @@ t.test('HTTP backend', skip, async (t) => {
 
     const batch2 = (await serverBackend.getWorkerInfos(0, 10, {})).workers;
     t.equal(batch2[0].id, worker1.id);
-    t.same(Object.keys(batch2[0].metadata), ['host', 'name']);
+    t.same(Object.keys(batch2[0].metadata).sort(), [':hostname', ':pid', ':profile', ':remote']);
     t.equal(batch2[1].id, worker2.id);
     t.notOk(batch2[1].metadata.whatever);
     t.notOk(batch2[2]);

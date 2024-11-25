@@ -100,11 +100,10 @@ export class ExecutorProxy<BaseJob extends Job<JobArgs>> {
   }
 
   /**
-   * Transition the job from `running` to `succeeded` or `failed`. The
-   * @param state
-   * @param result
+   * Transition the job from `running` to `succeeded` or `failed`.
    */
   async markFinished(state: JobState.Succeeded | JobState.Failed, result: JobResult | JobError): Promise<boolean> {
+    this.worker.finishedJobCount++;
     if (state === JobState.Succeeded) {
       return await this.markSucceeded(result);
     }

@@ -88,6 +88,10 @@ t.test('HTTP backend', skip, async (t) => {
     }
 
     t.equal(worker1.config.heartbeatInterval, 0);
+    t.notOk(worker1.getMetadata(':hostname'));
+    t.notOk(worker1.getMetadata(':pid'));
+    t.notOk(worker1.getMetadata(':profile'));
+    t.notOk(worker1.getMetadata(':remote'));
 
     const batch1 = (await serverBackend.getWorkerInfos(0, 10, {})).workers;
     t.equal(batch1[0].id, worker1.id);

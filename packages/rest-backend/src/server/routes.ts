@@ -109,7 +109,15 @@ export const routesPlugin: FastifyPluginAsync<PluginOptions<Job<JobArgs>>> = asy
       fastify.post<AssignNextJobAPI>('/nextjob', { schema: assignNextJobSchema }, async (request, reply) => {
         const { taskNames, options } = request.body;
         const jobRecord = await request.worker.getNextJob(taskNames, options.minPriority ?? 0);
-        return jobRecord !== null ? jobRecord : reply.status(204).send(); // 204 = No content
+
+        if (jobRecord === null) {
+          return reply.status(204).send(); // 204 = No content
+        }
+
+        const executor = new ExecutorProxy(jobRecord, request.worker, backend, notifier);
+        await executor.start();
+
+        return jobRecord;
       });
     },
     { prefix: '/workers/:id' },

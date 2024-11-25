@@ -42,7 +42,7 @@ export class WorkerProxy<BaseJob extends Job<JobArgs>> {
   protected lastHeartbeatAt = 0;
   protected lastInboxCheck = 0;
 
-  private finishedJobCount = 0;
+  public finishedJobCount = 0;
 
   constructor(
     protected workerBackend: WorkerBackend,
@@ -61,18 +61,26 @@ export class WorkerProxy<BaseJob extends Job<JobArgs>> {
   }
 
   /**
-   * Returns a version of `workerInfo` which is cleared of all internal informat
+   * Returns a version of `workerInfo` for the client. It has all internal information stripped.
    */
   get clientWorkerInfo(): WorkerInfo {
+    // Filter all "internal" metadata values
+    const metadata = Object.fromEntries(Object.entries(this._metadata).filter(([key]) => !key.startsWith(':')));
+
     const workerInfo: WorkerInfo = {
       id: this._id ?? 0,
       config: {
-        ...this._config,
+        queueNames: [],
+        maxCapacity: this._config.maxCapacity,
+        reservedCapacity: this._config.reservedCapacity,
+        reservedMinPriority: this._config.reservedMinPriority,
         heartbeatInterval: 0,
+        inboxCheckInterval: this._config.inboxCheckInterval,
+        dequeueTimeout: 0,
       },
       state: this._state,
-      finishedJobCount: this.finishedJobCount,
-      metadata: this._metadata,
+      finishedJobCount: 0,
+      metadata,
       startedAt: this._startedAt,
       jobIds: [],
     };
@@ -83,9 +91,9 @@ export class WorkerProxy<BaseJob extends Job<JobArgs>> {
     this._state = state;
   }
 
-  // get state(): WorkerState {
-  //   return this._state;
-  // }
+  get state(): WorkerState {
+    return this._state;
+  }
 
   protected get isRegistered(): boolean {
     return this._id !== undefined;
@@ -117,15 +125,6 @@ export class WorkerProxy<BaseJob extends Job<JobArgs>> {
     );
 
     await this.heartbeat();
-
-    if (jobRecord === null) return null;
-
-    if (this.notifier.listenerCount('job_started') > 0) {
-      const event = {
-        jobRecord,
-      };
-      this.notifier.emit('job_started', event);
-    }
 
     return jobRecord;
   }

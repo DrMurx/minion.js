@@ -13,7 +13,7 @@ export interface WorkerProfileHolder<BaseJob extends Job<JobArgs>> {
 export interface ProfileManager<BaseJob extends Job<JobArgs>>
   extends ReadonlyMap<string, WorkerProfileHolder<BaseJob>> {
   timingSafeGet(name: string, passphrase: string): WorkerProfileHolder<BaseJob> | undefined;
-  timingSafeHas(name: string, passphrase: string): boolean;
   addProfile(profile: WorkerProfile): void;
-  dropWorker(workerId: WorkerId): void;
+  startPruner(): void;
+  stopPruner(): void;
 }

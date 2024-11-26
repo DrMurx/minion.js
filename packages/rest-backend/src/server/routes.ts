@@ -34,6 +34,12 @@ export const routesPlugin: FastifyPluginAsync<PluginOptions<Job<JobArgs>>> = asy
     secret: jwtSecret,
   });
 
+  // Start worker pruner
+  profileManager.startPruner();
+  fastify.addHook('onClose', () => {
+    profileManager.stopPruner();
+  });
+
   /**
    * Register a new worker.
    */
@@ -85,6 +91,7 @@ export const routesPlugin: FastifyPluginAsync<PluginOptions<Job<JobArgs>>> = asy
       if (worker === undefined) {
         return reply.status(401).send(); // 401 = unauthorized
       }
+      worker.lastSeenAt = Date.now();
 
       request.profile = profile;
       request.worker = worker;
@@ -152,6 +159,7 @@ export const routesPlugin: FastifyPluginAsync<PluginOptions<Job<JobArgs>>> = asy
         if (executor === undefined || executor.attempt !== attempt) {
           return reply.status(404).send(); // 404 = not found
         }
+        executor.lastSeenAt = Date.now();
 
         const { metadata, progress, state, result } = body;
         if (metadata !== undefined) {

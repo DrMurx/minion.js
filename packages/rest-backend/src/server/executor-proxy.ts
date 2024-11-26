@@ -18,6 +18,7 @@ import { WorkerProxy } from './worker-proxy.js';
 export class ExecutorProxy<BaseJob extends Job<JobArgs>> {
   private _jobRecord: JobRecord<InferJobArgs<BaseJob>>;
   private _worker: WorkerProxy<BaseJob>;
+  public lastSeenAt = Date.now();
 
   constructor(
     jobRecord: JobRecord<InferJobArgs<BaseJob>>,

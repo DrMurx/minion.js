@@ -45,6 +45,7 @@ export class WorkerProxy<BaseJob extends Job<JobArgs>> {
 
   public jobExecutors: Map<JobId, ExecutorProxy<BaseJob>> = new Map();
   public finishedJobCount = 0;
+  public lastSeenAt = Date.now();
 
   constructor(
     profile: string,

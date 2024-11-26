@@ -1,12 +1,17 @@
-import { DefaultWorker, type Job, type JobArgs, type WorkerId } from '@queuebone/core';
+import { DefaultWorker, type Job, type JobArgs } from '@queuebone/core';
 import { timingSafeCompare } from './compare.js';
 import { type WorkerProfile } from './config.js';
 import { type ProfileManager, type WorkerProfileHolder } from './types.js';
 
-export class DefaultProfileManager<BaseJob extends Job<JobArgs>> extends Map implements ProfileManager<BaseJob> {
+export class DefaultProfileManager<BaseJob extends Job<JobArgs>>
+  extends Map<string, WorkerProfileHolder<BaseJob>>
+  implements ProfileManager<BaseJob>
+{
   public static readonly DEFAULT_CONFIG = {
     maxWorkers: Number.MAX_SAFE_INTEGER,
   };
+
+  private pruneScheduler: NodeJS.Timeout | undefined;
 
   constructor(
     profiles: WorkerProfile[] = [],
@@ -42,14 +47,6 @@ export class DefaultProfileManager<BaseJob extends Job<JobArgs>> extends Map imp
     }
   }
 
-  timingSafeHas(name: string, passphrase: string): boolean {
-    const holder = this.get(name);
-    if (holder === undefined) {
-      return false;
-    }
-    return timingSafeCompare(Buffer.from(passphrase), Buffer.from(holder.passphrase));
-  }
-
   addProfile(profile: WorkerProfile): void {
     const name = profile.name;
     if (this.has(name)) {
@@ -70,9 +67,33 @@ export class DefaultProfileManager<BaseJob extends Job<JobArgs>> extends Map imp
     this.set(name, holder);
   }
 
-  dropWorker(workerId: WorkerId): void {
+  startPruner(): void {
+    if (!this.pruneScheduler) {
+      this.pruneScheduler = setInterval(() => this.prune(), 60 * 1000);
+    }
+  }
+
+  stopPruner(): void {
+    if (this.pruneScheduler) {
+      clearInterval(this.pruneScheduler);
+      this.pruneScheduler = undefined;
+    }
+  }
+
+  prune(): void {
+    const expireAfter = Date.now() - 30 * 60 * 1000;
     this.forEach((holder) => {
-      holder.activeWorkers.delete(workerId);
+      for (const [workerId, worker] of holder.activeWorkers) {
+        if (worker.lastSeenAt < expireAfter) {
+          holder.activeWorkers.delete(workerId);
+        } else {
+          for (const [jobId, jobExecutor] of worker.jobExecutors) {
+            if (jobExecutor.lastSeenAt < expireAfter) {
+              worker.jobExecutors.delete(jobId);
+            }
+          }
+        }
+      }
     });
   }
 }

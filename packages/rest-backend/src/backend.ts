@@ -78,7 +78,9 @@ export class RestBackend implements Backend {
       const body = {
         progress,
       };
-      const response = await this._axios.patch(`/jobs/${jobId}/${attempt}`, body);
+      const response = await this._axios.patch(`/jobs/${jobId}/${attempt}`, body, {
+        signal: AbortSignal.timeout(500),
+      });
       return response.status === 200;
     } catch (_) {
       return false;

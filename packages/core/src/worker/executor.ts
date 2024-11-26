@@ -114,7 +114,7 @@ export class Executor<BaseJob extends Job<JobArgs>> {
         const event = {
           jobRecord: this.jobRecord,
           progress,
-          duration: Date.now() - this.startedAt!.getTime(),
+          duration: this.duration,
           job: this.job,
         };
         this.notifier.emit('job_progress', event);

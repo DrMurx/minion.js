@@ -17,14 +17,16 @@ import { WorkerProxy } from './worker-proxy.js';
  */
 export class ExecutorProxy<BaseJob extends Job<JobArgs>> {
   private _jobRecord: JobRecord<InferJobArgs<BaseJob>>;
+  private _worker: WorkerProxy<BaseJob>;
 
   constructor(
     jobRecord: JobRecord<InferJobArgs<BaseJob>>,
-    private worker: WorkerProxy<BaseJob>,
+    worker: WorkerProxy<BaseJob>,
     private backend: ExecutorBackend,
     private notifier: QueueEventEmitter<BaseJob>,
   ) {
     this._jobRecord = jobRecord;
+    this._worker = worker;
   }
 
   get jobRecord(): JobRecord<InferJobArgs<BaseJob>> {
@@ -41,10 +43,6 @@ export class ExecutorProxy<BaseJob extends Job<JobArgs>> {
 
   get attempt(): number {
     return this._jobRecord.attempt;
-  }
-
-  get startedAt(): Date | undefined {
-    return this._jobRecord.startedAt;
   }
 
   get duration(): number {
@@ -67,12 +65,12 @@ export class ExecutorProxy<BaseJob extends Job<JobArgs>> {
         const event = {
           jobRecord: this.jobRecord,
           progress,
-          duration: Date.now() - this.startedAt!.getTime(),
+          duration: this.duration,
         };
         this.notifier.emit('job_progress', event);
       }
 
-      await this.worker.heartbeat();
+      await this._worker.heartbeat();
     }
     return isUpdated;
   }
@@ -103,7 +101,7 @@ export class ExecutorProxy<BaseJob extends Job<JobArgs>> {
    * Transition the job from `running` to `succeeded` or `failed`.
    */
   async markFinished(state: JobState.Succeeded | JobState.Failed, result: JobResult | JobError): Promise<boolean> {
-    this.worker.finishedJobCount++;
+    this._worker.finishedJobCount++;
     if (state === JobState.Succeeded) {
       return await this.markSucceeded(result);
     }

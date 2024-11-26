@@ -45,6 +45,7 @@
     "test": "tap --disable-coverage --allow-empty-coverage"
   },
   "dependencies": {
+    "@fastify/jwt": "^9.0.1",
     "@queuebone/core": "workspace:~",
     "axios": "^1.7.7",
     "fastify": "^5.1.0"

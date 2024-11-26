@@ -15,6 +15,7 @@ import {
 import { type FastifyRequestType, type ResolveFastifyRequestType } from 'fastify/types/type-provider';
 import { type WorkerProfileHolder } from './types.js';
 import { type WorkerProxy } from './worker-proxy.js';
+import '@fastify/jwt';
 
 declare module 'fastify' {
   export interface FastifyRequest<
@@ -27,7 +28,16 @@ declare module 'fastify' {
     Logger extends FastifyBaseLogger = FastifyBaseLogger,
     RequestType extends FastifyRequestType = ResolveFastifyRequestType<TypeProvider, SchemaCompiler, RouteGeneric>,
   > {
-    holder: WorkerProfileHolder<Job<JobArgs>>;
+    profile: WorkerProfileHolder<Job<JobArgs>>;
     worker: WorkerProxy<Job<JobArgs>>;
+  }
+}
+
+declare module '@fastify/jwt' {
+  interface FastifyJWT {
+    user: {
+      id: number;
+      name: string;
+    };
   }
 }

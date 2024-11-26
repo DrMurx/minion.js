@@ -4,7 +4,7 @@ import { type WorkerProxy } from './worker-proxy.js';
 
 export interface WorkerProfileHolder<BaseJob extends Job<JobArgs>> {
   name: string;
-  token: string;
+  passphrase: string;
   maxWorkers: number;
   config: WorkerConfig;
   activeWorkers: Map<WorkerId, WorkerProxy<BaseJob>>;
@@ -12,8 +12,8 @@ export interface WorkerProfileHolder<BaseJob extends Job<JobArgs>> {
 
 export interface ProfileManager<BaseJob extends Job<JobArgs>>
   extends ReadonlyMap<string, WorkerProfileHolder<BaseJob>> {
-  timingSafeGet(token: string): WorkerProfileHolder<BaseJob> | undefined;
-  timingSafeHas(token: string): boolean;
+  timingSafeGet(name: string, passphrase: string): WorkerProfileHolder<BaseJob> | undefined;
+  timingSafeHas(name: string, passphrase: string): boolean;
   addProfile(profile: WorkerProfile): void;
   dropWorker(workerId: WorkerId): void;
 }

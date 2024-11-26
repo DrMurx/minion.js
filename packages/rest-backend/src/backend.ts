@@ -27,12 +27,16 @@ export class RestBackend implements Backend {
 
   private _axios: AxiosInstance;
 
-  constructor(baseUrl: string, bearerToken: string) {
+  private workerTokens: Map<WorkerId, string> = new Map();
+  private jobTokens: Map<JobId, string> = new Map();
+
+  constructor(
+    baseUrl: string,
+    protected username: string,
+    protected passphrase: string,
+  ) {
     this._axios = axios.create({
       baseURL: baseUrl,
-      headers: {
-        Authorization: `Bearer ${bearerToken}`,
-      },
     });
   }
 
@@ -63,10 +67,16 @@ export class RestBackend implements Backend {
     records: Record<string, any>,
   ): Promise<Record<string, any> | undefined> {
     try {
+      const token = this.jobTokens.get(jobId);
       const body = {
         metadata: records,
       };
-      const response = await this._axios.patch<{ metadata?: Record<string, any> }>(`/jobs/${jobId}/${attempt}`, body);
+      const response = await this._axios.patch<{ metadata?: Record<string, any> }>(`/jobs/${jobId}/${attempt}`, body, {
+        signal: AbortSignal.timeout(500),
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
       return response.status === 200 ? (response.data.metadata ?? {}) : undefined;
     } catch (_) {
       return undefined;
@@ -75,11 +85,15 @@ export class RestBackend implements Backend {
 
   async updateJobProgress(jobId: JobId, attempt: number, progress: number): Promise<boolean> {
     try {
+      const token = this.jobTokens.get(jobId);
       const body = {
         progress,
       };
       const response = await this._axios.patch(`/jobs/${jobId}/${attempt}`, body, {
         signal: AbortSignal.timeout(500),
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
       });
       return response.status === 200;
     } catch (_) {
@@ -94,11 +108,17 @@ export class RestBackend implements Backend {
     result: JobResult,
   ): Promise<boolean> {
     try {
+      const token = this.jobTokens.get(jobId);
       const body = {
         state,
         result,
       };
-      const response = await this._axios.patch(`/jobs/${jobId}/${attempt}`, body);
+      const response = await this._axios.patch(`/jobs/${jobId}/${attempt}`, body, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      this.jobTokens.delete(jobId);
       return response.status === 200;
     } catch (_) {
       return false;
@@ -111,6 +131,7 @@ export class RestBackend implements Backend {
     _: number,
     options: JobDequeueOptions,
   ): Promise<JobRecord<Args> | null> {
+    const token = this.workerTokens.get(id);
     try {
       const body = {
         taskNames,
@@ -118,8 +139,16 @@ export class RestBackend implements Backend {
           minPriority: options.minPriority,
         },
       };
-      const response = await this._axios.post<JobRecord<Args>>(`/workers/${id}/nextjob`, body);
-      return response.status === 200 ? response.data : null;
+      const response = await this._axios.post<JobRecord<Args>>('/worker/nextjob', body, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      if (response.status === 200) {
+        this.jobTokens.set(response.data.id, token!);
+        return response.data;
+      }
+      return null;
     } catch (_) {
       return null;
     }
@@ -148,8 +177,15 @@ export class RestBackend implements Backend {
 
   async registerWorker(): Promise<WorkerInfo> {
     try {
-      const response = await this._axios.post<WorkerInfo>('/workers', {});
-      if (response.status === 200) return response.data;
+      const response = await this._axios.post<{ token: string; info: WorkerInfo }>('/workers', {
+        name: this.username,
+        passphrase: this.passphrase,
+      });
+      if (response.status === 200) {
+        const { token, info } = response.data;
+        this.workerTokens.set(info.id, token);
+        return info;
+      }
       throw new Error("Can't register worker");
     } catch (e) {
       throw new Error(`Can't register worker. ${e}`);
@@ -158,22 +194,33 @@ export class RestBackend implements Backend {
 
   async updateWorker(id: WorkerId, options: WorkerUpdateOptions): Promise<WorkerInfo | undefined> {
     try {
+      const token = this.workerTokens.get(id);
       const body: ClientWorkerUpdateOptions = {
         state: options.state,
       };
-      const response = await this._axios.patch(`/workers/${id}`, body);
+      const response = await this._axios.patch('/worker', body, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
       return response.status === 200 ? response.data : undefined;
     } catch (_) {
+      console.log(_);
       return undefined;
     }
   }
 
   async checkWorkerInbox(id: WorkerId, options: WorkerUpdateOptions): Promise<WorkerCommandDescriptor[]> {
     try {
+      const token = this.workerTokens.get(id);
       const body: ClientWorkerUpdateOptions = {
         state: options.state,
       };
-      const response = await this._axios.post<WorkerCommandDescriptor[]>(`/workers/${id}/inbox`, body);
+      const response = await this._axios.post<WorkerCommandDescriptor[]>('/worker/inbox', body, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
       return response.status === 200 ? response.data : [];
     } catch (_) {
       return [];
@@ -182,7 +229,13 @@ export class RestBackend implements Backend {
 
   async unregisterWorker(id: WorkerId): Promise<boolean> {
     try {
-      const response = await this._axios.delete(`/workers/${id}`);
+      const token = this.workerTokens.get(id);
+      const response = await this._axios.delete('/worker', {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      this.workerTokens.delete(id);
       return response.status === 200;
     } catch (_) {
       return false;

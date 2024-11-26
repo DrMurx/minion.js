@@ -5,7 +5,6 @@ import {
   type JobResult,
   JobState,
   type WorkerCommandDescriptor,
-  type WorkerId,
   type WorkerInfo,
   WorkerState,
 } from '@queuebone/core';
@@ -68,39 +67,32 @@ export const updateJobSchema = {
 };
 
 export type RegisterWorkerAPI = {
-  Reply: WorkerInfo;
+  Body: {
+    name: string;
+    passphrase: string;
+  };
+  Reply: {
+    token: string;
+    info: WorkerInfo;
+  };
 };
 
-export const registerWorkerSchema = {};
-
-export type WorkerAPI = {
-  Params: { id: WorkerId };
-};
-
-export const workerSchema = {
-  params: {
+export const registerWorkerSchema = {
+  body: {
     type: 'object',
-    required: ['id'],
     properties: {
-      id: { type: 'number' },
+      name: { type: 'string' },
+      passphrase: { type: 'string' },
     },
   },
 };
 
 export type UpdateWorkerAPI = {
-  Params: { id: WorkerId };
   Body: ClientWorkerUpdateOptions;
   Reply: WorkerInfo;
 };
 
 export const updateWorkerSchema = {
-  params: {
-    type: 'object',
-    required: ['id'],
-    properties: {
-      id: { type: 'number' },
-    },
-  },
   body: {
     type: 'object',
     required: ['state'],
@@ -113,22 +105,7 @@ export const updateWorkerSchema = {
   },
 };
 
-export type UnregisterWorkerAPI = {
-  Params: { id: WorkerId };
-};
-
-export const unregisterWorkerSchema = {
-  params: {
-    type: 'object',
-    required: ['id'],
-    properties: {
-      id: { type: 'number' },
-    },
-  },
-};
-
 export type AssignNextJobAPI = {
-  Params: { id: WorkerId };
   Body: {
     taskNames: string[];
     timeout: number;
@@ -140,13 +117,6 @@ export type AssignNextJobAPI = {
 };
 
 export const assignNextJobSchema = {
-  params: {
-    type: 'object',
-    required: ['id'],
-    properties: {
-      id: { type: 'number' },
-    },
-  },
   body: {
     type: 'object',
     properties: {
@@ -163,19 +133,11 @@ export const assignNextJobSchema = {
 };
 
 export type CheckWorkerInboxAPI = {
-  Params: { id: WorkerId };
   Body: ClientWorkerUpdateOptions;
   Reply: WorkerCommandDescriptor[];
 };
 
 export const checkWorkerInboxSchema = {
-  params: {
-    type: 'object',
-    required: ['id'],
-    properties: {
-      id: { type: 'number' },
-    },
-  },
   body: {
     type: 'object',
     required: ['state'],

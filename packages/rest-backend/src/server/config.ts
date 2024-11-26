@@ -7,9 +7,9 @@ export interface WorkerProfile {
   name: string;
 
   /**
-   * The Bearer Auth token to identify requests for Workers of this profile
+   * The passphrase for the worker registration.
    */
-  token: string;
+  passphrase: string;
 
   /**
    * Number of workers allowed to connect at the same time with this profile.

@@ -25,8 +25,8 @@ t.test('HTTP backend', skip, async (t) => {
   });
   const profileManager = new DefaultProfileManager([
     {
-      name: 'test-worker-1',
-      token: 'test-token-1',
+      name: 'profile-1',
+      passphrase: 'password-1',
       config: {
         queueNames: ['default'],
         heartbeatInterval: 60 * 60 * 1000,
@@ -34,8 +34,8 @@ t.test('HTTP backend', skip, async (t) => {
       maxWorkers: 2,
     },
     {
-      name: 'test-worker-2',
-      token: 'test-token-2',
+      name: 'profile-2',
+      passphrase: 'password-2',
       config: {
         queueNames: ['default'],
       },
@@ -46,6 +46,7 @@ t.test('HTTP backend', skip, async (t) => {
   });
   fastify.register(routesPlugin, {
     profileManager,
+    jwtSecret: 'test-secret',
     backend: serverBackend,
     notifier: serverQueue,
   });
@@ -53,7 +54,7 @@ t.test('HTTP backend', skip, async (t) => {
   fastify.listen({ port: PORT });
 
   // Create client components
-  const clientBackend = new RestBackend(`http://localhost:${PORT}`, 'test-token-1');
+  const clientBackend = new RestBackend(`http://localhost:${PORT}`, 'profile-1', 'password-1');
   const clientQueue = new DefaultQueue(clientBackend, {
     pruneEnabled: false,
   });
@@ -100,12 +101,12 @@ t.test('HTTP backend', skip, async (t) => {
     t.same(Object.keys(batch1[0].metadata).sort(), [':hostname', ':pid', ':profile', ':remote']);
     t.equal(batch1[0].metadata[':pid'], process.pid);
     t.equal(batch1[0].metadata[':hostname'], os.hostname());
-    t.equal(batch1[0].metadata[':profile'], 'test-worker-1');
+    t.equal(batch1[0].metadata[':profile'], 'profile-1');
     t.equal(batch1[0].metadata[':remote'], '127.0.0.1');
     t.equal(batch1[0].startedAt instanceof Date, true);
     t.equal(batch1[1].id, worker2.id);
     t.same(Object.keys(batch1[1].metadata).sort(), [':hostname', ':pid', ':profile', ':remote']);
-    t.equal(batch1[1].metadata[':profile'], 'test-worker-1');
+    t.equal(batch1[1].metadata[':profile'], 'profile-1');
     t.notOk(batch1[2]);
 
     await worker1.setMetadata('whatever', 'can not update remotely');
@@ -134,8 +135,24 @@ t.test('HTTP backend', skip, async (t) => {
     t.equal(worker2.state, WorkerState.Offline);
   });
 
+  await t.test('Register client with invalid password', async (t) => {
+    const invalidClientBackend = new RestBackend(`http://localhost:${PORT}`, 'profile-1', 'invalid-password');
+    const invalidClientQueue = new DefaultQueue(invalidClientBackend, {
+      pruneEnabled: false,
+    });
+    await invalidClientQueue.start();
+    try {
+      // Can't register any worker
+      await invalidClientQueue.getNewWorker().register();
+      t.fail();
+    } catch {
+      t.ok(true);
+    }
+    await invalidClientQueue.stop();
+  });
+
   await t.test('Register invalid client', async (t) => {
-    const invalidClientBackend = new RestBackend(`http://localhost:${PORT}`, 'test-token-invalid');
+    const invalidClientBackend = new RestBackend(`http://localhost:${PORT}`, 'profile-invalid', 'password');
     const invalidClientQueue = new DefaultQueue(invalidClientBackend, {
       pruneEnabled: false,
     });
@@ -202,7 +219,7 @@ t.test('HTTP backend', skip, async (t) => {
   await t.test('Job in concurrent worker classes', async (t) => {
     const worker = await clientQueue.getNewWorker().register();
 
-    const clientBackend2 = new RestBackend(`http://localhost:${PORT}`, 'test-token-2');
+    const clientBackend2 = new RestBackend(`http://localhost:${PORT}`, 'profile-2', 'password-2');
     const clientQueue2 = new DefaultQueue(clientBackend2, {
       pruneEnabled: false,
     });

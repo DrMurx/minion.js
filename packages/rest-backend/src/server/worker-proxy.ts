@@ -4,6 +4,7 @@ import {
   type Job,
   type JobArgs,
   type JobDequeueOptions,
+  type JobId,
   type JobRecord,
   type QueueEventEmitter,
   type WorkerBackend,
@@ -14,7 +15,7 @@ import {
   type WorkerUpdateOptions,
 } from '@queuebone/core';
 import { hostname } from 'os';
-import { type WorkerProfileHolder } from './types.js';
+import { type ExecutorProxy } from './executor-proxy.js';
 
 /**
  * The server side representation of a REST worker.
@@ -42,20 +43,22 @@ export class WorkerProxy<BaseJob extends Job<JobArgs>> {
   protected lastHeartbeatAt = 0;
   protected lastInboxCheck = 0;
 
+  public jobExecutors: Map<JobId, ExecutorProxy<BaseJob>> = new Map();
   public finishedJobCount = 0;
 
   constructor(
+    profile: string,
+    config: WorkerConfig,
+    ip: string,
     protected workerBackend: WorkerBackend,
-    protected holder: WorkerProfileHolder<BaseJob>,
-    protected ip: string,
     protected notifier: QueueEventEmitter<BaseJob>,
   ) {
-    this._config = { ...holder.config };
+    this._config = { ...config };
 
     this._metadata = {
       ':hostname': hostname(),
       ':pid': process.pid,
-      ':profile': holder.name,
+      ':profile': profile,
       ':remote': ip,
     };
   }
@@ -87,8 +90,8 @@ export class WorkerProxy<BaseJob extends Job<JobArgs>> {
     return workerInfo;
   }
 
-  set state(state: WorkerState) {
-    this._state = state;
+  get id(): number | undefined {
+    return this._id;
   }
 
   get state(): WorkerState {
@@ -141,13 +144,17 @@ export class WorkerProxy<BaseJob extends Job<JobArgs>> {
       this._state = WorkerState.Online;
       this._metadata = workerInfo.metadata;
       this.notifier.emit('worker_registered', { workerInfo });
-      this.holder.activeWorkers.set(workerInfo.id, this);
       this.finishedJobCount = 0;
       this.lastHeartbeatAt = Date.now();
     } else {
       await this.heartbeat(true);
     }
     return this;
+  }
+
+  async setState(state: WorkerState): Promise<void> {
+    this._state = state;
+    return this.heartbeat(true);
   }
 
   async heartbeat(force: boolean = false): Promise<void> {
@@ -167,7 +174,8 @@ export class WorkerProxy<BaseJob extends Job<JobArgs>> {
     }
   }
 
-  async getInbox(): Promise<WorkerCommandDescriptor[]> {
+  async getInbox(updateState: WorkerState): Promise<WorkerCommandDescriptor[]> {
+    this._state = updateState;
     const options: WorkerUpdateOptions = {
       state: this._state,
       finishedJobCount: this.finishedJobCount,
@@ -182,7 +190,6 @@ export class WorkerProxy<BaseJob extends Job<JobArgs>> {
       await this.workerBackend.unregisterWorker(this._id);
       this._state = WorkerState.Offline;
       this.notifier.emit('worker_unregistered', { workerId: this._id });
-      this.holder.activeWorkers.delete(this._id);
       this._id = undefined!;
     }
     return this;

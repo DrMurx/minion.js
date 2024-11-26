@@ -8,8 +8,6 @@ export class DefaultProfileManager<BaseJob extends Job<JobArgs>> extends Map imp
     maxWorkers: Number.MAX_SAFE_INTEGER,
   };
 
-  private keyBuffers: Buffer[] = [];
-
   constructor(
     profiles: WorkerProfile[] = [],
     private defaultQueueNames: string[] = [],
@@ -20,40 +18,42 @@ export class DefaultProfileManager<BaseJob extends Job<JobArgs>> extends Map imp
 
   clear() {
     super.clear();
-    this.keyBuffers = [];
   }
 
-  delete(token: string): boolean {
-    const result = super.delete(token);
-    const tokenBuffer = Buffer.from(token);
-    this.keyBuffers = this.keyBuffers.filter((keyBuffer) => keyBuffer.equals(tokenBuffer));
+  delete(name: string): boolean {
+    const result = super.delete(name);
     return result;
   }
 
-  set(token: string, holder: WorkerProfileHolder<BaseJob>): this {
-    super.set(token, holder);
-    const tokenBuffer = Buffer.from(token);
-    this.keyBuffers.push(tokenBuffer);
+  set(name: string, holder: WorkerProfileHolder<BaseJob>): this {
+    super.set(name, holder);
     return this;
   }
 
-  timingSafeGet(token: string): WorkerProfileHolder<BaseJob> | undefined {
-    if (this.timingSafeHas(token)) {
-      return this.get(token);
+  timingSafeGet(name: string, passphrase: string): WorkerProfileHolder<BaseJob> | undefined {
+    const holder = this.get(name);
+    if (holder === undefined) {
+      return undefined;
     }
-    return undefined;
+    if (timingSafeCompare(Buffer.from(passphrase), Buffer.from(holder.passphrase))) {
+      return holder;
+    } else {
+      return undefined;
+    }
   }
 
-  timingSafeHas(token: string): boolean {
-    const tokenBuffer = Buffer.from(token);
-    const index = this.keyBuffers.findIndex((keyBuffer) => timingSafeCompare(keyBuffer, tokenBuffer));
-    return index !== -1;
+  timingSafeHas(name: string, passphrase: string): boolean {
+    const holder = this.get(name);
+    if (holder === undefined) {
+      return false;
+    }
+    return timingSafeCompare(Buffer.from(passphrase), Buffer.from(holder.passphrase));
   }
 
   addProfile(profile: WorkerProfile): void {
-    const token = profile.token;
-    if (this.has(token)) {
-      throw new Error(`Token ${token} already exists`);
+    const name = profile.name;
+    if (this.has(name)) {
+      throw new Error(`Profile ${name} already exists`);
     }
 
     const holder: WorkerProfileHolder<BaseJob> = {
@@ -67,7 +67,7 @@ export class DefaultProfileManager<BaseJob extends Job<JobArgs>> extends Map imp
       activeWorkers: new Map(),
     };
 
-    this.set(token, holder);
+    this.set(name, holder);
   }
 
   dropWorker(workerId: WorkerId): void {

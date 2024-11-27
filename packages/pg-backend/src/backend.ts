@@ -53,11 +53,11 @@ export class PgBackend implements Backend {
   private autoclosePool = false;
   private requeueHandler: (jobRecord: JobRecord<any>) => Promise<void> = async () => {};
 
-  constructor(config: string | pg.Pool) {
+  constructor(config: string | URL | pg.Pool) {
     if (config instanceof pg.Pool) {
       pg.types.setTypeParser(20, parseInt);
       this._pool = config;
-    } else if (typeof config === 'string') {
+    } else if (typeof config === 'string' || config instanceof URL) {
       this._pool = createPool(config);
       this.autoclosePool = true;
     } else {

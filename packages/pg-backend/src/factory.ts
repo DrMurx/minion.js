@@ -1,6 +1,6 @@
 import pg from 'pg';
 
-export function createPool(config: string): pg.Pool {
+export function createPool(config: string | URL): pg.Pool {
   pg.types.setTypeParser(20, parseInt);
   return new pg.Pool({ allowExitOnIdle: true, ...parseConfig(config) });
 }
@@ -8,9 +8,11 @@ export function createPool(config: string): pg.Pool {
 /**
  * Parse PostgreSQL connection URI.
  */
-function parseConfig(config: string): pg.PoolConfig {
+export function parseConfig(config: string | URL): pg.PoolConfig {
   const url = new URL(config);
-  if (url.protocol.match('/^postgres(ql)?:$/')) throw new TypeError(`Invalid URL: ${config}`);
+  if (url.protocol.match(/^postgres(ql)?:$/) === null) {
+    throw new TypeError(`Invalid URL: ${config}`);
+  }
 
   const poolConfig: pg.PoolConfig = {};
   if (url.hostname !== '') poolConfig.host = decodeURIComponent(url.hostname);

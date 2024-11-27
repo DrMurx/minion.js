@@ -54,7 +54,7 @@ t.test('HTTP backend', skip, async (t) => {
   fastify.listen({ port: PORT });
 
   // Create client components
-  const clientBackend = new RestBackend(`http://localhost:${PORT}`, 'profile-1', 'password-1');
+  const clientBackend = new RestBackend(`http://localhost:${PORT}`, { username: 'profile-1', password: 'password-1' });
   const clientQueue = new DefaultQueue(clientBackend, {
     pruneEnabled: false,
   });
@@ -136,7 +136,7 @@ t.test('HTTP backend', skip, async (t) => {
   });
 
   await t.test('Register client with invalid password', async (t) => {
-    const invalidClientBackend = new RestBackend(`http://localhost:${PORT}`, 'profile-1', 'invalid-password');
+    const invalidClientBackend = new RestBackend(`http://profile-1:invalid-password@localhost:${PORT}`);
     const invalidClientQueue = new DefaultQueue(invalidClientBackend, {
       pruneEnabled: false,
     });
@@ -152,7 +152,10 @@ t.test('HTTP backend', skip, async (t) => {
   });
 
   await t.test('Register invalid client', async (t) => {
-    const invalidClientBackend = new RestBackend(`http://localhost:${PORT}`, 'profile-invalid', 'password');
+    const invalidClientBackend = new RestBackend(`http://localhost:${PORT}`, {
+      username: 'profile-invalid',
+      password: 'password',
+    });
     const invalidClientQueue = new DefaultQueue(invalidClientBackend, {
       pruneEnabled: false,
     });
@@ -219,7 +222,7 @@ t.test('HTTP backend', skip, async (t) => {
   await t.test('Job in concurrent worker classes', async (t) => {
     const worker = await clientQueue.getNewWorker().register();
 
-    const clientBackend2 = new RestBackend(`http://localhost:${PORT}`, 'profile-2', 'password-2');
+    const clientBackend2 = new RestBackend(`http://profile-2:password-2@localhost:${PORT}`);
     const clientQueue2 = new DefaultQueue(clientBackend2, {
       pruneEnabled: false,
     });

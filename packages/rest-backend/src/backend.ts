@@ -19,28 +19,38 @@ import {
   type WorkerPruneResult,
   type WorkerUpdateOptions,
 } from '@queuebone/core';
-import axios, { type AxiosInstance } from 'axios';
+import { Axios, type AxiosBasicCredentials } from 'axios';
+import { createAxios, parseConfig } from './factory.ts';
 
 export class RestBackend implements Backend {
-  public readonly FOREGROUND_QUEUE = '_foreground_queue';
   public readonly name = 'Http';
 
-  private _axios: AxiosInstance;
+  private _axios: Axios;
+  private _auth: AxiosBasicCredentials;
 
   private workerTokens: Map<WorkerId, string> = new Map();
   private jobTokens: Map<JobId, string> = new Map();
 
-  constructor(
-    baseUrl: string,
-    protected username: string,
-    protected passphrase: string,
-  ) {
-    this._axios = axios.create({
-      baseURL: baseUrl,
-    });
+  constructor(config: string | URL | Axios, auth?: AxiosBasicCredentials) {
+    if (config instanceof Axios) {
+      if (auth === undefined) {
+        throw new Error('Missing authentication');
+      }
+      this._axios = config;
+      this._auth = auth;
+    } else if (typeof config === 'string' || config instanceof URL) {
+      const url = parseConfig(config);
+      this._axios = createAxios(url);
+      this._auth = auth ?? {
+        username: url.username,
+        password: url.password,
+      };
+    } else {
+      throw new Error('Invalid config for PgBackend');
+    }
   }
 
-  get axios(): AxiosInstance {
+  get axios(): Axios {
     return this._axios;
   }
 
@@ -178,8 +188,8 @@ export class RestBackend implements Backend {
   async registerWorker(): Promise<WorkerInfo> {
     try {
       const response = await this._axios.post<{ token: string; info: WorkerInfo }>('/workers', {
-        name: this.username,
-        passphrase: this.passphrase,
+        name: this._auth.username,
+        passphrase: this._auth.password,
       });
       if (response.status === 200) {
         const { token, info } = response.data;

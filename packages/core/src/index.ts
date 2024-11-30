@@ -33,7 +33,7 @@ export {
   type ListJobsOptions,
 } from './types/job.js';
 export { type DailyJobHistory, type QueueJobStatistics, type QueueStats } from './types/queue-stats.js';
-export { type Queue, type QueueEventEmitter, type QueueOptions } from './types/queue.js';
+export { type PruneOptions, type Queue, type QueueEventEmitter, type QueueOptions } from './types/queue.js';
 export { type Task, type TaskHandlerFunction, type TaskManager } from './types/task.js';
 export {
   WorkerState,

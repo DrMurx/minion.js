@@ -20,7 +20,7 @@ import {
   type WorkerUpdateOptions,
 } from '@queuebone/core';
 import { Axios, type AxiosBasicCredentials } from 'axios';
-import { createAxios, parseConfig } from './factory.ts';
+import { createAxios, parseConfig } from './factory.js';
 
 export class RestBackend implements Backend {
   public readonly name = 'Http';

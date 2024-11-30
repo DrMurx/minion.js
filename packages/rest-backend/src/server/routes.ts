@@ -2,9 +2,10 @@
 /// <reference path="./fastify-declare.ts" />
 
 import jwtPlugin from '@fastify/jwt';
-import { type Backend, type Job, type JobArgs, type QueueEventEmitter } from '@queuebone/core';
+import { type Backend, DefaultWorker, type Job, type JobArgs, type Queue, type WorkerConfig } from '@queuebone/core';
 import { type FastifyPluginAsync } from 'fastify';
 import { ExecutorProxy } from './executor-proxy.js';
+import { Pruner } from './pruner.js';
 import {
   type AssignNextJobAPI,
   assignNextJobSchema,
@@ -21,23 +22,34 @@ import { type ProfileManager } from './types.js';
 import { WorkerProxy } from './worker-proxy.js';
 
 export interface PluginOptions<BaseJob extends Job<JobArgs>> {
+  queue: Queue<BaseJob>;
+  backend: Backend;
   profileManager: ProfileManager<BaseJob>;
   jwtSecret: string;
-  backend: Backend;
-  notifier: QueueEventEmitter<BaseJob>;
 }
 
 export const routesPlugin: FastifyPluginAsync<PluginOptions<Job<JobArgs>>> = async (fastify, options) => {
-  const { profileManager, jwtSecret, backend, notifier } = options;
+  const { queue, backend, profileManager, jwtSecret } = options;
 
   fastify.register(jwtPlugin, {
     secret: jwtSecret,
   });
 
-  // Start worker pruner
-  profileManager.startPruner();
+  // Setup queue
+  fastify.addHook('onReady', async () => {
+    await queue.start();
+  });
+  fastify.addHook('onClose', async () => {
+    await queue.stop();
+  });
+
+  // Setup pruner
+  const pruner = new Pruner(profileManager, queue.options);
+  fastify.addHook('onReady', () => {
+    pruner.startPruner();
+  });
   fastify.addHook('onClose', () => {
-    profileManager.stopPruner();
+    pruner.stopPruner();
   });
 
   /**
@@ -57,7 +69,12 @@ export const routesPlugin: FastifyPluginAsync<PluginOptions<Job<JobArgs>>> = asy
     }
 
     // Create and store WorkerProxy
-    const worker = await new WorkerProxy<Job<JobArgs>>(name, holder.config, ip, backend, notifier).register();
+    const config: WorkerConfig = {
+      ...DefaultWorker.DEFAULT_CONFIG,
+      queueNames: queue.options.queueNames,
+      ...holder.config,
+    };
+    const worker = await new WorkerProxy<Job<JobArgs>>(name, config, ip, backend, queue).register();
     if (worker.id === undefined) {
       return reply.status(500).send(); // 500 = internal server error
     }
@@ -141,7 +158,7 @@ export const routesPlugin: FastifyPluginAsync<PluginOptions<Job<JobArgs>>> = asy
           return reply.status(204).send(); // 204 = No content
         }
 
-        const executor = new ExecutorProxy(jobRecord, worker, backend, notifier);
+        const executor = new ExecutorProxy(jobRecord, worker, backend, queue);
         await executor.start();
         worker.jobExecutors.set(jobRecord.id, executor);
 

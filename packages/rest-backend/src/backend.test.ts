@@ -28,7 +28,6 @@ t.test('HTTP backend', skip, async (t) => {
       name: 'profile-1',
       passphrase: 'password-1',
       config: {
-        queueNames: ['default'],
         heartbeatInterval: 60 * 60 * 1000,
       },
       maxWorkers: 2,
@@ -45,13 +44,12 @@ t.test('HTTP backend', skip, async (t) => {
     logger: false,
   });
   fastify.register(routesPlugin, {
+    queue: serverQueue,
+    backend: serverBackend,
     profileManager,
     jwtSecret: 'test-secret',
-    backend: serverBackend,
-    notifier: serverQueue,
   });
-  await serverQueue.start();
-  fastify.listen({ port: PORT });
+  await fastify.listen({ port: PORT });
 
   // Create client components
   const clientBackend = new RestBackend(`http://localhost:${PORT}`, { username: 'profile-1', password: 'password-1' });
@@ -305,7 +303,6 @@ t.test('HTTP backend', skip, async (t) => {
   });
 
   await fastify.close();
-  await serverQueue.stop();
   await clientQueue.stop();
 
   // Clean up once we are done

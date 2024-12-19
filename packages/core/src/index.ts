@@ -1,5 +1,12 @@
 import { DefaultQueue } from './queue/queue.js';
 
+export {
+  ConfigurationError,
+  ConnectionError,
+  InvalidStateError,
+  QueueboneError,
+  UnsupportedOperationError,
+} from './errors.js';
 export { QuickRunner } from './queue/quick-runner.js';
 export {
   type Backend,

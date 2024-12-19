@@ -1,3 +1,4 @@
+import { InvalidStateError } from '@queuebone/core';
 import pg from 'pg';
 
 export interface MigrationStep {
@@ -83,7 +84,9 @@ export class Migration {
       const current = await this.currentVersion();
       if (current === latest) return;
       if (current > latest)
-        throw new Error(`Current version ${current} is greater than the latest knowm migration version ${latest}`);
+        throw new InvalidStateError(
+          `Current version ${current} is greater than the latest knowm migration version ${latest}`,
+        );
 
       const steps = this.steps
         .filter((step) => step.version > current && step.version <= latest)

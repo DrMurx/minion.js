@@ -1,4 +1,4 @@
-import { type Job, type JobArgs } from '@queuebone/core';
+import { ConfigurationError, type Job, type JobArgs } from '@queuebone/core';
 import { timingSafeCompare } from './compare.js';
 import { type WorkerProfile } from './config.js';
 import { type ProfileManager, type WorkerProfileHolder } from './types.js';
@@ -31,7 +31,7 @@ export class DefaultProfileManager<BaseJob extends Job<JobArgs>>
   addProfile(profile: WorkerProfile): void {
     const name = profile.name;
     if (this.has(name)) {
-      throw new Error(`Profile ${name} already exists`);
+      throw new ConfigurationError(`Profile ${name} already exists`);
     }
 
     const holder: WorkerProfileHolder<BaseJob> = {

@@ -1,4 +1,5 @@
 import { hostname } from 'os';
+import { InvalidStateError } from '../errors.js';
 import {
   WorkerUpdateOptions,
   type ExecutorBackend,
@@ -123,7 +124,7 @@ export class DefaultWorker<BaseJob extends Job<JobArgs>> implements WorkerInstan
 
   getAttachment<T = any>(key: string): T {
     if (this.attachments[key] === undefined) {
-      throw new Error(`Attachment ${key} not found`);
+      throw new InvalidStateError(`Attachment ${key} not found`);
     }
     return this.attachments[key];
   }

@@ -1,6 +1,8 @@
 import {
   type Backend,
+  ConfigurationError,
   type DailyJobHistory,
+  InvalidStateError,
   type JobArgs,
   type JobDequeueOptions,
   type JobEnqueueOptions,
@@ -61,7 +63,7 @@ export class PgBackend implements Backend {
       this._pool = createPool(config);
       this.autoclosePool = true;
     } else {
-      throw new Error('Invalid config for PgBackend');
+      throw new ConfigurationError('Invalid config for PgBackend');
     }
   }
 
@@ -736,7 +738,7 @@ export class PgBackend implements Backend {
   async updateSchema(): Promise<void> {
     const result = await this.query<{ server_version_num: number }>('SHOW server_version_num');
     const version = result.rows[0].server_version_num;
-    if (version < 90500) throw new Error('PostgreSQL 9.5 or later is required');
+    if (version < 90500) throw new InvalidStateError('PostgreSQL 9.5 or later is required');
 
     const conn = await this._pool.connect();
     try {

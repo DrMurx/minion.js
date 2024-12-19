@@ -1,4 +1,7 @@
 import {
+  ConfigurationError,
+  ConnectionError,
+  UnsupportedOperationError,
   JobState,
   WorkerState,
   type Backend,
@@ -34,7 +37,7 @@ export class RestBackend implements Backend {
   constructor(config: string | URL | Axios, auth?: AxiosBasicCredentials) {
     if (config instanceof Axios) {
       if (auth === undefined) {
-        throw new Error('Missing authentication');
+        throw new ConfigurationError('Missing authentication');
       }
       this._axios = config;
       this._auth = auth;
@@ -46,7 +49,7 @@ export class RestBackend implements Backend {
         password: url.password,
       };
     } else {
-      throw new Error('Invalid config for PgBackend');
+      throw new ConfigurationError('Invalid config for PgBackend');
     }
   }
 
@@ -59,7 +62,7 @@ export class RestBackend implements Backend {
   }
 
   async addJob<Args extends JobArgs>(): Promise<JobRecord<Args>> {
-    throw new Error('Unsupported function: addJob');
+    throw new UnsupportedOperationError('Unsupported function: addJob');
   }
 
   async retryJob<Args extends JobArgs>(): Promise<JobRecord<Args> | undefined> {
@@ -68,7 +71,7 @@ export class RestBackend implements Backend {
   }
 
   async cancelJob(): Promise<boolean> {
-    throw new Error('Unsupported function: cancelJob');
+    throw new UnsupportedOperationError('Unsupported function: cancelJob');
   }
 
   async amendJobMetadata(
@@ -165,7 +168,7 @@ export class RestBackend implements Backend {
   }
 
   async removeJob(): Promise<boolean> {
-    throw new Error('Unsupported function: removeJob');
+    throw new UnsupportedOperationError('Unsupported function: removeJob');
   }
 
   async pruneJobs<Args extends JobArgs>(): Promise<JobPruneResult<Args>> {
@@ -178,11 +181,11 @@ export class RestBackend implements Backend {
   }
 
   async getJobInfo<Args extends JobArgs>(): Promise<JobInfo<Args> | undefined> {
-    throw new Error('Unsupported function: getJobInfo');
+    throw new UnsupportedOperationError('Unsupported function: getJobInfo');
   }
 
   async getJobInfos<Args extends JobArgs>(): Promise<JobInfoList<Args>> {
-    throw new Error('Unsupported function: getJobInfos');
+    throw new UnsupportedOperationError('Unsupported function: getJobInfos');
   }
 
   async registerWorker(): Promise<WorkerInfo> {
@@ -196,9 +199,12 @@ export class RestBackend implements Backend {
         this.workerTokens.set(info.id, token);
         return info;
       }
-      throw new Error("Can't register worker");
+      throw new ConnectionError("Can't register worker", { cause: response });
     } catch (e) {
-      throw new Error(`Can't register worker. ${e}`);
+      if (e instanceof AggregateError && e.errors[0].code === 'ECONNREFUSED') {
+        throw new ConnectionError("Can't connect to server", { cause: e });
+      }
+      throw new ConnectionError("Can't register worker", { cause: e });
     }
   }
 
@@ -259,23 +265,23 @@ export class RestBackend implements Backend {
   }
 
   async getWorkerInfo(): Promise<WorkerInfo | undefined> {
-    throw new Error('Unsupported function: getWorkerInfo');
+    throw new UnsupportedOperationError('Unsupported function: getWorkerInfo');
   }
 
   async getWorkerInfos(): Promise<WorkerInfoList> {
-    throw new Error('Unsupported function: getWorkerInfos');
+    throw new UnsupportedOperationError('Unsupported function: getWorkerInfos');
   }
 
   async sendWorkerCommand(): Promise<boolean> {
-    throw new Error('Unsupported function: sendWorkerCommand');
+    throw new UnsupportedOperationError('Unsupported function: sendWorkerCommand');
   }
 
   async getJobHistory(): Promise<QueueJobStatistics> {
-    throw new Error('Unsupported function: getJobHistory');
+    throw new UnsupportedOperationError('Unsupported function: getJobHistory');
   }
 
   async getStats(): Promise<QueueStats> {
-    throw new Error('Unsupported function: getStats');
+    throw new UnsupportedOperationError('Unsupported function: getStats');
   }
 
   async updateSchema(): Promise<void> {
@@ -283,7 +289,7 @@ export class RestBackend implements Backend {
   }
 
   async reset(): Promise<void> {
-    throw new Error('Unsupported function: reset');
+    throw new UnsupportedOperationError('Unsupported function: reset');
   }
 
   async end(): Promise<void> {

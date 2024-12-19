@@ -1,3 +1,4 @@
+import { ConfigurationError } from '@queuebone/core';
 import pg from 'pg';
 
 export function createPool(config: string | URL): pg.Pool {
@@ -11,7 +12,7 @@ export function createPool(config: string | URL): pg.Pool {
 export function parseConfig(config: string | URL): pg.PoolConfig {
   const url = new URL(config);
   if (url.protocol.match(/^postgres(ql)?:$/) === null) {
-    throw new TypeError(`Invalid URL: ${config}`);
+    throw new ConfigurationError(`Invalid URL: ${config}`);
   }
 
   const poolConfig: pg.PoolConfig = {};

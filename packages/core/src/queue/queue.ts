@@ -1,4 +1,5 @@
 import EventEmitter from 'events';
+import { ConfigurationError } from '../errors.js';
 import { BackendIterator } from '../backends/iterator.js';
 import { type Backend, type JobEnqueueOptions, type JobOptions } from '../types/backend.js';
 import { type JobHandle } from '../types/job-handle.js';
@@ -76,7 +77,7 @@ export class DefaultQueue<BaseJob extends Job<JobArgs> = DefaultJob<JobArgs>>
     delete _options.backoffStrategy;
     delete _options.tasks;
     if (!Array.isArray(_options.queueNames) || _options.queueNames.length === 0) {
-      throw new Error('No queue names given');
+      throw new ConfigurationError('No queue names given');
     }
     Object.freeze(_options.queueNames);
     this._options = Object.freeze(_options);
@@ -189,7 +190,7 @@ export class DefaultQueue<BaseJob extends Job<JobArgs> = DefaultJob<JobArgs>>
     } else if (isTask(task)) {
       this.taskManager.registerTask(task);
     } else {
-      throw new Error('Invalid task');
+      throw new ConfigurationError('Invalid task');
     }
   }
 

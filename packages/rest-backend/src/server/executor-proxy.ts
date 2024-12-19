@@ -1,4 +1,5 @@
 import {
+  InvalidStateError,
   JobState,
   type ExecutorBackend,
   type InferJobArgs,
@@ -109,7 +110,7 @@ export class ExecutorProxy<BaseJob extends Job<JobArgs>> {
     if (state === JobState.Failed) {
       return await this.markFailed(result);
     }
-    throw new Error(`Invalid state ${state}`);
+    throw new InvalidStateError(`Invalid state ${state}`);
   }
 
   /**

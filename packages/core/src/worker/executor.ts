@@ -1,3 +1,4 @@
+import { InvalidStateError } from '../errors.js';
 import { type ExecutorBackend } from '../types/backend.js';
 import {
   JobState,
@@ -139,7 +140,7 @@ export class Executor<BaseJob extends Job<JobArgs>> {
    */
   async perform(throwOnError: boolean = false): Promise<void> {
     if (![JobState.Pending, JobState.Scheduled, JobState.Running].includes(this.state)) {
-      throw new Error(`Try to perform job with state ${this.state}: ${this.id}`);
+      throw new InvalidStateError(`Try to perform job with state ${this.state}: ${this.id}`);
     }
     const worker = this._worker;
 

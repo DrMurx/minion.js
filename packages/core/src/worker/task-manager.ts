@@ -1,3 +1,4 @@
+import { ConfigurationError, InvalidStateError } from '../errors.js';
 import { type Job, type JobArgs } from '../types/job.js';
 import { type Task, type TaskHandlerFunction, type TaskManager } from '../types/task.js';
 
@@ -11,7 +12,7 @@ export class DefaultTaskManager<BaseJob extends Job<JobArgs>> implements TaskMan
       } else if (typeof tasks === 'object') {
         this.registerTaskFunctions(tasks);
       } else {
-        throw new Error('Invalid tasks given');
+        throw new ConfigurationError('Invalid tasks given');
       }
     }
   }
@@ -46,7 +47,7 @@ export class DefaultTaskManager<BaseJob extends Job<JobArgs>> implements TaskMan
 
   getTask(taskName: string): Task<BaseJob> {
     if (!this.tasks.has(taskName)) {
-      throw new Error(`Unknown task ${taskName}`);
+      throw new InvalidStateError(`Unknown task ${taskName}`);
     }
     return this.tasks.get(taskName)!;
   }

@@ -112,7 +112,7 @@ export class MemoryBackend implements Backend {
     const job = this.selectJob((j) => j.id === id && j.attempt === attempt);
     if (job === undefined) return undefined;
     job.metadata = filterNull({ ...job.metadata, ...records });
-    return job.metadata;
+    return { ...job.metadata };
   }
 
   async updateJobProgress(id: JobId, attempt: number, progress: number): Promise<boolean> {
@@ -135,7 +135,7 @@ export class MemoryBackend implements Backend {
     job.progress = state === JobState.Succeeded ? 1 : job.progress;
     job.finishedAt = new Date();
     if (state !== JobState.Succeeded) {
-      await this.requeueHandler(job);
+      await this.requeueHandler({ ...job });
     }
     return true;
   }
@@ -148,7 +148,7 @@ export class MemoryBackend implements Backend {
   ): Promise<JobRecord<Args> | null> {
     for (let repeat = 1; ; repeat--) {
       const dequeueJobInfo = await this.tryAssignNextJob<Args>(workerId, taskNames, options);
-      if (dequeueJobInfo !== null) return dequeueJobInfo;
+      if (dequeueJobInfo !== null) return { ...dequeueJobInfo };
       if (timeout === 0 || repeat <= 0) return null;
       await this.waitForNewJobs(timeout);
     }

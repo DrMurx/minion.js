@@ -1,5 +1,4 @@
-import { DefaultQueue, JobState, WorkerState } from '@queuebone/core';
-import { createPool, PgBackend } from '@queuebone/pg-backend';
+import { DefaultQueue, JobState, MemoryBackend, WorkerState } from '@queuebone/core';
 import Fastify from 'fastify';
 import os from 'os';
 import t from 'tap';
@@ -7,19 +6,12 @@ import { RestBackend } from './backend.js';
 import { DefaultProfileManager } from './server/profile-manager.js';
 import { routesPlugin } from './server/routes.js';
 
-const skip = process.env.TEST_ONLINE === undefined ? { skip: 'set TEST_ONLINE to enable this test' } : {};
-const SCHEMA = 'queue_http_backend_test';
 const PORT = 20595;
 
-t.test('HTTP backend', skip, async (t) => {
-  const pool = createPool(`${process.env.TEST_ONLINE!}?currentSchema=${SCHEMA}`);
+// Create server components
+const serverBackend = new MemoryBackend();
 
-  // Isolate tests
-  await pool.query(`DROP SCHEMA IF EXISTS ${SCHEMA} CASCADE`);
-  await pool.query(`CREATE SCHEMA ${SCHEMA}`);
-
-  // Create server components
-  const serverBackend = new PgBackend(pool);
+t.test('HTTP backend', async (t) => {
   const serverQueue = new DefaultQueue(serverBackend, {
     backoffStrategy: () => 0, // No backoff for this test
   });
@@ -240,7 +232,7 @@ t.test('HTTP backend', skip, async (t) => {
     );
     await jobHandle1.sync();
     t.equal(jobHandle1.state, JobState.Running);
-    t.equal(jobHandle1.result, null);
+    t.equal(jobHandle1.result, undefined);
 
     t.ok(
       await clientBackend.markJobFinished(jobHandle1.id, jobHandle1.attempt, JobState.Succeeded, { some: 'result' }),
@@ -304,9 +296,4 @@ t.test('HTTP backend', skip, async (t) => {
 
   await fastify.close();
   await clientQueue.stop();
-
-  // Clean up once we are done
-  await pool.query(`DROP SCHEMA ${SCHEMA} CASCADE`);
-
-  await pool.end();
 });

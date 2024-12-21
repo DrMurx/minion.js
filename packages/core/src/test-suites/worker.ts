@@ -7,7 +7,7 @@ import { type Queue } from '../types/queue.js';
 import { type Task } from '../types/task.js';
 
 export async function runWorkerTests(backend: Backend, skip: Record<string, any> = {}) {
-  await t.test('Worker', skip, async (t) => {
+  await t.test(`Worker with ${backend.name} backend`, skip, async (t) => {
     const queue: Queue = new DefaultQueue(backend, {
       // Register at least a simple task for further tests
       tasks: [

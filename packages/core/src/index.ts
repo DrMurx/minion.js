@@ -8,6 +8,7 @@ export {
   UnsupportedOperationError,
 } from './errors.js';
 export { QuickRunner } from './queue/quick-runner.js';
+export { runQueueTests, type TestableBackend } from './tests/queue.js';
 export {
   type Backend,
   type ExecutorBackend,

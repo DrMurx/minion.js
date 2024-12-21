@@ -259,7 +259,7 @@ export class PgBackend implements Backend {
     // Unable to update row? (reasons: job has already been marked as finished, retried by a different worker, or record is gone)
     const jobRecord = results.rows[0];
     const isUpdated = jobRecord !== undefined;
-    if (isUpdated) {
+    if (isUpdated && state !== JobState.Succeeded) {
       await this.requeueHandler(jobRecord);
     }
     return isUpdated;

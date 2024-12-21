@@ -1,5 +1,6 @@
 import { DefaultQueue } from './queue/queue.js';
 
+export { MemoryBackend } from './backends/memory.js';
 export {
   ConfigurationError,
   ConnectionError,

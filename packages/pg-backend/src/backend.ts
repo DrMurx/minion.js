@@ -425,8 +425,7 @@ export class PgBackend implements Backend {
       `SELECT
         ${this.jobRecordSql},
         ARRAY(SELECT id FROM ${JOB_TABLE} WHERE parent_job_ids @> ARRAY[j.id]) AS "childJobIds",
-        NOW() AS "time",
-        COUNT(*) OVER() AS "total"
+        NOW() AS "time"
       FROM ${JOB_TABLE} AS j
       WHERE id = $1`,
       [jobId],
@@ -502,11 +501,11 @@ export class PgBackend implements Backend {
         metadata,
 
         started_at AS "startedAt",
-        last_seen_at AS "lastSeenAt"`,
+        last_seen_at AS "lastSeenAt",
+        '[]'::JSONB AS "jobIds"`,
       [options.config, WorkerState.Online, 0, options.metadata],
     );
     const workerInfo = results.rows[0];
-    if (workerInfo) workerInfo.jobIds = [];
     return workerInfo;
   }
 
@@ -529,11 +528,11 @@ export class PgBackend implements Backend {
         metadata,
 
         started_at AS "startedAt",
-        last_seen_at AS "lastSeenAt"`,
+        last_seen_at AS "lastSeenAt",
+        '[]'::JSONB AS "jobIds"`,
       [options.config, options.state, options.finishedJobCount, options.metadata ?? {}, workerId],
     );
     const workerInfo = results.rows[0];
-    if (workerInfo) workerInfo.jobIds = [];
     return workerInfo;
   }
 
@@ -580,7 +579,7 @@ export class PgBackend implements Backend {
         metadata,
         started_at AS "startedAt",
         last_seen_at AS "lastSeenAt",
-        '[]'::JSONB AS "jobs"`,
+        '[]'::JSONB AS "jobIds"`,
       [lostTimeout],
     );
 

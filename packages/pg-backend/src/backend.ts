@@ -670,7 +670,7 @@ export class PgBackend implements Backend {
   async getJobHistory(): Promise<QueueJobStatistics> {
     const results = await this.query<DailyJobHistory>(
       `SELECT
-        EXTRACT(EPOCH FROM ts) AS "epoch",
+        FLOOR(EXTRACT(EPOCH FROM ts)) AS "epoch",
         COALESCE(succeeded_jobs, 0) AS "succeededJobs",
         COALESCE(failed_jobs, 0) AS "failedJobs",
         COALESCE(aborted_jobs, 0) AS "abortedJobs",
@@ -699,7 +699,7 @@ export class PgBackend implements Backend {
         GROUP BY day, hour
       ) AS j
       ON s.day = j.day AND s.hour = j.hour
-      ORDER BY epoch ASC`,
+      ORDER BY epoch DESC`,
     );
     return { daily: results.rows };
   }

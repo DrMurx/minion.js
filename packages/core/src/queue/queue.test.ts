@@ -1,50 +1,28 @@
-import { createPool, JOB_TABLE, PgBackend, WORKER_TABLE } from '@queuebone/pg-backend';
-import { testQueue, type TestableBackend } from '../tests/queue.js';
+import { MemoryBackend } from '../backends/memory.js';
+import { runQueueTests, type TestableBackend } from '../test-suites/queue.js';
 import { type JobId } from '../types/job.js';
 import { type WorkerId } from '../types/worker.js';
 
-const skip = process.env.TEST_ONLINE === undefined ? { skip: 'set TEST_ONLINE to enable this test' } : {};
-const SCHEMA = 'queue_test';
-
-class TestablePgBackend extends PgBackend implements TestableBackend {
+class TestableMemoryBackend extends MemoryBackend implements TestableBackend {
   async dateBackJobsDelayUntil(jobIds: JobId[], msBeforeNow: number): Promise<void> {
-    await this.pool.query(
-      `UPDATE ${JOB_TABLE} SET delay_until = NOW() - $1 * INTERVAL '1 millisecond' WHERE id = ANY ($2)`,
-      [msBeforeNow, jobIds],
-    );
+    const jobs = this.selectJobs((j) => jobIds.includes(j.id));
+    [...jobs].forEach((job) => (job.delayUntil = new Date(Date.now() - msBeforeNow)));
   }
 
   async dateBackJobExpiresAt(jobId: JobId, msBeforeNow: number): Promise<void> {
-    await this.pool.query(`UPDATE ${JOB_TABLE} SET expires_at = NOW() - $1 * INTERVAL '1 millisecond' WHERE id = $2`, [
-      msBeforeNow,
-      jobId,
-    ]);
+    const job = this.selectJob((j) => j.id === jobId)!;
+    job.expiresAt = new Date(Date.now() - msBeforeNow);
   }
 
   async dateBackJobFinishedAt(jobId: JobId, ms: number): Promise<void> {
-    await this.pool.query(
-      `UPDATE ${JOB_TABLE} SET finished_at = finished_at - $1 * INTERVAL '1 millisecond' WHERE id = $2`,
-      [ms, jobId],
-    );
+    const job = this.selectJob((j) => j.id === jobId)!;
+    job.finishedAt = new Date(job.finishedAt!.getTime() - ms);
   }
 
   async dateBackWorkerLastseenAt(workerId: WorkerId, msBeforeNow: number): Promise<void> {
-    await this.pool.query(
-      `UPDATE ${WORKER_TABLE} SET last_seen_at = NOW() - $1 * INTERVAL '1 millisecond' WHERE id = $2`,
-      [msBeforeNow, workerId],
-    );
+    this.selectWorker((w) => w.id === workerId)!.lastSeenAt = new Date(Date.now() - msBeforeNow);
   }
 }
 
-const pool = createPool(`${process.env.TEST_ONLINE!}?currentSchema=${SCHEMA}`);
-
-// Isolate tests
-await pool.query(`DROP SCHEMA IF EXISTS ${SCHEMA} CASCADE`);
-await pool.query(`CREATE SCHEMA ${SCHEMA}`);
-
-const backend = new TestablePgBackend(pool);
-await testQueue(backend, skip);
-
-// Clean up once we are done
-await pool.query(`DROP SCHEMA ${SCHEMA} CASCADE`);
-await pool.end();
+const backend = new TestableMemoryBackend();
+await runQueueTests(backend);

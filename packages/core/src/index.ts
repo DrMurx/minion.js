@@ -10,6 +10,8 @@ export {
 } from './errors.js';
 export { QuickRunner } from './queue/quick-runner.js';
 export { runQueueTests, type TestableBackend } from './test-suites/queue.js';
+export { runQuickRunnerTests } from './test-suites/quick-runner.js';
+export { runWorkerTests } from './test-suites/worker.js';
 export {
   type Backend,
   type ExecutorBackend,

@@ -451,6 +451,7 @@ export class MemoryBackend implements Backend {
         (options.metadata === undefined ||
           Object.entries(options.metadata).every(([key, value]) => w.metadata[key] === value)),
     );
+    if (workers.size === 0) return false;
     const descriptor: WorkerCommandDescriptor = { command, arg };
     for (const worker of workers) {
       worker.inbox = [...worker.inbox, descriptor];

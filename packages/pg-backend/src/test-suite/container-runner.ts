@@ -9,7 +9,11 @@ export async function runTestsWithPgContainer<Backend extends PgBackend = PgBack
   BackendClazz: new (config: string | URL | pg.Pool) => Backend,
   testRunner: (t: Test, backend: Backend) => Promise<void>,
 ): Promise<void> {
-  // Fire up PostgreSql container and wait until it's available
+  const tapTimeout = t.options.timeout ?? 30000;
+
+  // Fire up PostgreSql container and wait until default time (60 seconds) it's available.
+  // Defer the test timeout also to 60 seconds.
+  t.setTimeout(60 * 1000);
   const container = await new PostgreSqlContainer()
     .withWaitStrategy(
       Wait.forAll([
@@ -20,6 +24,9 @@ export async function runTestsWithPgContainer<Backend extends PgBackend = PgBack
       ]),
     )
     .start();
+
+  // Restart the test timeout with what it was before
+  t.setTimeout(tapTimeout);
 
   const config = container.getConnectionUri();
   const backend = new BackendClazz(config);

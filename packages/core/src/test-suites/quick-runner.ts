@@ -5,8 +5,8 @@ import { type Backend } from '../types/backend.js';
 import { JobState } from '../types/job.js';
 import { type Queue } from '../types/queue.js';
 
-export async function runQuickRunnerTests(t: Test, backend: Backend, skip: Record<string, any> = {}) {
-  await t.test(`QuickRunner with ${backend.name} backend`, skip, async (t) => {
+export async function runQuickRunnerTests(t: Test, backend: Backend) {
+  await t.test(`QuickRunner with ${backend.name} backend`, async (t) => {
     const queue: Queue = new DefaultQueue(backend, {
       // Register at some simple tasks for further tests
       tasks: {

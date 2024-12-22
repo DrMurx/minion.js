@@ -6,8 +6,8 @@ import { type Job, type JobArgs, JobState } from '../types/job.js';
 import { type Queue } from '../types/queue.js';
 import { type Task } from '../types/task.js';
 
-export async function runWorkerTests(t: Test, backend: Backend, skip: Record<string, any> = {}) {
-  await t.test(`Worker with ${backend.name} backend`, skip, async (t) => {
+export async function runWorkerTests(t: Test, backend: Backend) {
+  await t.test(`Worker with ${backend.name} backend`, async (t) => {
     const queue: Queue = new DefaultQueue(backend, {
       // Register at least a simple task for further tests
       tasks: [

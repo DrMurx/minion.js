@@ -1,11 +1,11 @@
-import t from 'tap';
+import { type Test } from 'tap';
+import { DefaultJobHandle } from '../queue/job-handle.js';
+import { DefaultQueue } from '../queue/queue.js';
+import { Backend } from '../types/backend.js';
 import { type JobId, JobState } from '../types/job.js';
 import { type Queue } from '../types/queue.js';
 import { type Task } from '../types/task.js';
 import { type WorkerId, WorkerState } from '../types/worker.js';
-import { DefaultJobHandle } from '../queue/job-handle.js';
-import { DefaultQueue } from '../queue/queue.js';
-import { Backend } from '../types/backend.js';
 
 export interface TestableBackend {
   dateBackJobsDelayUntil(jobIds: JobId[], msBeforeNow: number): Promise<void>;
@@ -14,8 +14,8 @@ export interface TestableBackend {
   dateBackWorkerLastseenAt(workerId: WorkerId, msBeforeNow: number): Promise<void>;
 }
 
-export async function runQueueTests(backend: Backend & TestableBackend, skip: Record<string, any> = {}) {
-  await t.test(`Queue with ${backend.name} backend`, skip, async (t) => {
+export async function runQueueTests(t: Test, backend: Backend & TestableBackend) {
+  await t.test(`Queue with ${backend.name} backend`, async (t) => {
     const queue: Queue = new DefaultQueue(backend, {
       // Register at some simple tasks for further tests
       tasks: {

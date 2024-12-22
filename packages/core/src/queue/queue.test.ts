@@ -1,3 +1,4 @@
+import t from 'tap';
 import { MemoryBackend } from '../backends/memory.js';
 import { runQueueTests, type TestableBackend } from '../test-suites/queue.js';
 import { type JobId } from '../types/job.js';
@@ -25,4 +26,4 @@ class TestableMemoryBackend extends MemoryBackend implements TestableBackend {
 }
 
 const backend = new TestableMemoryBackend();
-await runQueueTests(backend);
+await runQueueTests(t, backend);

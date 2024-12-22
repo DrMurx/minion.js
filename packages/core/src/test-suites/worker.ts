@@ -1,12 +1,12 @@
 import os from 'os';
-import t from 'tap';
+import { type Test } from 'tap';
 import { DefaultQueue } from '../queue/queue.js';
 import { type Backend } from '../types/backend.js';
 import { type Job, type JobArgs, JobState } from '../types/job.js';
 import { type Queue } from '../types/queue.js';
 import { type Task } from '../types/task.js';
 
-export async function runWorkerTests(backend: Backend, skip: Record<string, any> = {}) {
+export async function runWorkerTests(t: Test, backend: Backend, skip: Record<string, any> = {}) {
   await t.test(`Worker with ${backend.name} backend`, skip, async (t) => {
     const queue: Queue = new DefaultQueue(backend, {
       // Register at least a simple task for further tests

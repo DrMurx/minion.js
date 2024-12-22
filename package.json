@@ -13,10 +13,10 @@
     "**/*": "prettier --write --ignore-unknown"
   },
   "devDependencies": {
-    "@types/node": "^22.9.0",
-    "globals": "^15.10.0",
-    "husky": "^9.1.6",
-    "lint-staged": "^15.2.10"
+    "@types/node": "^22.10.2",
+    "globals": "^15.14.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^15.2.11"
   },
   "packageManager": "pnpm@9.0.2+sha512.8bedf31de42705b97ff89330bbe177954ad5703a92fa894be0fb4d45b5dfab59a21f65a8419ad1cae82dd16fac2d41a8c343775e80efe7dab6d80b0408db2fd6"
 }

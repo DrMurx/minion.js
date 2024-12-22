@@ -47,27 +47,27 @@
   },
   "dependencies": {
     "@queuebone/core": "workspace:~",
-    "pg": "^8.13.0"
+    "pg": "^8.13.1"
   },
   "devDependencies": {
-    "@commitlint/cli": "^19.5.0",
-    "@commitlint/config-conventional": "^19.5.0",
-    "@eslint/js": "^9.12.0",
+    "@commitlint/cli": "^19.6.1",
+    "@commitlint/config-conventional": "^19.6.0",
+    "@eslint/js": "^9.17.0",
     "@types/eslint__js": "^8.42.3",
-    "@types/node": "^22.9.0",
+    "@types/node": "^22.10.2",
     "@types/pg": "^8.11.10",
     "@types/tap": "^15.0.12",
-    "@vitest/coverage-istanbul": "^2.1.2",
-    "c8": "^10.1.2",
-    "eslint": "^9.12.0",
+    "@vitest/coverage-istanbul": "^2.1.8",
+    "c8": "^10.1.3",
+    "eslint": "^9.17.0",
     "eslint-config-prettier": "^9.1.0",
     "eslint-plugin-node": "^11.1.0",
     "eslint-plugin-prettier": "^5.2.1",
-    "prettier": "^3.3.3",
-    "sort-package-json": "^2.10.1",
+    "prettier": "^3.4.2",
+    "sort-package-json": "^2.12.0",
     "tap": "^21.0.1",
-    "typescript": "~5.5.0",
-    "typescript-eslint": "^8.8.1"
+    "typescript": "~5.5.4",
+    "typescript-eslint": "^8.18.1"
   },
   "packageManager": "pnpm@9.0.2+sha512.8bedf31de42705b97ff89330bbe177954ad5703a92fa894be0fb4d45b5dfab59a21f65a8419ad1cae82dd16fac2d41a8c343775e80efe7dab6d80b0408db2fd6",
   "engines": {

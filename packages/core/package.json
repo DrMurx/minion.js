@@ -1,6 +1,6 @@
 {
   "name": "@queuebone/core",
-  "version": "0.0.18",
+  "version": "0.0.19",
   "description": "Node.js job queue",
   "keywords": [
     "queubone",
@@ -38,8 +38,7 @@
     }
   },
   "files": [
-    "dist/index.js",
-    "dist/test-suite.js"
+    "dist/"
   ],
   "scripts": {
     "build": "tsc -p ./tsconfig.build.json",

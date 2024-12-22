@@ -1,7 +1,6 @@
+import { type JobId, type WorkerId } from '@queuebone/core';
+import { runQueueTests, type TestableBackend } from '@queuebone/core/test-suite';
 import { JOB_TABLE, PgBackend, WORKER_TABLE } from './backend.js';
-import { runQueueTests, type TestableBackend } from '@queuebone/core';
-import { type JobId } from '@queuebone/core';
-import { type WorkerId } from '@queuebone/core';
 import { createPool } from './factory.js';
 
 const skip = process.env.TEST_ONLINE === undefined ? { skip: 'set TEST_ONLINE to enable this test' } : {};

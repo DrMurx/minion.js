@@ -14,18 +14,32 @@
   ],
   "type": "module",
   "exports": {
-    "@queuebone/development": "./src/index.ts",
-    "types": "./dist/index.d.ts",
-    "import": "./dist/index.js"
+    ".": {
+      "@queuebone/development": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./test-suite": {
+      "@queuebone/development": "./src/test-suite.ts",
+      "types": "./dist/test-suite.d.ts",
+      "import": "./dist/test-suite.js"
+    }
   },
   "publishConfig": {
     "exports": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js"
+      ".": {
+        "types": "./dist/index.d.ts",
+        "import": "./dist/index.js"
+      },
+      "./test-suite": {
+        "types": "./dist/test-suite.d.ts",
+        "import": "./dist/test-suite.js"
+      }
     }
   },
   "files": [
-    "dist/"
+    "dist/index.js",
+    "dist/test-suite.js"
   ],
   "scripts": {
     "build": "tsc -p ./tsconfig.build.json",

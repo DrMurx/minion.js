@@ -1,4 +1,5 @@
-import { runWorkerTests, type Backend } from '@queuebone/core';
+import { type Backend } from '@queuebone/core';
+import { runWorkerTests } from '@queuebone/core/test-suite';
 import { PgBackend } from './backend.js';
 import { createPool } from './factory.js';
 

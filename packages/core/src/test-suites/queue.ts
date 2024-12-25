@@ -1,6 +1,6 @@
 import { type Test } from 'tap';
 import { DefaultJobHandle } from '../queue/job-handle.js';
-import { DefaultQueue } from '../queue/queue.js';
+import { Queuebone } from '../queue/queue.js';
 import { Backend } from '../types/backend.js';
 import { type JobId, JobState } from '../types/job.js';
 import { type Queue } from '../types/queue.js';
@@ -16,7 +16,7 @@ export interface TestableBackend {
 
 export async function runQueueTests(t: Test, backend: Backend & TestableBackend) {
   await t.test(`Queue with ${backend.name} backend`, async (t) => {
-    const queue: Queue = new DefaultQueue(backend, {
+    const queue: Queue = new Queuebone(backend, {
       // Register at some simple tasks for further tests
       tasks: {
         fail: () => {
@@ -133,7 +133,7 @@ export async function runQueueTests(t: Test, backend: Backend & TestableBackend)
       t.equal(job.id, jobHandle1.id);
       await jobHandle1.sync();
       t.equal(jobHandle1.state, JobState.Running);
-      const lostAfter = DefaultQueue.DEFAULT_OPTIONS.workerLostTimeout + 1;
+      const lostAfter = Queuebone.DEFAULT_OPTIONS.workerLostTimeout + 1;
       t.ok(await queue.getWorkerInfo(worker2));
 
       await backend.dateBackWorkerLastseenAt(worker2.id!, lostAfter);
@@ -163,7 +163,7 @@ export async function runQueueTests(t: Test, backend: Backend & TestableBackend)
     });
 
     await t.test('Repair old jobs', async (t) => {
-      const expungePeriod = DefaultQueue.DEFAULT_OPTIONS.jobExpungePeriod;
+      const expungePeriod = Queuebone.DEFAULT_OPTIONS.jobExpungePeriod;
       t.equal(expungePeriod, 172800000);
 
       const worker = await queue.getNewWorker().register();
@@ -190,7 +190,7 @@ export async function runQueueTests(t: Test, backend: Backend & TestableBackend)
     });
 
     await t.test('Repair unattended jobs', async (t) => {
-      t.equal(DefaultQueue.DEFAULT_OPTIONS.jobUnattendedPeriod, 172800000);
+      t.equal(Queuebone.DEFAULT_OPTIONS.jobUnattendedPeriod, 172800000);
 
       const worker = await queue.getNewWorker().register();
       const jobHandle1 = await queue.addJob('test', { delayFor: 1000 });
@@ -198,7 +198,7 @@ export async function runQueueTests(t: Test, backend: Backend & TestableBackend)
       const jobHandle3 = await queue.addJob('test', { delayFor: 1000 });
       const jobHandle4 = await queue.addJob('test', { delayFor: 1000 });
 
-      const unattendedPeriod = DefaultQueue.DEFAULT_OPTIONS.jobUnattendedPeriod + 1;
+      const unattendedPeriod = Queuebone.DEFAULT_OPTIONS.jobUnattendedPeriod + 1;
       await backend.dateBackJobsDelayUntil(
         [jobHandle1.id, jobHandle2.id, jobHandle3.id, jobHandle4.id],
         unattendedPeriod,

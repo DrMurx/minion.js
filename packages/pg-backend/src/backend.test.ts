@@ -1,4 +1,4 @@
-import { DefaultQueue, JobState, WorkerState, type Queue } from '@queuebone/core';
+import { Queuebone, JobState, WorkerState, type Queue } from '@queuebone/core';
 import os from 'os';
 import t from 'tap';
 import { PgBackend } from './backend.js';
@@ -6,7 +6,7 @@ import { runTestsWithPgContainer } from './test-suite/container-runner.js';
 
 await runTestsWithPgContainer(t, PgBackend, async (t, backend) => {
   await t.test('PostgreSQL backend', async (t) => {
-    const queue: Queue = new DefaultQueue(backend);
+    const queue: Queue = new Queuebone(backend);
     await queue.start();
 
     // Register at some simple tasks for further tests

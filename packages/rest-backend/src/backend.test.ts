@@ -1,4 +1,4 @@
-import { DefaultQueue, JobState, MemoryBackend, WorkerState } from '@queuebone/core';
+import { Queuebone, JobState, MemoryBackend, WorkerState } from '@queuebone/core';
 import Fastify from 'fastify';
 import os from 'os';
 import t from 'tap';
@@ -12,7 +12,7 @@ const PORT = 20595;
 const serverBackend = new MemoryBackend();
 
 t.test('HTTP backend', async (t) => {
-  const serverQueue = new DefaultQueue(serverBackend, {
+  const serverQueue = new Queuebone(serverBackend, {
     backoffStrategy: () => 0, // No backoff for this test
   });
   const profileManager = new DefaultProfileManager([
@@ -45,7 +45,7 @@ t.test('HTTP backend', async (t) => {
 
   // Create client components
   const clientBackend = new RestBackend(`http://localhost:${PORT}`, { username: 'profile-1', password: 'password-1' });
-  const clientQueue = new DefaultQueue(clientBackend, {
+  const clientQueue = new Queuebone(clientBackend, {
     pruneEnabled: false,
   });
   await clientQueue.start();
@@ -127,7 +127,7 @@ t.test('HTTP backend', async (t) => {
 
   await t.test('Register client with invalid password', async (t) => {
     const invalidClientBackend = new RestBackend(`http://profile-1:invalid-password@localhost:${PORT}`);
-    const invalidClientQueue = new DefaultQueue(invalidClientBackend, {
+    const invalidClientQueue = new Queuebone(invalidClientBackend, {
       pruneEnabled: false,
     });
     await invalidClientQueue.start();
@@ -146,7 +146,7 @@ t.test('HTTP backend', async (t) => {
       username: 'profile-invalid',
       password: 'password',
     });
-    const invalidClientQueue = new DefaultQueue(invalidClientBackend, {
+    const invalidClientQueue = new Queuebone(invalidClientBackend, {
       pruneEnabled: false,
     });
     await invalidClientQueue.start();
@@ -213,7 +213,7 @@ t.test('HTTP backend', async (t) => {
     const worker = await clientQueue.getNewWorker().register();
 
     const clientBackend2 = new RestBackend(`http://profile-2:password-2@localhost:${PORT}`);
-    const clientQueue2 = new DefaultQueue(clientBackend2, {
+    const clientQueue2 = new Queuebone(clientBackend2, {
       pruneEnabled: false,
     });
     await clientQueue2.start();

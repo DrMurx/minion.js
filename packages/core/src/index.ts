@@ -1,4 +1,4 @@
-import { DefaultQueue } from './queue/queue.js';
+import { Queuebone } from './queue/queue.js';
 
 export { MemoryBackend } from './backends/memory.js';
 export {
@@ -62,5 +62,5 @@ export { DefaultJobFactory } from './worker/job-factory.js';
 export { DefaultJob } from './worker/job.js';
 export { DefaultTaskManager } from './worker/task-manager.js';
 export { DefaultWorker } from './worker/worker.js';
-export { DefaultQueue };
-export default DefaultQueue;
+export { Queuebone };
+export default Queuebone;

@@ -41,7 +41,7 @@ import { QueuePruner } from './pruner.js';
 /**
  * Job queue class.
  */
-export class DefaultQueue<BaseJob extends Job<JobArgs> = DefaultJob<JobArgs>>
+export class Queuebone<BaseJob extends Job<JobArgs> = DefaultJob<JobArgs>>
   extends EventEmitter<QueueEvents<BaseJob>>
   implements Queue<BaseJob>
 {
@@ -72,7 +72,7 @@ export class DefaultQueue<BaseJob extends Job<JobArgs> = DefaultJob<JobArgs>>
     super();
 
     // Assemble and freeze options
-    const _options: QueueOptions<BaseJob> = { ...DefaultQueue.DEFAULT_OPTIONS, ...options };
+    const _options: QueueOptions<BaseJob> = { ...Queuebone.DEFAULT_OPTIONS, ...options };
     delete _options.jobFactory;
     delete _options.backoffStrategy;
     delete _options.tasks;

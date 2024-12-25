@@ -49,7 +49,7 @@ export class RestBackend implements Backend {
         password: url.password,
       };
     } else {
-      throw new ConfigurationError('Invalid config for PgBackend');
+      throw new ConfigurationError('Invalid config for RestBackend');
     }
   }
 

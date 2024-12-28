@@ -1,8 +1,8 @@
 import {
   ConfigurationError,
   ConnectionError,
-  UnsupportedOperationError,
   JobState,
+  UnsupportedOperationError,
   WorkerState,
   type Backend,
   type JobArgs,
@@ -22,7 +22,7 @@ import {
   type WorkerPruneResult,
   type WorkerUpdateOptions,
 } from '@queuebone/core';
-import { Axios, type AxiosBasicCredentials } from 'axios';
+import { Axios, AxiosError, type AxiosBasicCredentials } from 'axios';
 import { createAxios, parseConfig } from './factory.js';
 
 export class RestBackend implements Backend {
@@ -202,8 +202,8 @@ export class RestBackend implements Backend {
       throw new ConnectionError("Can't register worker", { cause: response });
     } catch (e) {
       if (e instanceof ConnectionError) throw e;
-      if (e instanceof AggregateError && e.errors[0].code === 'ECONNREFUSED') {
-        throw new ConnectionError("Can't connect to server", { cause: e });
+      if (e instanceof AxiosError && e.code === 'ECONNREFUSED') {
+        throw new ConnectionError('Server refused connection', { cause: e });
       }
       throw new ConnectionError("Can't register worker", { cause: e });
     }
@@ -301,10 +301,10 @@ export class RestBackend implements Backend {
       }
     } catch (e) {
       if (e instanceof ConnectionError) throw e;
-      if (e instanceof AggregateError && e.errors[0].code === 'ECONNREFUSED') {
-        throw new ConnectionError("Can't connect to server", { cause: e });
+      if (e instanceof AxiosError && e.code === 'ECONNREFUSED') {
+        throw new ConnectionError('Server refused connection', { cause: e });
       }
-      throw new ConnectionError("Can't register worker", { cause: e });
+      throw new ConnectionError("Can't ping server", { cause: e });
     }
   }
 

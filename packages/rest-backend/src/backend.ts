@@ -201,6 +201,7 @@ export class RestBackend implements Backend {
       }
       throw new ConnectionError("Can't register worker", { cause: response });
     } catch (e) {
+      if (e instanceof ConnectionError) throw e;
       if (e instanceof AggregateError && e.errors[0].code === 'ECONNREFUSED') {
         throw new ConnectionError("Can't connect to server", { cause: e });
       }
@@ -285,7 +286,26 @@ export class RestBackend implements Backend {
   }
 
   async updateSchema(): Promise<void> {
-    // do nothing
+    // We use the `updateSchema` to ping the backend
+    try {
+      const response = await this._axios.post<{ status: string }>('/ping', {
+        name: this._auth.username,
+        passphrase: this._auth.password,
+      });
+      if (response.status !== 200 || !response.data.status || typeof response.data.status !== 'string') {
+        throw new ConnectionError('Malformed response while pinging server', { cause: response });
+      }
+      const { status } = response.data;
+      if (status !== 'authenticated') {
+        throw new ConnectionError('Unable to authenticate at server', { cause: response });
+      }
+    } catch (e) {
+      if (e instanceof ConnectionError) throw e;
+      if (e instanceof AggregateError && e.errors[0].code === 'ECONNREFUSED') {
+        throw new ConnectionError("Can't connect to server", { cause: e });
+      }
+      throw new ConnectionError("Can't register worker", { cause: e });
+    }
   }
 
   async reset(): Promise<void> {

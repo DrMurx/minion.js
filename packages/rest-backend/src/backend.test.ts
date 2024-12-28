@@ -11,7 +11,7 @@ const PORT = 20595;
 // Create server components
 const serverBackend = new MemoryBackend();
 
-t.test('HTTP backend', async (t) => {
+await t.test('HTTP backend', async (t) => {
   const serverQueue = new Queuebone(serverBackend, {
     backoffStrategy: () => 0, // No backoff for this test
   });
@@ -92,7 +92,7 @@ t.test('HTTP backend', async (t) => {
     t.equal(batch1[0].metadata[':pid'], process.pid);
     t.equal(batch1[0].metadata[':hostname'], os.hostname());
     t.equal(batch1[0].metadata[':profile'], 'profile-1');
-    t.equal(batch1[0].metadata[':remote'], '127.0.0.1');
+    t.ok(['127.0.0.1', '::1'].includes(batch1[0].metadata[':remote']));
     t.equal(batch1[0].startedAt instanceof Date, true);
     t.equal(batch1[1].id, worker2.id);
     t.same(Object.keys(batch1[1].metadata).sort(), [':hostname', ':pid', ':profile', ':remote']);
@@ -130,13 +130,12 @@ t.test('HTTP backend', async (t) => {
     const invalidClientQueue = new Queuebone(invalidClientBackend, {
       pruneEnabled: false,
     });
-    await invalidClientQueue.start();
     try {
-      // Can't register any worker
-      await invalidClientQueue.getNewWorker().register();
+      // Throws when attempting to start the queue
+      await invalidClientQueue.start();
       t.fail();
-    } catch {
-      t.ok(true);
+    } catch (e) {
+      t.equal(e.message, 'Unable to authenticate at server');
     }
     await invalidClientQueue.stop();
   });
@@ -149,13 +148,12 @@ t.test('HTTP backend', async (t) => {
     const invalidClientQueue = new Queuebone(invalidClientBackend, {
       pruneEnabled: false,
     });
-    await invalidClientQueue.start();
     try {
-      // Can't register any worker
-      await invalidClientQueue.getNewWorker().register();
+      // Throws when attempting to start the queue
+      await invalidClientQueue.start();
       t.fail();
-    } catch {
-      t.ok(true);
+    } catch (e) {
+      t.equal(e.message, 'Unable to authenticate at server');
     }
     await invalidClientQueue.stop();
   });

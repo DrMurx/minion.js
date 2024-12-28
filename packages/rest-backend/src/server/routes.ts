@@ -11,6 +11,8 @@ import {
   assignNextJobSchema,
   type CheckWorkerInboxAPI,
   checkWorkerInboxSchema,
+  PingAPI,
+  pingSchema,
   type RegisterWorkerAPI,
   registerWorkerSchema,
   type UpdateJobAPI,
@@ -50,6 +52,24 @@ export const routesPlugin: FastifyPluginAsync<PluginOptions<Job<JobArgs>>> = asy
   });
   fastify.addHook('onClose', () => {
     pruner.stopPruner();
+  });
+
+  /**
+   * Allow for a ping, optionally checking the validity of credentials.
+   */
+  fastify.post<PingAPI>('/ping', { schema: pingSchema }, async ({ body }) => {
+    let status = 'pong';
+
+    // Authenticate and authorize
+    const { name, passphrase } = body;
+    if (name !== undefined && passphrase !== undefined) {
+      await new Promise((res) => setTimeout(res, 100));
+      const holder = profileManager.timingSafeGet(name, passphrase);
+      if (holder !== undefined) {
+        status = 'authenticated';
+      }
+    }
+    return { status };
   });
 
   /**

@@ -80,6 +80,7 @@ export type RegisterWorkerAPI = {
 export const registerWorkerSchema = {
   body: {
     type: 'object',
+    required: ['name', 'passphrase'],
     properties: {
       name: { type: 'string' },
       passphrase: { type: 'string' },
@@ -146,6 +147,26 @@ export const checkWorkerInboxSchema = {
         type: 'string',
         enum: [WorkerState.Online, WorkerState.Idle, WorkerState.Busy],
       },
+    },
+  },
+};
+
+export type PingAPI = {
+  Body: {
+    name?: string;
+    passphrase?: string;
+  };
+  Reply: {
+    status: string;
+  };
+};
+
+export const pingSchema = {
+  body: {
+    type: 'object',
+    properties: {
+      name: { type: 'string' },
+      passphrase: { type: 'string' },
     },
   },
 };

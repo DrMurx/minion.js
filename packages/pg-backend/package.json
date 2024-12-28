@@ -1,6 +1,6 @@
 {
   "name": "@queuebone/pg-backend",
-  "version": "0.0.12",
+  "version": "0.0.13",
   "description": "PostgreSQL Backend for Queuebone",
   "keywords": [
     "queuebone",

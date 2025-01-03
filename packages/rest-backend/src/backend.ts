@@ -45,7 +45,7 @@ export class RestBackend implements Backend {
       const url = parseConfig(config);
       this._axios = createAxios(url);
       this._auth = auth ?? {
-        username: url.username,
+        username: '',
         password: url.password,
       };
     } else {
@@ -191,8 +191,7 @@ export class RestBackend implements Backend {
   async registerWorker(): Promise<WorkerInfo> {
     try {
       const response = await this._axios.post<{ token: string; info: WorkerInfo }>('/workers', {
-        name: this._auth.username,
-        passphrase: this._auth.password,
+        apikey: this._auth.password,
       });
       if (response.status === 200) {
         const { token, info } = response.data;
@@ -289,8 +288,7 @@ export class RestBackend implements Backend {
     // We use the `updateSchema` to ping the backend
     try {
       const response = await this._axios.post<{ status: string }>('/ping', {
-        name: this._auth.username,
-        passphrase: this._auth.password,
+        apikey: this._auth.password,
       });
       if (response.status !== 200 || !response.data.status || typeof response.data.status !== 'string') {
         throw new ConnectionError('Malformed response while pinging server', { cause: response });

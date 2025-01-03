@@ -7,9 +7,9 @@ export interface WorkerProfile {
   name: string;
 
   /**
-   * The passphrase for the worker registration.
+   * The key for the worker registration.
    */
-  passphrase: string;
+  apikey: string;
 
   /**
    * Number of workers allowed to connect at the same time with this profile.

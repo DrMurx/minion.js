@@ -18,7 +18,7 @@ await t.test('HTTP backend', async (t) => {
   const profileManager = new DefaultProfileManager([
     {
       name: 'profile-1',
-      passphrase: 'password-1',
+      apikey: 'oochee8oobai7boomif1OoDe7eup2rudohzuaraeb0vooV5jeix6lieMaingiphu',
       config: {
         heartbeatInterval: 60 * 60 * 1000,
       },
@@ -26,7 +26,7 @@ await t.test('HTTP backend', async (t) => {
     },
     {
       name: 'profile-2',
-      passphrase: 'password-2',
+      apikey: 'AiX3ith5EengoupheeC2oogh3aithopoovo8iedeeyeip0daghahghaichaefung',
       config: {
         queueNames: ['default'],
       },
@@ -44,7 +44,10 @@ await t.test('HTTP backend', async (t) => {
   await fastify.listen({ port: PORT });
 
   // Create client components
-  const clientBackend = new RestBackend(`http://localhost:${PORT}`, { username: 'profile-1', password: 'password-1' });
+  const clientBackend = new RestBackend(`http://localhost:${PORT}`, {
+    username: '',
+    password: 'oochee8oobai7boomif1OoDe7eup2rudohzuaraeb0vooV5jeix6lieMaingiphu',
+  });
   const clientQueue = new Queuebone(clientBackend, {
     pruneEnabled: false,
   });
@@ -126,7 +129,7 @@ await t.test('HTTP backend', async (t) => {
   });
 
   await t.test('Register client with invalid password', async (t) => {
-    const invalidClientBackend = new RestBackend(`http://profile-1:invalid-password@localhost:${PORT}`);
+    const invalidClientBackend = new RestBackend(`http://:invalid-password@localhost:${PORT}`);
     const invalidClientQueue = new Queuebone(invalidClientBackend, {
       pruneEnabled: false,
     });
@@ -210,7 +213,9 @@ await t.test('HTTP backend', async (t) => {
   await t.test('Job in concurrent worker classes', async (t) => {
     const worker = await clientQueue.getNewWorker().register();
 
-    const clientBackend2 = new RestBackend(`http://profile-2:password-2@localhost:${PORT}`);
+    const clientBackend2 = new RestBackend(
+      `http://:AiX3ith5EengoupheeC2oogh3aithopoovo8iedeeyeip0daghahghaichaefung@localhost:${PORT}`,
+    );
     const clientQueue2 = new Queuebone(clientBackend2, {
       pruneEnabled: false,
     });

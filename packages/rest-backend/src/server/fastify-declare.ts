@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 
+import '@fastify/jwt';
 import { type Job, type JobArgs } from '@queuebone/core';
 import {
   type ContextConfigDefault,
@@ -13,9 +14,8 @@ import {
   type RouteGenericInterface,
 } from 'fastify';
 import { type FastifyRequestType, type ResolveFastifyRequestType } from 'fastify/types/type-provider';
-import { type WorkerProfileHolder } from './types.js';
+import { type WorkerProfileHolder, type WorkerProfileId } from './types.js';
 import { type WorkerProxy } from './worker-proxy.js';
-import '@fastify/jwt';
 
 declare module 'fastify' {
   export interface FastifyRequest<
@@ -36,8 +36,8 @@ declare module 'fastify' {
 declare module '@fastify/jwt' {
   interface FastifyJWT {
     user: {
-      id: number;
-      name: string;
+      prf: WorkerProfileId;
+      wrk: number;
     };
   }
 }

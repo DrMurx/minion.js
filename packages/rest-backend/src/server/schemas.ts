@@ -68,8 +68,7 @@ export const updateJobSchema = {
 
 export type RegisterWorkerAPI = {
   Body: {
-    name: string;
-    passphrase: string;
+    apikey: string;
   };
   Reply: {
     token: string;
@@ -80,10 +79,9 @@ export type RegisterWorkerAPI = {
 export const registerWorkerSchema = {
   body: {
     type: 'object',
-    required: ['name', 'passphrase'],
+    required: ['apikey'],
     properties: {
-      name: { type: 'string' },
-      passphrase: { type: 'string' },
+      apikey: { type: 'string' },
     },
   },
 };
@@ -153,8 +151,7 @@ export const checkWorkerInboxSchema = {
 
 export type PingAPI = {
   Body: {
-    name?: string;
-    passphrase?: string;
+    apikey?: string;
   };
   Reply: {
     status: string;
@@ -165,8 +162,7 @@ export const pingSchema = {
   body: {
     type: 'object',
     properties: {
-      name: { type: 'string' },
-      passphrase: { type: 'string' },
+      apikey: { type: 'string' },
     },
   },
 };

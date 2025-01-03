@@ -61,10 +61,10 @@ export const routesPlugin: FastifyPluginAsync<PluginOptions<Job<JobArgs>>> = asy
     let status = 'pong';
 
     // Authenticate and authorize
-    const { name, passphrase } = body;
-    if (name !== undefined && passphrase !== undefined) {
+    const { apikey } = body;
+    if (apikey !== undefined) {
       await new Promise((res) => setTimeout(res, 100));
-      const holder = profileManager.timingSafeGet(name, passphrase);
+      const holder = profileManager.timingSafeGet(apikey);
       if (holder !== undefined) {
         status = 'authenticated';
       }
@@ -77,8 +77,8 @@ export const routesPlugin: FastifyPluginAsync<PluginOptions<Job<JobArgs>>> = asy
    */
   fastify.post<RegisterWorkerAPI>('/workers', { schema: registerWorkerSchema }, async ({ body, ip }, reply) => {
     // Authenticate and authorize
-    const { name, passphrase } = body;
-    const holder = profileManager.timingSafeGet(name, passphrase);
+    const { apikey } = body;
+    const holder = profileManager.timingSafeGet(apikey);
     if (holder === undefined) {
       return reply.status(401).send(); // 401 = unauthorized
     }
@@ -94,13 +94,13 @@ export const routesPlugin: FastifyPluginAsync<PluginOptions<Job<JobArgs>>> = asy
       queueNames: queue.options.queueNames,
       ...holder.config,
     };
-    const worker = await new WorkerProxy<Job<JobArgs>>(name, config, ip, backend, queue).register();
+    const worker = await new WorkerProxy<Job<JobArgs>>(holder.name, config, ip, backend, queue).register();
     if (worker.id === undefined) {
       return reply.status(500).send(); // 500 = internal server error
     }
     holder.activeWorkers.set(worker.id, worker);
     return {
-      token: fastify.jwt.sign({ name: holder.name, id: worker.id }),
+      token: fastify.jwt.sign({ prf: holder.id, wrk: worker.id }),
       info: worker.clientWorkerInfo,
     };
   });
@@ -120,11 +120,11 @@ export const routesPlugin: FastifyPluginAsync<PluginOptions<Job<JobArgs>>> = asy
       }
 
       // Obtain proper WorkerProxy from profile holder
-      const profile = profileManager.get(request.user.name);
+      const profile = profileManager.get(request.user.prf);
       if (profile === undefined) {
         return reply.status(401).send(); // 401 = unauthorized
       }
-      const worker = profile.activeWorkers.get(request.user.id);
+      const worker = profile.activeWorkers.get(request.user.wrk);
       if (worker === undefined) {
         return reply.status(401).send(); // 401 = unauthorized
       }

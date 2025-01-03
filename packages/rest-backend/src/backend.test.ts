@@ -44,10 +44,10 @@ await t.test('HTTP backend', async (t) => {
   await fastify.listen({ port: PORT });
 
   // Create client components
-  const clientBackend = new RestBackend(`http://localhost:${PORT}`, {
-    username: '',
-    password: 'oochee8oobai7boomif1OoDe7eup2rudohzuaraeb0vooV5jeix6lieMaingiphu',
-  });
+  const clientBackend = new RestBackend(
+    `http://localhost:${PORT}`,
+    'oochee8oobai7boomif1OoDe7eup2rudohzuaraeb0vooV5jeix6lieMaingiphu',
+  );
   const clientQueue = new Queuebone(clientBackend, {
     pruneEnabled: false,
   });
@@ -144,10 +144,7 @@ await t.test('HTTP backend', async (t) => {
   });
 
   await t.test('Register invalid client', async (t) => {
-    const invalidClientBackend = new RestBackend(`http://localhost:${PORT}`, {
-      username: 'profile-invalid',
-      password: 'password',
-    });
+    const invalidClientBackend = new RestBackend(`http://localhost:${PORT}`, 'password');
     const invalidClientQueue = new Queuebone(invalidClientBackend, {
       pruneEnabled: false,
     });

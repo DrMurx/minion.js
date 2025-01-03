@@ -22,32 +22,32 @@ import {
   type WorkerPruneResult,
   type WorkerUpdateOptions,
 } from '@queuebone/core';
-import { Axios, AxiosError, AxiosResponse, type AxiosBasicCredentials } from 'axios';
+import { Axios, AxiosError, AxiosResponse } from 'axios';
 import { createAxios, parseConfig } from './factory.js';
 
 export class RestBackend implements Backend {
   public readonly name = 'Http';
 
   private _axios: Axios;
-  private _auth: AxiosBasicCredentials;
+  private _apikey: string;
 
   private workerTokens: Map<WorkerId, string> = new Map();
   private jobTokens: Map<JobId, string> = new Map();
 
-  constructor(config: string | URL | Axios, auth?: AxiosBasicCredentials) {
+  constructor(config: string | URL | Axios, apikey?: string) {
     if (config instanceof Axios) {
-      if (auth === undefined) {
+      this._axios = config;
+      if (apikey === undefined) {
         throw new ConfigurationError('Missing authentication');
       }
-      this._axios = config;
-      this._auth = auth;
+      this._apikey = apikey;
     } else if (typeof config === 'string' || config instanceof URL) {
       const url = parseConfig(config);
       this._axios = createAxios(url);
-      this._auth = auth ?? {
-        username: '',
-        password: url.password,
-      };
+      if (apikey === undefined && url.password === '') {
+        throw new ConfigurationError('Missing authentication');
+      }
+      this._apikey = apikey ?? url.password;
     } else {
       throw new ConfigurationError('Invalid config for RestBackend');
     }
@@ -192,7 +192,7 @@ export class RestBackend implements Backend {
     let response: AxiosResponse<{ token: string; info: WorkerInfo }>;
     try {
       response = await this._axios.post('/workers', {
-        apikey: this._auth.password,
+        apikey: this._apikey,
       });
     } catch (e) {
       if (e instanceof AxiosError && e.code === 'ECONNREFUSED') {
@@ -298,7 +298,7 @@ export class RestBackend implements Backend {
     let response: AxiosResponse<{ status: 'pong' | 'authenticated' }>;
     try {
       response = await this._axios.post('/ping', {
-        apikey: this._auth.password,
+        apikey: this._apikey,
       });
     } catch (e) {
       if (e instanceof AxiosError && e.code === 'ECONNREFUSED') {

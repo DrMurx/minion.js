@@ -25,19 +25,19 @@ export interface Backend extends QueueBackend, IteratorBackend, JobHandleBackend
   readonly name: string;
 
   /**
-   * Update storage schemas to latest version.
+   * Start the backend. This can be used to check connectivity or upgrade backend storage schemas to latest version.
    */
-  updateSchema(): Promise<void>;
-
-  /**
-   * Reset job queue.
-   */
-  reset(): Promise<void>;
+  start(): Promise<void>;
 
   /**
    * Release the backend.
    */
   end(): Promise<void>;
+
+  /**
+   * Reset the backend's storage.
+   */
+  reset(): Promise<void>;
 }
 
 /**

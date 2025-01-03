@@ -94,7 +94,7 @@ export class Queuebone<BaseJob extends Job<JobArgs> = DefaultJob<JobArgs>>
   }
 
   async start(): Promise<void> {
-    await this._backend.updateSchema();
+    await this._backend.start();
 
     // Install a requeue handler which requeues failed or abandoned jobs
     this._backend.setRequeueHandler<InferJobArgs<BaseJob>>((jobRecord) =>

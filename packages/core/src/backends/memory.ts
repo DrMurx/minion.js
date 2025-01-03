@@ -532,7 +532,11 @@ export class MemoryBackend implements Backend {
     };
   }
 
-  async updateSchema(): Promise<void> {
+  async start(): Promise<void> {
+    // do nothing
+  }
+
+  async end(): Promise<void> {
     // do nothing
   }
 
@@ -542,10 +546,6 @@ export class MemoryBackend implements Backend {
     this.workers.clear();
     this.nextWorkerId = 1;
     this.jobInsertEvent = undefined;
-  }
-
-  async end(): Promise<void> {
-    // do nothing
   }
 
   protected selectJob(predicate: (j: JobRow) => boolean): JobRow | undefined {

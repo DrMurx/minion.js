@@ -22,7 +22,7 @@ import {
   type WorkerPruneResult,
   type WorkerUpdateOptions,
 } from '@queuebone/core';
-import { Axios, AxiosError, type AxiosBasicCredentials } from 'axios';
+import { Axios, AxiosError, AxiosResponse, type AxiosBasicCredentials } from 'axios';
 import { createAxios, parseConfig } from './factory.js';
 
 export class RestBackend implements Backend {
@@ -189,23 +189,32 @@ export class RestBackend implements Backend {
   }
 
   async registerWorker(): Promise<WorkerInfo> {
+    let response: AxiosResponse<{ token: string; info: WorkerInfo }>;
     try {
-      const response = await this._axios.post<{ token: string; info: WorkerInfo }>('/workers', {
+      response = await this._axios.post('/workers', {
         apikey: this._auth.password,
       });
-      if (response.status === 200) {
-        const { token, info } = response.data;
-        this.workerTokens.set(info.id, token);
-        return info;
-      }
-      throw new ConnectionError("Can't register worker", { cause: response });
     } catch (e) {
-      if (e instanceof ConnectionError) throw e;
       if (e instanceof AxiosError && e.code === 'ECONNREFUSED') {
         throw new ConnectionError('Server refused connection', { cause: e });
       }
       throw new ConnectionError("Can't register worker", { cause: e });
     }
+
+    if (response.status === 401) {
+      throw new ConnectionError(`Unable to authenticate at server`, {
+        code: 'AUTHENTICATION_FAILED',
+        cause: response,
+      });
+    }
+
+    if (response.status !== 200) {
+      throw new ConnectionError("Can't register worker", { cause: response });
+    }
+
+    const { token, info } = response.data;
+    this.workerTokens.set(info.id, token);
+    return info;
   }
 
   async updateWorker(id: WorkerId, options: WorkerUpdateOptions): Promise<WorkerInfo | undefined> {
@@ -284,34 +293,39 @@ export class RestBackend implements Backend {
     throw new UnsupportedOperationError('Unsupported function: getStats');
   }
 
-  async updateSchema(): Promise<void> {
-    // We use the `updateSchema` to ping the backend
+  async start(): Promise<void> {
+    // Do an initial ping to the backend
+    let response: AxiosResponse<{ status: 'pong' | 'authenticated' }>;
     try {
-      const response = await this._axios.post<{ status: string }>('/ping', {
+      response = await this._axios.post('/ping', {
         apikey: this._auth.password,
       });
-      if (response.status !== 200 || !response.data.status || typeof response.data.status !== 'string') {
-        throw new ConnectionError('Malformed response while pinging server', { cause: response });
-      }
-      const { status } = response.data;
-      if (status !== 'authenticated') {
-        throw new ConnectionError('Unable to authenticate at server', { cause: response });
-      }
     } catch (e) {
-      if (e instanceof ConnectionError) throw e;
       if (e instanceof AxiosError && e.code === 'ECONNREFUSED') {
         throw new ConnectionError('Server refused connection', { cause: e });
       }
       throw new ConnectionError("Can't ping server", { cause: e });
     }
-  }
 
-  async reset(): Promise<void> {
-    throw new UnsupportedOperationError('Unsupported function: reset');
+    if (response.status !== 200 || !response.data.status || typeof response.data.status !== 'string') {
+      throw new ConnectionError('Malformed response while pinging server', { cause: response });
+    }
+
+    const { status } = response.data;
+    if (status !== 'authenticated') {
+      throw new ConnectionError('Unable to authenticate at server', {
+        code: 'AUTHENTICATION_FAILED',
+        cause: response,
+      });
+    }
   }
 
   async end(): Promise<void> {
     // do nothing
+  }
+
+  async reset(): Promise<void> {
+    throw new UnsupportedOperationError('Unsupported function: reset');
   }
 }
 

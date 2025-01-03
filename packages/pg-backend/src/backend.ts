@@ -734,7 +734,7 @@ export class PgBackend implements Backend {
     return stats;
   }
 
-  async updateSchema(): Promise<void> {
+  async start(): Promise<void> {
     const result = await this.query<{ server_version_num: number }>('SHOW server_version_num');
     const version = result.rows[0].server_version_num;
     if (version < 90500) throw new InvalidStateError('PostgreSQL 9.5 or later is required');
@@ -748,13 +748,13 @@ export class PgBackend implements Backend {
     }
   }
 
-  async reset(): Promise<void> {
-    await this.query(`TRUNCATE ${JOB_TABLE}, ${WORKER_TABLE} RESTART IDENTITY`);
-  }
-
   async end(): Promise<void> {
     if (this.autoclosePool) await this._pool.end();
     this.requeueHandler = async () => {};
+  }
+
+  async reset(): Promise<void> {
+    await this.query(`TRUNCATE ${JOB_TABLE}, ${WORKER_TABLE} RESTART IDENTITY`);
   }
 
   protected get jobRecordSql() {

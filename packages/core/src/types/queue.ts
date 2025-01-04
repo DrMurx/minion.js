@@ -204,12 +204,12 @@ export interface QueueOptions<BaseJob extends Job<JobArgs>> extends PruneOptions
   /**
    * Factory class to create new jobs
    */
-  jobFactory?: JobFactory<BaseJob>;
+  jobFactory: JobFactory<BaseJob>;
 
   /**
    * Function to calculate a backoff strategy
    */
-  backoffStrategy?: JobBackoffStrategy<InferJobArgs<BaseJob>>;
+  backoffStrategy: JobBackoffStrategy<InferJobArgs<BaseJob>>;
 }
 
 export interface QueueEvents<

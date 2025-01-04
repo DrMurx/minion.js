@@ -1,14 +1,12 @@
 import EventEmitter from 'events';
-import { ConfigurationError } from '../errors.js';
 import { BackendIterator } from '../backends/iterator.js';
+import { ConfigurationError } from '../errors.js';
 import { type Backend, type JobEnqueueOptions, type JobOptions } from '../types/backend.js';
 import { type JobHandle } from '../types/job-handle.js';
 import {
   type InferJobArgs,
   type Job,
   type JobArgs,
-  type JobBackoffStrategy,
-  type JobFactory,
   type JobId,
   type JobRecord,
   type JobResult,
@@ -52,13 +50,13 @@ export class Queuebone<BaseJob extends Job<JobArgs> = DefaultJob<JobArgs>>
     workerLostTimeout: 30 * 60 * 1000,
     jobExpungePeriod: 2 * 24 * 60 * 60 * 1000,
     jobUnattendedPeriod: 2 * 24 * 60 * 60 * 1000,
+    jobFactory: new DefaultJobFactory<any>(),
+    backoffStrategy: defaultBackoffStrategy,
   });
 
   public readonly FOREGROUND_QUEUE = '_foreground_queue';
 
   protected _options: Readonly<QueueOptions<BaseJob>>;
-  protected jobFactory: JobFactory<BaseJob>;
-  protected backoffStrategy: JobBackoffStrategy<InferJobArgs<BaseJob>>;
   protected taskManager: TaskManager<BaseJob>;
   protected pruner: QueuePruner<BaseJob>;
 
@@ -72,9 +70,10 @@ export class Queuebone<BaseJob extends Job<JobArgs> = DefaultJob<JobArgs>>
     super();
 
     // Assemble and freeze options
-    const _options: QueueOptions<BaseJob> = { ...Queuebone.DEFAULT_OPTIONS, ...options };
-    delete _options.jobFactory;
-    delete _options.backoffStrategy;
+    const _options: QueueOptions<BaseJob> = {
+      ...Queuebone.DEFAULT_OPTIONS,
+      ...options,
+    };
     delete _options.tasks;
     if (!Array.isArray(_options.queueNames) || _options.queueNames.length === 0) {
       throw new ConfigurationError('No queue names given');
@@ -83,8 +82,6 @@ export class Queuebone<BaseJob extends Job<JobArgs> = DefaultJob<JobArgs>>
     this._options = Object.freeze(_options);
 
     // Create other objects
-    this.jobFactory = options.jobFactory ?? new DefaultJobFactory<BaseJob>();
-    this.backoffStrategy = options.backoffStrategy ?? defaultBackoffStrategy;
     this.taskManager = new DefaultTaskManager<BaseJob>(options.tasks);
     this.pruner = new QueuePruner(this._backend, this._options, [this.FOREGROUND_QUEUE], this);
   }
@@ -178,7 +175,7 @@ export class Queuebone<BaseJob extends Job<JobArgs> = DefaultJob<JobArgs>>
       const options = {
         // Set maxAttempt to its current value (otherwise, `Backend.retryJob` increases it)
         maxAttempts: jobRecord.maxAttempts,
-        delayFor: this.backoffStrategy(jobRecord),
+        delayFor: this._options.backoffStrategy(jobRecord),
       };
       await this._backend.retryJob(jobRecord.id, jobRecord.attempt, options);
     }
@@ -200,7 +197,7 @@ export class Queuebone<BaseJob extends Job<JobArgs> = DefaultJob<JobArgs>>
       queueNames: this._options.queueNames,
       ...options,
     };
-    return new DefaultWorker(this._backend, _options, this.taskManager, this.jobFactory, this._backend, this);
+    return new DefaultWorker(this._backend, _options, this.taskManager, this._options.jobFactory, this._backend, this);
   }
 
   async getWorkerInfo(worker: WorkerId | WorkerInstance<BaseJob>): Promise<WorkerInfo | undefined> {

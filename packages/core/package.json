@@ -1,6 +1,6 @@
 {
   "name": "@queuebone/core",
-  "version": "0.0.22",
+  "version": "0.0.23",
   "description": "Node.js job queue",
   "keywords": [
     "queubone",

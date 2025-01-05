@@ -11,7 +11,7 @@ import {
   assignNextJobSchema,
   type CheckWorkerInboxAPI,
   checkWorkerInboxSchema,
-  PingAPI,
+  type PingAPI,
   pingSchema,
   type RegisterWorkerAPI,
   registerWorkerSchema,
@@ -23,14 +23,17 @@ import {
 import { type ProfileManager } from './types.js';
 import { WorkerProxy } from './worker-proxy.js';
 
-export interface PluginOptions<BaseJob extends Job<JobArgs>> {
+export interface QueueboneRestServerOptions<BaseJob extends Job<JobArgs>> {
   queue: Queue<BaseJob>;
   backend: Backend;
   profileManager: ProfileManager<BaseJob>;
   jwtSecret: string;
 }
 
-export const routesPlugin: FastifyPluginAsync<PluginOptions<Job<JobArgs>>> = async (fastify, options) => {
+export const queueboneRestServerPlugin: FastifyPluginAsync<QueueboneRestServerOptions<Job<JobArgs>>> = async (
+  fastify,
+  options,
+) => {
   const { queue, backend, profileManager, jwtSecret } = options;
 
   fastify.register(jwtPlugin, {

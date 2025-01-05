@@ -4,7 +4,7 @@ import os from 'os';
 import t from 'tap';
 import { RestBackend } from './backend.js';
 import { DefaultProfileManager } from './server/profile-manager.js';
-import { routesPlugin } from './server/routes.js';
+import { queueboneRestServerPlugin } from './server/routes.js';
 
 const PORT = 20595;
 
@@ -35,7 +35,7 @@ await t.test('HTTP backend', async (t) => {
   const fastify = Fastify({
     logger: false,
   });
-  fastify.register(routesPlugin, {
+  fastify.register(queueboneRestServerPlugin, {
     queue: serverQueue,
     backend: serverBackend,
     profileManager,

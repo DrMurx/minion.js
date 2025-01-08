@@ -3,7 +3,7 @@ import axios, { type Axios } from 'axios';
 export function createAxios(config: string | URL): Axios {
   const url = parseConfig(config);
   return axios.create({
-    baseURL: url.origin,
+    baseURL: `${url.origin}${url.pathname}`,
   });
 }
 

@@ -14,6 +14,11 @@ export interface TestableBackend {
   dateBackWorkerLastseenAt(workerId: WorkerId, msBeforeNow: number): Promise<void>;
 }
 
+// export const defaultBackoffStrategy: JobBackoffStrategy = <Args extends JobArgs>(jobRecord: JobRecord<Args>) => {
+//   if (jobRecord.state === JobState.Abandoned) return 0;
+//   return jobRecord.attempt ** 4 + 15;
+// };
+
 export async function runQueueTests(t: Test, backend: Backend & TestableBackend) {
   await t.test(`Queue with ${backend.name} backend`, async (t) => {
     const queue: Queue = new Queuebone(backend, {
@@ -23,6 +28,7 @@ export async function runQueueTests(t: Test, backend: Backend & TestableBackend)
           throw new Error('Intentional failure!');
         },
       },
+      backoffStrategy: () => 2000,
     });
     await queue.start();
 
@@ -337,7 +343,8 @@ export async function runQueueTests(t: Test, backend: Backend & TestableBackend)
 
       const jobHandle1 = await queue.addJob('add', { first: 11, second: 17 }, { delayFor: 10000 });
       t.notOk(await worker.getNextExecutor());
-      t.equal(jobHandle1.state, JobState.Scheduled);
+      t.equal(jobHandle1.state, JobState.Pending);
+      t.ok(jobHandle1.delayUntil > new Date());
       t.ok(await jobHandle1.cancel());
       t.equal(jobHandle1.state, JobState.Canceled);
 
@@ -639,7 +646,8 @@ export async function runQueueTests(t: Test, backend: Backend & TestableBackend)
       t.equal(jobHandle1.attempt, 1);
       await executor1.perform();
       await jobHandle1.sync();
-      t.equal(jobHandle1.state, JobState.Scheduled);
+      t.equal(jobHandle1.state, JobState.Pending);
+      t.ok(jobHandle1.delayUntil > new Date());
       t.match(jobHandle1.result, { message: /Intentional failure/ });
       t.equal(jobHandle1.maxAttempts, 3);
       t.equal(jobHandle1.attempt, 2);
@@ -658,7 +666,8 @@ export async function runQueueTests(t: Test, backend: Backend & TestableBackend)
       await executor2.perform();
       await new Promise((resolve) => setTimeout(resolve, 10));
       await jobHandle1.sync();
-      t.equal(jobHandle1.state, JobState.Scheduled);
+      t.equal(jobHandle1.state, JobState.Pending);
+      t.ok(jobHandle1.delayUntil > new Date());
       t.equal(jobHandle1.maxAttempts, 3);
       t.equal(jobHandle1.attempt, 3);
 
@@ -685,7 +694,8 @@ export async function runQueueTests(t: Test, backend: Backend & TestableBackend)
       t.equal(job4.id, jobHandle1.id);
       await job4.perform();
       await jobHandle1.sync();
-      t.equal(jobHandle1.state, JobState.Scheduled);
+      t.equal(jobHandle1.state, JobState.Pending);
+      t.ok(jobHandle1.delayUntil > new Date());
 
       await backend.dateBackJobsDelayUntil([jobHandle1.id], 0); // Skip backoff
 

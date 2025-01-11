@@ -16,6 +16,7 @@ export async function runQuickRunnerTests(t: Test, backend: Backend) {
         },
         record_pid: async () => ({ pid: process.pid }),
       },
+      backoffStrategy: () => 10000, // constant backoff of 10 seconds
     });
     await queue.start();
     const quickRunner = new QuickRunner(queue);

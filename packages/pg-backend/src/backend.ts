@@ -139,7 +139,7 @@ export class PgBackend implements Backend {
         options.queueName,
         taskName,
         JSON.stringify(args),
-        options.delayFor <= 0 ? JobState.Pending : JobState.Scheduled,
+        JobState.Pending,
         options.priority,
         options.maxAttempts,
         1,
@@ -178,7 +178,7 @@ export class PgBackend implements Backend {
         AND attempt = $11`,
       [
         options.queueName,
-        delayFor <= 0 ? JobState.Pending : JobState.Scheduled,
+        JobState.Pending,
         options.priority,
         options.maxAttempts,
         options.parentJobIds,
@@ -199,10 +199,7 @@ export class PgBackend implements Backend {
       `UPDATE ${JOB_TABLE} SET
         state = '${JobState.Canceled}'
       WHERE id = $1
-        AND state IN (
-          '${JobState.Pending}',
-          '${JobState.Scheduled}'
-        )`,
+        AND state = '${JobState.Pending}'`,
       [id],
     );
     return (results.rowCount ?? 0) > 0;
@@ -299,7 +296,7 @@ export class PgBackend implements Backend {
         WHERE id = COALESCE($2, id)
           AND queue_name = ANY ($3)
           AND task_name = ANY ($4)
-          AND state IN ('${JobState.Pending}', '${JobState.Scheduled}')
+          AND state = '${JobState.Pending}'
           AND priority >= COALESCE($5, priority)
           AND (
             parent_job_ids = '{}'
@@ -307,8 +304,7 @@ export class PgBackend implements Backend {
               SELECT 1 FROM ${JOB_TABLE}
               WHERE id = ANY (j.parent_job_ids)
                 AND (
-                  (state IN ('${JobState.Pending}',
-                             '${JobState.Scheduled}') AND (expires_at IS NULL OR expires_at > NOW()))
+                  (state = '${JobState.Pending}' AND (expires_at IS NULL OR expires_at > NOW()))
                   OR state = '${JobState.Running}'
                   OR (state IN ('${JobState.Failed}',
                                 '${JobState.Aborted}',
@@ -366,10 +362,10 @@ export class PgBackend implements Backend {
     expungePeriod: number,
     ignoreQueues: string[],
   ): Promise<JobPruneResult<Args>> {
-    // Delete `pending`/`scheduled` jobs past expiration date
+    // Delete `pending` jobs past expiration date
     const expiredJobsResult = await this.queryForJobRecord<Args>(
       `DELETE FROM ${JOB_TABLE}
-      WHERE state IN ('${JobState.Pending}', '${JobState.Scheduled}')
+      WHERE state = '${JobState.Pending}'
         AND expires_at <= NOW()`,
     );
 
@@ -381,11 +377,11 @@ export class PgBackend implements Backend {
       [expungePeriod],
     );
 
-    // Mark `pending`/`scheduled` jobs as `unattended` if they are due, but in the queue past `unattendedPeriod`.
+    // Mark `pending` jobs as `unattended` if they are due, but in the queue past `unattendedPeriod`.
     const unattendedJobsResult = await this.queryForJobRecord<Args>(
       `UPDATE ${JOB_TABLE} SET
         state = '${JobState.Unattended}'
-      WHERE state IN ('${JobState.Pending}', '${JobState.Scheduled}')
+      WHERE state = '${JobState.Pending}'
         AND NOW() - delay_until > $1 * INTERVAL '1 millisecond'`,
       [unattendedPeriod],
     );
@@ -459,7 +455,7 @@ export class PgBackend implements Backend {
         AND (task_name = ANY ($4) OR $4 IS NULL)
         AND (state = ANY ($5) OR $5 IS NULL)
         AND (metadata ? ANY ($6) OR $6 IS NULL)
-        AND (state NOT IN ('${JobState.Pending}', '${JobState.Scheduled}') OR expires_at IS NULL OR expires_at > NOW())
+        AND (state != '${JobState.Pending}' OR expires_at IS NULL OR expires_at > NOW())
       ORDER BY id ASC
       LIMIT $7 OFFSET $8`,
       [
@@ -708,8 +704,8 @@ export class PgBackend implements Backend {
     const results = await this.query<QueueStats>(
       `SELECT
         (SELECT CASE WHEN is_called THEN last_value ELSE 0 END FROM ${JOB_TABLE}_id_seq) AS "enqueuedJobs",
-        (SELECT COUNT(*) FROM ${JOB_TABLE} WHERE state IN ('${JobState.Pending}', '${JobState.Scheduled}') AND (expires_at IS NULL OR expires_at > NOW())) AS "pendingJobs",
-        (SELECT COUNT(*) FROM ${JOB_TABLE} WHERE state = '${JobState.Scheduled}' AND delay_until > NOW()) AS "scheduledJobs",
+        (SELECT COUNT(*) FROM ${JOB_TABLE} WHERE state = '${JobState.Pending}' AND (expires_at IS NULL OR expires_at > NOW())) AS "pendingJobs",
+        (SELECT COUNT(*) FROM ${JOB_TABLE} WHERE state = '${JobState.Pending}' AND delay_until > NOW()) AS "scheduledJobs",
         (SELECT COUNT(*) FROM ${JOB_TABLE} WHERE state = '${JobState.Running}')    AS "runningJobs",
         (SELECT COUNT(*) FROM ${JOB_TABLE} WHERE state = '${JobState.Succeeded}')  AS "succeededJobs",
         (SELECT COUNT(*) FROM ${JOB_TABLE} WHERE state = '${JobState.Failed}')     AS "failedJobs",
@@ -833,7 +829,6 @@ const queueDatabaseUpgrades: MigrationStep[] = [
     sql: `
       CREATE TYPE ${JOB_TABLE}_state AS ENUM (
         '${JobState.Pending}',
-        '${JobState.Scheduled}',
         '${JobState.Running}',
         '${JobState.Succeeded}',
         '${JobState.Failed}',
@@ -869,10 +864,7 @@ const queueDatabaseUpgrades: MigrationStep[] = [
         finished_at    TIMESTAMP WITH TIME ZONE,
 
         created_at     TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
-        expires_at     TIMESTAMP WITH TIME ZONE,
-        CONSTRAINT state_pending_scheduled CHECK (
-          NOT (state = 'pending' AND delay_until > NOW())
-        )
+        expires_at     TIMESTAMP WITH TIME ZONE
       ) PARTITION BY LIST (state);
       ALTER TABLE ${JOB_TABLE} ADD PRIMARY KEY (id, state);
       CREATE INDEX ON ${JOB_TABLE} (state, priority DESC, id);
@@ -882,7 +874,6 @@ const queueDatabaseUpgrades: MigrationStep[] = [
       CREATE INDEX ON ${JOB_TABLE} (finished_at, state);
       CREATE TABLE ${JOB_TABLE}_active PARTITION OF ${JOB_TABLE} FOR VALUES IN (
         '${JobState.Pending}',
-        '${JobState.Scheduled}',
         '${JobState.Running}'
       );
       CREATE TABLE ${JOB_TABLE}_finished PARTITION OF ${JOB_TABLE} FOR VALUES IN (

@@ -139,7 +139,7 @@ export class Executor<BaseJob extends Job<JobArgs>> {
    * Perform job and wait for it to finish.
    */
   async perform(throwOnError: boolean = false): Promise<void> {
-    if (![JobState.Pending, JobState.Scheduled, JobState.Running].includes(this.state)) {
+    if (![JobState.Pending, JobState.Running].includes(this.state)) {
       throw new InvalidStateError(`Try to perform job with state ${this.state}: ${this.id}`);
     }
     const worker = this._worker;

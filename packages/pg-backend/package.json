@@ -43,7 +43,7 @@
     "prepublishOnly": "pnpm build",
     "publish:minor": "pnpm version minor && pnpm publish --no-git-checks",
     "publish:patch": "pnpm version patch && pnpm publish --no-git-checks",
-    "test": "tap --disable-coverage --allow-empty-coverage"
+    "test": "tap --disable-coverage --allow-empty-coverage --serial=./src"
   },
   "dependencies": {
     "@queuebone/core": "workspace:~",

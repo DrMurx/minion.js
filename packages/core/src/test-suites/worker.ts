@@ -19,6 +19,7 @@ export async function runWorkerTests(t: Test, backend: Backend) {
           }
         })(),
       ],
+      backoffStrategy: () => 10000, // constant backoff of 10 seconds
     });
     await queue.start();
 

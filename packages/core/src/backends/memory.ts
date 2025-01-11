@@ -59,7 +59,7 @@ export class MemoryBackend implements Backend {
       id: this.nextJobId++,
       taskName,
       args,
-      state: options.delayFor <= 0 ? JobState.Pending : JobState.Scheduled,
+      state: JobState.Pending,
       progress: 0,
       attempt: 1,
       delayUntil: new Date(Date.now() + options.delayFor),
@@ -81,7 +81,7 @@ export class MemoryBackend implements Backend {
     if (job === undefined) return undefined;
     const delayFor = options.delayFor ?? 0;
     job.queueName = options.queueName ?? job.queueName;
-    job.state = delayFor <= 0 ? JobState.Pending : JobState.Scheduled;
+    job.state = JobState.Pending;
     job.priority = options.priority ?? job.priority;
     job.progress = 0;
     job.maxAttempts = options.maxAttempts ?? job.maxAttempts + 1;
@@ -98,7 +98,7 @@ export class MemoryBackend implements Backend {
   }
 
   async cancelJob(id: JobId): Promise<boolean> {
-    const job = this.selectJob((j) => j.id === id && [JobState.Pending, JobState.Scheduled].includes(j.state));
+    const job = this.selectJob((j) => j.id === id && j.state === JobState.Pending);
     if (job === undefined) return false;
     job.state = JobState.Canceled;
     return true;
@@ -169,14 +169,13 @@ export class MemoryBackend implements Backend {
         j.id === (jobId ?? j.id) &&
         queueNames.includes(j.queueName) &&
         taskNames.includes(j.taskName) &&
-        [JobState.Pending, JobState.Scheduled].includes(j.state) &&
+        j.state === JobState.Pending &&
         j.priority >= (minPriority ?? j.priority) &&
         (j.parentJobIds.length === 0 ||
           this.selectJob(
             (pj) =>
               j.parentJobIds.includes(pj.id) &&
-              (([JobState.Pending, JobState.Scheduled].includes(pj.state) &&
-                (pj.expiresAt === undefined || pj.expiresAt > now)) ||
+              ((pj.state === JobState.Pending && (pj.expiresAt === undefined || pj.expiresAt > now)) ||
                 pj.state === JobState.Running ||
                 ([
                   JobState.Failed,
@@ -239,9 +238,7 @@ export class MemoryBackend implements Backend {
   ): Promise<JobPruneResult<Args>> {
     const now = new Date();
 
-    const expiredJobs = this.selectJobs(
-      (j) => [JobState.Pending, JobState.Scheduled].includes(j.state) && j.expiresAt! <= now,
-    );
+    const expiredJobs = this.selectJobs((j) => j.state === JobState.Pending && j.expiresAt! <= now);
     for (const job of expiredJobs) {
       this.jobs.delete(job);
     }
@@ -254,9 +251,7 @@ export class MemoryBackend implements Backend {
     }
 
     const unattendedJobs = this.selectJobs(
-      (j) =>
-        [JobState.Pending, JobState.Scheduled].includes(j.state) &&
-        now.getTime() - j.delayUntil.getTime() > unattendedPeriod,
+      (j) => j.state === JobState.Pending && now.getTime() - j.delayUntil.getTime() > unattendedPeriod,
     );
     for (const job of unattendedJobs) {
       job.state = JobState.Unattended;
@@ -317,7 +312,7 @@ export class MemoryBackend implements Backend {
         (options.states === undefined || options.states.includes(j.state)) &&
         (options.metadata === undefined ||
           Object.entries(options.metadata).every(([key, value]) => j.metadata[key] === value)) &&
-        ([JobState.Pending, JobState.Scheduled].includes(j.state) || j.expiresAt === undefined || j.expiresAt > now),
+        (j.state === JobState.Pending || j.expiresAt === undefined || j.expiresAt > now),
     );
     const jobs = [...possibleJobs].sort((a, b) => a.id - b.id).slice(offset, offset + limit);
     return {
@@ -461,7 +456,6 @@ export class MemoryBackend implements Backend {
 
   async getJobHistory(): Promise<QueueJobStatistics> {
     const stateToFieldMap: Record<JobState, keyof DailyJobHistory | null> = {
-      [JobState.Scheduled]: null,
       [JobState.Pending]: null,
       [JobState.Running]: null,
       [JobState.Succeeded]: 'succeededJobs',
@@ -500,6 +494,7 @@ export class MemoryBackend implements Backend {
   }
 
   async getStats(): Promise<QueueStats> {
+    const now = new Date();
     const runningJobs = this.selectJobs((j) => j.state === JobState.Running);
     const onlineWorkers = this.selectWorkers((w) =>
       [WorkerState.Online, WorkerState.Idle, WorkerState.Busy].includes(w.state),
@@ -509,7 +504,7 @@ export class MemoryBackend implements Backend {
     return {
       enqueuedJobs: this.nextJobId - 1,
       pendingJobs: this.selectJobs((j) => j.state === JobState.Pending).size,
-      scheduledJobs: this.selectJobs((j) => j.state === JobState.Scheduled).size,
+      scheduledJobs: this.selectJobs((j) => j.state === JobState.Pending && j.delayUntil > now).size,
       runningJobs: runningJobs.size,
       succeededJobs: this.selectJobs((j) => j.state === JobState.Succeeded).size,
       failedJobs: this.selectJobs((j) => j.state === JobState.Failed).size,

@@ -48,13 +48,9 @@ export interface JobFactory<BaseJob extends Job<JobArgs>> {
 
 export enum JobState {
   /**
-   * The job is pending for immediate execution.
+   * The job is pending for execution until `delayUntil` has passed.
    */
   Pending = 'pending',
-  /**
-   * The job is pending, but scheduled for execution after a specified time.
-   */
-  Scheduled = 'scheduled',
   /**
    * The job is currently executed.
    */

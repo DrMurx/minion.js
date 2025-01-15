@@ -129,7 +129,7 @@ await runTestsWithPgContainer(t, PgBackend, async (t, backend) => {
       t.notOk(batch5[2]);
 
       const jobHandle4 = await queue.addJob('test', {}, { metadata: { isTest: true } });
-      const batch6 = (await backend.getJobInfos(0, 10, { metadata: ['isTest'] })).jobs;
+      const batch6 = (await backend.getJobInfos(0, 10, { metadata: [{ isTest: true }] })).jobs;
       t.equal(batch6[0].id, jobHandle4.id);
       t.equal(batch6[0].taskName, 'test');
       t.same(batch6[0].metadata, { isTest: true });

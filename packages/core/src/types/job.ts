@@ -129,7 +129,7 @@ export interface ListJobsOptions {
   queueNames?: string[];
   taskNames?: string[];
   states?: JobState[];
-  metadata?: string[];
+  metadata?: Record<string, any>[];
 }
 
 export interface JobResultOptions {

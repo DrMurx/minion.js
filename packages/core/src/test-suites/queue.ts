@@ -623,6 +623,8 @@ export async function runQueueTests(t: Test, backend: Backend & TestableBackend)
         yada: ['works'],
         so: true,
       });
+      t.equal(await queue.listJobInfos({ metadata: [{ unknown: false }] }).numRows(), 0);
+      t.equal(await queue.listJobInfos({ metadata: [{ foo: [4, 5, 6, 7], baz: 'yada' }] }).numRows(), 1);
 
       t.ok(await job.amendMetadata({ yada: null, bar: null }));
       await jobHandle1.sync();

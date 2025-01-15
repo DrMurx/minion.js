@@ -454,7 +454,7 @@ export class PgBackend implements Backend {
         AND (queue_name = ANY ($3) OR $3 IS NULL)
         AND (task_name = ANY ($4) OR $4 IS NULL)
         AND (state = ANY ($5) OR $5 IS NULL)
-        AND (metadata ? ANY ($6) OR $6 IS NULL)
+        AND (metadata @> ANY ($6) OR $6 IS NULL)
         AND (state != '${JobState.Pending}' OR expires_at IS NULL OR expires_at > NOW())
       ORDER BY id ASC
       LIMIT $7 OFFSET $8`,
@@ -638,7 +638,7 @@ export class PgBackend implements Backend {
       WHERE (id > $1 OR $1 IS NULL)
         AND (id = ANY ($2) OR $2 IS NULL)
         AND (state = ANY ($3) OR $3 IS NULL)
-        AND (metadata ? ANY ($4) OR $4 IS NULL)
+        AND (metadata @> ANY ($4) OR $4 IS NULL)
       ORDER BY id ASC
       LIMIT $5 OFFSET $6`,
       [options.afterId, options.ids, options.state, options.metadata, limit, offset],
@@ -657,7 +657,7 @@ export class PgBackend implements Backend {
       WHERE (id > $2 OR $2 IS NULL)
         AND (id = ANY ($3) OR $3 IS NULL)
         AND (state = ANY ($4) OR $4 IS NULL)
-        AND (metadata ? ANY ($5) OR $5 IS NULL)`,
+        AND (metadata @> ANY ($5) OR $5 IS NULL)`,
       [JSON.stringify([descriptor]), options.afterId, options.ids, options.state, options.metadata],
     );
     return (results.rowCount ?? 0) > 0;

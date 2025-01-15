@@ -1,3 +1,4 @@
+import { has } from 'tcompare';
 import {
   JobPruneResult,
   type Backend,
@@ -19,13 +20,13 @@ import {
   type JobResult,
   type ListJobsOptions,
 } from '../types/job.js';
-import { DailyJobHistory, type QueueJobStatistics, type QueueStats } from '../types/queue-stats.js';
+import { type DailyJobHistory, type QueueJobStatistics, type QueueStats } from '../types/queue-stats.js';
 import {
-  WorkerConfig,
   WorkerState,
   type ListWorkersOptions,
   type WorkerCommandArg,
   type WorkerCommandDescriptor,
+  type WorkerConfig,
   type WorkerId,
   type WorkerInfo,
 } from '../types/worker.js';
@@ -310,8 +311,7 @@ export class MemoryBackend implements Backend {
         (options.queueNames === undefined || options.queueNames.includes(j.queueName)) &&
         (options.taskNames === undefined || options.taskNames.includes(j.taskName)) &&
         (options.states === undefined || options.states.includes(j.state)) &&
-        (options.metadata === undefined ||
-          Object.entries(options.metadata).every(([key, value]) => j.metadata[key] === value)) &&
+        (options.metadata === undefined || options.metadata.findIndex((m) => has(j.metadata, m).match) >= 0) &&
         (j.state === JobState.Pending || j.expiresAt === undefined || j.expiresAt > now),
     );
     const jobs = [...possibleJobs].sort((a, b) => a.id - b.id).slice(offset, offset + limit);
@@ -420,8 +420,7 @@ export class MemoryBackend implements Backend {
         (options.afterId === undefined || w.id > options.afterId) &&
         (options.ids === undefined || options.ids.includes(w.id)) &&
         (options.state === undefined || options.state.includes(w.state)) &&
-        (options.metadata === undefined ||
-          Object.entries(options.metadata).every(([key, value]) => w.metadata[key] === value)),
+        (options.metadata === undefined || options.metadata.findIndex((m) => has(w.metadata, m).match) >= 0),
     );
     const workers = [...possibleWorkers].sort((a, b) => a.id - b.id).slice(offset, offset + limit);
     return {
@@ -443,8 +442,7 @@ export class MemoryBackend implements Backend {
         (options.afterId === undefined || w.id > options.afterId) &&
         (options.ids === undefined || options.ids.includes(w.id)) &&
         (options.state === undefined || options.state.includes(w.state)) &&
-        (options.metadata === undefined ||
-          Object.entries(options.metadata).every(([key, value]) => w.metadata[key] === value)),
+        (options.metadata === undefined || options.metadata.findIndex((m) => has(w.metadata, m).match) >= 0),
     );
     if (workers.size === 0) return false;
     const descriptor: WorkerCommandDescriptor = { command, arg };

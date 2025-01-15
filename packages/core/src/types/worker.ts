@@ -144,7 +144,7 @@ export interface ListWorkersOptions {
   ids?: WorkerId[];
   afterId?: number;
   state?: WorkerState[];
-  metadata?: string[];
+  metadata?: Record<string, any>[];
 }
 
 export interface WorkerInfo {

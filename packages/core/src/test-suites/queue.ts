@@ -14,11 +14,6 @@ export interface TestableBackend {
   dateBackWorkerLastseenAt(workerId: WorkerId, msBeforeNow: number): Promise<void>;
 }
 
-// export const defaultBackoffStrategy: JobBackoffStrategy = <Args extends JobArgs>(jobRecord: JobRecord<Args>) => {
-//   if (jobRecord.state === JobState.Abandoned) return 0;
-//   return jobRecord.attempt ** 4 + 15;
-// };
-
 export async function runQueueTests(t: Test, backend: Backend & TestableBackend) {
   await t.test(`Queue with ${backend.name} backend`, async (t) => {
     const queue: Queue = new Queuebone(backend, {
@@ -28,7 +23,7 @@ export async function runQueueTests(t: Test, backend: Backend & TestableBackend)
           throw new Error('Intentional failure!');
         },
       },
-      backoffStrategy: () => 2000,
+      backoffStrategy: () => 10000, // constant backoff of 10 seconds
     });
     await queue.start();
 

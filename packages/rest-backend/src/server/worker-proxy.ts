@@ -153,8 +153,8 @@ export class WorkerProxy<BaseJob extends Job<JobArgs>> {
     return this;
   }
 
-  async setState(state: WorkerState): Promise<void> {
-    this._state = state;
+  async setState(state?: WorkerState): Promise<void> {
+    if (state !== undefined) this._state = state;
     return this.heartbeat(true);
   }
 
@@ -175,8 +175,8 @@ export class WorkerProxy<BaseJob extends Job<JobArgs>> {
     }
   }
 
-  async getInbox(updateState: WorkerState): Promise<WorkerCommandDescriptor[]> {
-    this._state = updateState;
+  async getInbox(updateState?: WorkerState): Promise<WorkerCommandDescriptor[]> {
+    if (updateState !== undefined) this._state = updateState;
     const options: WorkerUpdateOptions = {
       state: this._state,
       finishedJobCount: this.finishedJobCount,

@@ -274,11 +274,11 @@ export interface WorkerUpdateOptions extends Partial<WorkerRegistrationOptions> 
   /**
    * The worker's current state
    */
-  state: WorkerState;
+  state?: WorkerState;
   /**
    * Number of jobs this worker has processed
    */
-  finishedJobCount: number;
+  finishedJobCount?: number;
 }
 
 export type JobPruneResult<Args extends JobArgs = JobArgs> = {

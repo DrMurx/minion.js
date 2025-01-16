@@ -330,5 +330,5 @@ export class RestBackend implements Backend {
 }
 
 export type ClientWorkerUpdateOptions = {
-  state: WorkerState;
+  state?: WorkerState;
 };

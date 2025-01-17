@@ -168,10 +168,13 @@ export class Queuebone<BaseJob extends Job<JobArgs> = DefaultJob<JobArgs>>
   }
 
   /**
-   * Requeue unsuccessful jobs and backoff with the given backoff strategy
+   * Requeue failed jobs that can be requeued, with the given backoff strategy
    */
   protected async retryFailedJob(jobRecord: JobRecord<InferJobArgs<BaseJob>>): Promise<void> {
-    if (unsuccessfulJobStates.includes(jobRecord.state) && jobRecord.attempt < jobRecord.maxAttempts) {
+    if (
+      [JobState.Failed, JobState.Aborted, JobState.Abandoned].includes(jobRecord.state) &&
+      jobRecord.attempt < jobRecord.maxAttempts
+    ) {
       const options = {
         // Set maxAttempt to its current value (otherwise, `Backend.retryJob` increases it)
         maxAttempts: jobRecord.maxAttempts,

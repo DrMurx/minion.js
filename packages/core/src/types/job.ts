@@ -60,27 +60,35 @@ export enum JobState {
    */
   Succeeded = 'succeeded',
   /**
-   * The job has finished with a failure. It will be requeued.
+   * The job has finished with a failure.
+   * It will be requeued automatically if there are attempts left.
    */
   Failed = 'failed',
   /**
-   * The job was picked up by a worker, but the worker terminated gracefully. It will be requeued.
+   * The job was picked up by a worker, but the worker terminated gracefully.
+   * It will be requeued automatically if there are attempts left.
    */
   Aborted = 'aborted',
   /**
-   * The job was picked up by a worker, but the worker fainted. It will be requeued.
+   * The job was picked up by a worker, but the worker fainted.
+   * It will be requeued automatically if there are attempts left.
    */
   Abandoned = 'abandoned',
   /**
-   * The job was pending for too long and may require manual intervention. It may be requeued.
+   * The job was pending for too long and may require manual intervention.
+   * It may be requeued by an administrator.
    */
   Unattended = 'unattended',
   /**
-   * The job was canceled by the user while it was still pending. It may be requeued.
+   * The job was canceled by the user while it was still pending.
+   * It may be requeued by an administrator.
    */
   Canceled = 'canceled',
 }
 
+/**
+ * Job states that should be considered unsuccessful (this includes jobs that have been canceled)
+ */
 export const unsuccessfulJobStates = [
   JobState.Failed,
   JobState.Aborted,

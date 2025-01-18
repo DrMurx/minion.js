@@ -12,7 +12,6 @@ export { QuickRunner } from './queue/quick-runner.js';
 export {
   type Backend,
   type ExecutorBackend,
-  type IteratorBackend,
   type JobDequeueOptions,
   type JobEnqueueOptions,
   type JobHandleBackend,

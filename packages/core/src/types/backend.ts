@@ -18,7 +18,7 @@ import {
   WorkerState,
 } from './worker.js';
 
-export interface Backend extends QueueBackend, IteratorBackend, JobHandleBackend, WorkerBackend {
+export interface Backend extends QueueBackend, JobHandleBackend, WorkerBackend {
   /**
    * Backend name.
    */
@@ -68,11 +68,6 @@ export interface QueueBackend {
   ): Promise<JobPruneResult<Args>>;
 
   /**
-   * Returns information about a worker.
-   */
-  getWorkerInfo(id: WorkerId): Promise<WorkerInfo | undefined>;
-
-  /**
    * Prune workers without heartbeat after the given timeout
    */
   pruneWorkers(listTimeout: number): Promise<WorkerPruneResult>;
@@ -91,22 +86,6 @@ export interface QueueBackend {
    * Get statistics for the job queue.
    */
   getStats(): Promise<any>;
-}
-
-export interface IteratorBackend {
-  /**
-   * Returns the information about jobs in batches.
-   */
-  getJobInfos<Args extends JobArgs>(
-    offset: number,
-    limit: number,
-    options: ListJobsOptions,
-  ): Promise<JobInfoList<Args>>;
-
-  /**
-   * Returns information about workers in batches.
-   */
-  getWorkerInfos(offset: number, limit: number, options: ListWorkersOptions): Promise<WorkerInfoList>;
 }
 
 /**
@@ -149,6 +128,15 @@ export interface JobHandleBackend extends ExecutorBackend {
   getJobInfo<Args extends JobArgs>(jobId: JobId): Promise<JobInfo<Args> | undefined>;
 
   /**
+   * Returns the information about jobs in batches.
+   */
+  getJobInfos<Args extends JobArgs>(
+    offset: number,
+    limit: number,
+    options: ListJobsOptions,
+  ): Promise<JobInfoList<Args>>;
+
+  /**
    * Transition job back to `pending` state, already `pending` jobs may also be retried to change options. Note that
    * this method will always increase the `attempt` field. The `maxAttempts` field will also be increased by default
    * unless `options.maxAttempts` is set.
@@ -184,6 +172,16 @@ export interface WorkerBackend {
     timeout: number,
     options: JobDequeueOptions,
   ): Promise<JobRecord<Args> | null>;
+
+  /**
+   * Returns information about a worker.
+   */
+  getWorkerInfo(id: WorkerId): Promise<WorkerInfo | undefined>;
+
+  /**
+   * Returns information about workers in batches.
+   */
+  getWorkerInfos(offset: number, limit: number, options: ListWorkersOptions): Promise<WorkerInfoList>;
 
   /**
    * Register a new worker with the given `options`.

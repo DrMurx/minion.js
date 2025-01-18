@@ -2,7 +2,7 @@
 /// <reference path="./fastify-declare.ts" />
 
 import jwtPlugin from '@fastify/jwt';
-import { type Backend, DefaultWorker, type Job, type JobArgs, type Queue, type WorkerConfig } from '@queuebone/core';
+import { type Backend, type Job, type JobArgs, type Queue, type WorkerConfig } from '@queuebone/core';
 import { type FastifyPluginAsync } from 'fastify';
 import { ExecutorProxy } from './executor-proxy.js';
 import { Pruner } from './pruner.js';
@@ -67,8 +67,8 @@ export const queueboneRestServerPlugin: FastifyPluginAsync<QueueboneRestServerOp
     const { apikey } = body;
     if (apikey !== undefined) {
       await new Promise((res) => setTimeout(res, 100));
-      const holder = profileManager.timingSafeGet(apikey);
-      if (holder !== undefined) {
+      const profile = profileManager.timingSafeGet(apikey);
+      if (profile !== undefined) {
         status = 'authenticated';
       }
     }
@@ -81,29 +81,28 @@ export const queueboneRestServerPlugin: FastifyPluginAsync<QueueboneRestServerOp
   fastify.post<RegisterWorkerAPI>('/workers', { schema: registerWorkerSchema }, async ({ body, ip }, reply) => {
     // Authenticate and authorize
     const { apikey } = body;
-    const holder = profileManager.timingSafeGet(apikey);
-    if (holder === undefined) {
+    const profile = profileManager.timingSafeGet(apikey);
+    if (profile === undefined) {
       return reply.status(401).send(); // 401 = unauthorized
     }
 
     // Ensure capacity
-    if (holder.activeWorkers.size >= holder.maxWorkers) {
+    if (profile.activeWorkers.size >= profile.maxWorkers) {
       return reply.status(403).send(); // 403 = forbidden
     }
 
     // Create and store WorkerProxy
-    const config: WorkerConfig = {
-      ...DefaultWorker.DEFAULT_CONFIG,
+    const config: Partial<WorkerConfig> = {
       queueNames: queue.options.queueNames,
-      ...holder.config,
+      ...profile.config,
     };
-    const worker = await new WorkerProxy<Job<JobArgs>>(holder.name, config, ip, backend, queue).register();
+    const worker = await new WorkerProxy<Job<JobArgs>>(profile.name, backend, queue).register(config, ip);
     if (worker.id === undefined) {
       return reply.status(500).send(); // 500 = internal server error
     }
-    holder.activeWorkers.set(worker.id, worker);
+    profile.activeWorkers.set(worker.id, worker);
     return {
-      token: fastify.jwt.sign({ prf: holder.id, wrk: worker.id }),
+      token: fastify.jwt.sign({ prf: profile.id, wrk: worker.id }),
       info: worker.clientWorkerInfo,
     };
   });

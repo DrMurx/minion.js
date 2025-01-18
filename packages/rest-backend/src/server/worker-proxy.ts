@@ -1,4 +1,5 @@
 import {
+  DefaultWorker,
   WorkerState,
   type InferJobArgs,
   type Job,
@@ -49,18 +50,15 @@ export class WorkerProxy<BaseJob extends Job<JobArgs>> {
 
   constructor(
     profile: string,
-    config: WorkerConfig,
-    ip: string,
     protected workerBackend: WorkerBackend,
     protected notifier: QueueEventEmitter<BaseJob>,
   ) {
-    this._config = { ...config };
+    this._config = { ...DefaultWorker.DEFAULT_CONFIG };
 
     this._metadata = {
       ':hostname': hostname(),
       ':pid': process.pid,
       ':profile': profile,
-      ':remote': ip,
     };
   }
 
@@ -133,18 +131,25 @@ export class WorkerProxy<BaseJob extends Job<JobArgs>> {
     return jobRecord;
   }
 
-  async register(): Promise<this> {
+  async register(config: Partial<WorkerConfig>, ip: string): Promise<this> {
     if (!this.isRegistered) {
+      this._metadata[':remote'] = ip;
+
       const options: WorkerRegistrationOptions = {
-        config: this._config,
+        config: {
+          ...DefaultWorker.DEFAULT_CONFIG,
+          ...config,
+        },
         metadata: this._metadata,
       };
       const workerInfo = await this.workerBackend.registerWorker(options);
+
       this._id = workerInfo.id;
       this._config = workerInfo.config;
       this._state = WorkerState.Online;
       this._metadata = workerInfo.metadata;
       this.notifier.emit('worker_registered', { workerInfo });
+
       this.finishedJobCount = 0;
       this.lastHeartbeatAt = Date.now();
     } else {

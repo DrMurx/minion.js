@@ -7,6 +7,7 @@ import {
   type JobDequeueOptions,
   type JobId,
   type JobRecord,
+  type ListWorkersOptions,
   type QueueEventEmitter,
   type WorkerBackend,
   type WorkerCommandDescriptor,
@@ -17,6 +18,7 @@ import {
 } from '@queuebone/core';
 import { hostname } from 'os';
 import { type ExecutorProxy } from './executor-proxy.js';
+import { type WorkerProfileHolder } from './types.js';
 
 /**
  * The server side representation of a REST worker.
@@ -49,7 +51,8 @@ export class WorkerProxy<BaseJob extends Job<JobArgs>> {
   public lastSeenAt = Date.now();
 
   constructor(
-    profile: string,
+    protected profile: WorkerProfileHolder<BaseJob>,
+    protected queueNames: string[],
     protected workerBackend: WorkerBackend,
     protected notifier: QueueEventEmitter<BaseJob>,
   ) {
@@ -58,7 +61,8 @@ export class WorkerProxy<BaseJob extends Job<JobArgs>> {
     this._metadata = {
       ':hostname': hostname(),
       ':pid': process.pid,
-      ':profile': profile,
+      ':profile': profile.name,
+      ':profileId': profile.id,
     };
   }
 
@@ -131,17 +135,22 @@ export class WorkerProxy<BaseJob extends Job<JobArgs>> {
     return jobRecord;
   }
 
-  async register(config: Partial<WorkerConfig>, ip: string): Promise<this> {
+  async register(ip: string): Promise<this> {
     if (!this.isRegistered) {
       this._metadata[':remote'] = ip;
-
       const options: WorkerRegistrationOptions = {
         config: {
           ...DefaultWorker.DEFAULT_CONFIG,
-          ...config,
+          queueNames: this.queueNames,
+          ...this.profile.config,
         },
         metadata: this._metadata,
       };
+
+      // Check capacity before registering worker.
+      // Note that this isn't an atomic operation, so there is a chance that another worker registers
+      // at the same time.
+      if (await this.profileCapacityExhausted()) return this;
       const workerInfo = await this.workerBackend.registerWorker(options);
 
       this._id = workerInfo.id;
@@ -199,5 +208,19 @@ export class WorkerProxy<BaseJob extends Job<JobArgs>> {
       this._id = undefined!;
     }
     return this;
+  }
+
+  protected async profileCapacityExhausted(): Promise<boolean> {
+    const options: ListWorkersOptions = {
+      state: [WorkerState.Online, WorkerState.Idle, WorkerState.Busy],
+      metadata: [
+        {
+          ':profileId': this.profile.id,
+        },
+      ],
+    };
+    const infos = await this.workerBackend.getWorkerInfos(0, 0, options);
+    const activeWorkers = infos.total;
+    return activeWorkers >= this.profile.maxWorkers;
   }
 }

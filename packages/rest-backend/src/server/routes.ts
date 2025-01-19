@@ -2,7 +2,7 @@
 /// <reference path="./fastify-declare.ts" />
 
 import jwtPlugin from '@fastify/jwt';
-import { type Backend, type Job, type JobArgs, type Queue, type WorkerConfig } from '@queuebone/core';
+import { type Backend, type Job, type JobArgs, type Queue } from '@queuebone/core';
 import { type FastifyPluginAsync } from 'fastify';
 import { ExecutorProxy } from './executor-proxy.js';
 import { Pruner } from './pruner.js';
@@ -86,20 +86,12 @@ export const queueboneRestServerPlugin: FastifyPluginAsync<QueueboneRestServerOp
       return reply.status(401).send(); // 401 = unauthorized
     }
 
-    // Ensure capacity
-    if (profile.activeWorkers.size >= profile.maxWorkers) {
+    // Create WorkerProxy (fails if profile's maxWorkers are exhausted)
+    const worker = await new WorkerProxy<Job<JobArgs>>(profile, queue.options.queueNames, backend, queue).register(ip);
+    if (worker.id === undefined) {
       return reply.status(403).send(); // 403 = forbidden
     }
 
-    // Create and store WorkerProxy
-    const config: Partial<WorkerConfig> = {
-      queueNames: queue.options.queueNames,
-      ...profile.config,
-    };
-    const worker = await new WorkerProxy<Job<JobArgs>>(profile.name, backend, queue).register(config, ip);
-    if (worker.id === undefined) {
-      return reply.status(500).send(); // 500 = internal server error
-    }
     profile.activeWorkers.set(worker.id, worker);
     return {
       token: fastify.jwt.sign({ prf: profile.id, wrk: worker.id }),

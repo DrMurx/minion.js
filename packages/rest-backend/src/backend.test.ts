@@ -1,4 +1,5 @@
-import { Queuebone, JobState, MemoryBackend, WorkerState } from '@queuebone/core';
+import { ConnectionError, JobState, MemoryBackend, Queuebone, WorkerState } from '@queuebone/core';
+import { AxiosError } from 'axios';
 import Fastify from 'fastify';
 import os from 'os';
 import t from 'tap';
@@ -74,11 +75,15 @@ await t.test('HTTP backend', async (t) => {
     await worker2.register();
 
     try {
-      // Can't register a 3rd worker
+      // Can't register a 3rd worker, should return "403 forbidden"
       await clientQueue.getNewWorker().register();
       t.fail();
-    } catch {
-      t.ok(true);
+    } catch (e) {
+      if (e instanceof ConnectionError && e.cause instanceof AxiosError) {
+        t.equal(e.cause.status, 403);
+      } else {
+        t.fail();
+      }
     }
 
     t.equal(worker1.config.heartbeatInterval, 0);
@@ -91,14 +96,14 @@ await t.test('HTTP backend', async (t) => {
     t.equal(batch1[0].id, worker1.id);
     t.equal(batch1[0].config.heartbeatInterval, 3600000);
     t.equal(batch1[0].state, WorkerState.Online);
-    t.same(Object.keys(batch1[0].metadata).sort(), [':hostname', ':pid', ':profile', ':remote']);
+    t.match(Object.keys(batch1[0].metadata).sort(), [':hostname', ':pid', ':profile', ':profileId', ':remote']);
     t.equal(batch1[0].metadata[':pid'], process.pid);
     t.equal(batch1[0].metadata[':hostname'], os.hostname());
     t.equal(batch1[0].metadata[':profile'], 'profile-1');
     t.ok(['127.0.0.1', '::1'].includes(batch1[0].metadata[':remote']));
     t.equal(batch1[0].startedAt instanceof Date, true);
     t.equal(batch1[1].id, worker2.id);
-    t.same(Object.keys(batch1[1].metadata).sort(), [':hostname', ':pid', ':profile', ':remote']);
+    t.match(Object.keys(batch1[1].metadata).sort(), [':hostname', ':pid', ':profile', ':profileId', ':remote']);
     t.equal(batch1[1].metadata[':profile'], 'profile-1');
     t.notOk(batch1[2]);
 
@@ -107,7 +112,7 @@ await t.test('HTTP backend', async (t) => {
 
     const batch2 = (await serverBackend.getWorkerInfos(0, 10, {})).workers;
     t.equal(batch2[0].id, worker1.id);
-    t.same(Object.keys(batch2[0].metadata).sort(), [':hostname', ':pid', ':profile', ':remote']);
+    t.match(Object.keys(batch2[0].metadata).sort(), [':hostname', ':pid', ':profile', ':profileId', ':remote']);
     t.equal(batch2[1].id, worker2.id);
     t.notOk(batch2[1].metadata.whatever);
     t.notOk(batch2[2]);

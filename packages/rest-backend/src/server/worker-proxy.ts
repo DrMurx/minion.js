@@ -1,12 +1,12 @@
 import {
   DefaultWorker,
   WorkerState,
+  type ExecutorBackend,
   type InferJobArgs,
   type Job,
   type JobArgs,
   type JobDequeueOptions,
   type JobId,
-  type JobRecord,
   type ListWorkersOptions,
   type QueueEventEmitter,
   type WorkerBackend,
@@ -17,7 +17,7 @@ import {
   type WorkerUpdateOptions,
 } from '@queuebone/core';
 import { hostname } from 'os';
-import { type ExecutorProxy } from './executor-proxy.js';
+import { ExecutorProxy } from './executor-proxy.js';
 import { type WorkerProfileHolder } from './types.js';
 
 /**
@@ -46,14 +46,13 @@ export class WorkerProxy<BaseJob extends Job<JobArgs>> {
   protected lastHeartbeatAt = 0;
   protected lastInboxCheck = 0;
 
-  public jobExecutors: Map<JobId, ExecutorProxy<BaseJob>> = new Map();
-  public finishedJobCount = 0;
-  public lastSeenAt = Date.now();
+  protected jobExecutors: Map<JobId, ExecutorProxy<BaseJob>> = new Map();
+  protected finishedJobCount = 0;
 
   constructor(
     protected profile: WorkerProfileHolder<BaseJob>,
     protected queueNames: string[],
-    protected workerBackend: WorkerBackend,
+    protected workerBackend: WorkerBackend & ExecutorBackend,
     protected notifier: QueueEventEmitter<BaseJob>,
   ) {
     this._config = { ...DefaultWorker.DEFAULT_CONFIG };
@@ -64,6 +63,10 @@ export class WorkerProxy<BaseJob extends Job<JobArgs>> {
       ':profile': profile.name,
       ':profileId': profile.id,
     };
+  }
+
+  isExpired(expireAfter: number) {
+    return this.lastHeartbeatAt < expireAfter;
   }
 
   /**
@@ -115,7 +118,7 @@ export class WorkerProxy<BaseJob extends Job<JobArgs>> {
     return this.lastHeartbeatAt + this._config.heartbeatInterval < Date.now();
   }
 
-  async getNextJob(taskNames: string[], minPriority: number): Promise<JobRecord<InferJobArgs<BaseJob>> | null> {
+  async getNextJob(taskNames: string[], minPriority: number): Promise<ExecutorProxy<BaseJob> | null> {
     if (this._id === undefined) return null;
     const { queueNames, dequeueTimeout } = this._config;
 
@@ -132,7 +135,34 @@ export class WorkerProxy<BaseJob extends Job<JobArgs>> {
 
     await this.heartbeat();
 
-    return jobRecord;
+    if (jobRecord === null) return null;
+
+    const executor = new ExecutorProxy(jobRecord, this, this.workerBackend, this.notifier);
+    await executor.start();
+    this.jobExecutors.set(jobRecord.id, executor);
+
+    return executor;
+  }
+
+  async getExecutorProxy(jobId: JobId, attempt: number): Promise<ExecutorProxy<BaseJob> | undefined> {
+    const executor = this.jobExecutors.get(jobId);
+    if (executor === undefined || executor.attempt !== attempt) {
+      return undefined;
+    }
+    return executor;
+  }
+
+  dropExecutorProxy(jobId: JobId): void {
+    this.finishedJobCount++;
+    this.jobExecutors.delete(jobId);
+  }
+
+  pruneExecutorProxies(expireAfter: number): void {
+    for (const [jobId, jobExecutor] of this.jobExecutors) {
+      if (jobExecutor.isExpired(expireAfter)) {
+        this.jobExecutors.delete(jobId);
+      }
+    }
   }
 
   async register(ip: string): Promise<this> {

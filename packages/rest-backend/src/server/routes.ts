@@ -4,7 +4,6 @@
 import jwtPlugin from '@fastify/jwt';
 import { type Backend, type Job, type JobArgs, type Queue } from '@queuebone/core';
 import { type FastifyPluginAsync } from 'fastify';
-import { ExecutorProxy } from './executor-proxy.js';
 import { Pruner } from './pruner.js';
 import {
   type AssignNextJobAPI,
@@ -122,7 +121,6 @@ export const queueboneRestServerPlugin: FastifyPluginAsync<QueueboneRestServerOp
       if (worker === undefined) {
         return reply.status(401).send(); // 401 = unauthorized
       }
-      worker.lastSeenAt = Date.now();
 
       request.profile = profile;
       request.worker = worker;
@@ -166,17 +164,13 @@ export const queueboneRestServerPlugin: FastifyPluginAsync<QueueboneRestServerOp
       { schema: assignNextJobSchema },
       async ({ worker, body }, reply) => {
         const { taskNames, options } = body;
-        const jobRecord = await worker.getNextJob(taskNames, options.minPriority ?? 0);
+        const executor = await worker.getNextJob(taskNames, options.minPriority ?? 0);
 
-        if (jobRecord === null) {
+        if (executor === null) {
           return reply.status(204).send(); // 204 = No content
         }
 
-        const executor = new ExecutorProxy(jobRecord, worker, backend, queue);
-        await executor.start();
-        worker.jobExecutors.set(jobRecord.id, executor);
-
-        return jobRecord;
+        return executor.jobRecord;
       },
     );
 
@@ -186,25 +180,24 @@ export const queueboneRestServerPlugin: FastifyPluginAsync<QueueboneRestServerOp
       async ({ worker, params, body }, reply) => {
         const { id, attempt } = params;
 
-        const executor = worker.jobExecutors.get(id);
-        if (executor === undefined || executor.attempt !== attempt) {
+        const executor = await worker.getExecutorProxy(id, attempt);
+        if (executor === undefined) {
           return reply.status(404).send(); // 404 = not found
         }
-        executor.lastSeenAt = Date.now();
 
         const { metadata, progress, state, result } = body;
         if (metadata !== undefined) {
-          const isUpdated = await executor.amendMetadata(metadata);
-          return isUpdated ? executor.jobRecord : reply.status(404).send();
+          const jobRecord = await executor.amendMetadata(metadata);
+          return jobRecord !== undefined ? jobRecord : reply.status(404).send();
         }
         if (progress !== undefined) {
-          const isUpdated = await executor.updateProgress(progress);
-          return isUpdated ? executor.jobRecord : reply.status(404).send();
+          const jobRecord = await executor.updateProgress(progress);
+          return jobRecord !== undefined ? jobRecord : reply.status(404).send();
         }
         if (state !== undefined && result !== undefined) {
-          const isUpdated = await executor.markFinished(state, result);
-          worker.jobExecutors.delete(id);
-          return isUpdated ? executor.jobRecord : reply.status(404).send();
+          const jobRecord = await executor.markFinished(state, result);
+          worker.dropExecutorProxy(id);
+          return jobRecord !== undefined ? jobRecord : reply.status(404).send();
         }
         return reply.status(404).send();
       },

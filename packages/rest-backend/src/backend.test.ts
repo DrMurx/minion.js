@@ -209,6 +209,9 @@ await t.test('HTTP backend', async (t) => {
     t.equal(jobHandle2.maxAttempts, 3);
     t.equal(jobHandle2.attempt, 3);
 
+    const workerInfo = (await serverQueue.getWorkerInfo(worker.id!))!;
+    t.equal(workerInfo.finishedJobCount, 4);
+
     await worker.unregister();
   });
 

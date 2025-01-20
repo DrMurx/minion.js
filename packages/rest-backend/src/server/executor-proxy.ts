@@ -17,29 +17,33 @@ import { WorkerProxy } from './worker-proxy.js';
  * The server-side representation of a job executor on a REST worker.
  */
 export class ExecutorProxy<BaseJob extends Job<JobArgs>> {
-  private _jobRecord: JobRecord<InferJobArgs<BaseJob>>;
-  private _worker: WorkerProxy<BaseJob>;
-  public lastSeenAt = Date.now();
+  protected _jobRecord: JobRecord<InferJobArgs<BaseJob>>;
+  protected _worker: WorkerProxy<BaseJob>;
+  protected _lastUpdateAt = Date.now();
 
   constructor(
     jobRecord: JobRecord<InferJobArgs<BaseJob>>,
     worker: WorkerProxy<BaseJob>,
-    private backend: ExecutorBackend,
-    private notifier: QueueEventEmitter<BaseJob>,
+    protected backend: ExecutorBackend,
+    protected notifier: QueueEventEmitter<BaseJob>,
   ) {
     this._jobRecord = jobRecord;
     this._worker = worker;
   }
 
-  get jobRecord(): JobRecord<InferJobArgs<BaseJob>> {
+  isExpired(expireAfter: number) {
+    return this._lastUpdateAt < expireAfter;
+  }
+
+  get jobRecord(): Readonly<JobRecord<InferJobArgs<BaseJob>>> {
     return { ...this._jobRecord };
   }
 
-  get id(): JobId {
+  protected get id(): JobId {
     return this._jobRecord.id;
   }
 
-  get state(): JobState {
+  protected get state(): JobState {
     return this._jobRecord.state;
   }
 
@@ -58,9 +62,10 @@ export class ExecutorProxy<BaseJob extends Job<JobArgs>> {
     return 0;
   }
 
-  async updateProgress(progress: number): Promise<boolean> {
+  async updateProgress(progress: number): Promise<Readonly<JobRecord<InferJobArgs<BaseJob>>> | undefined> {
     const isUpdated = await this.backend.updateJobProgress(this.id, this.attempt, progress);
     if (isUpdated) {
+      this._lastUpdateAt = Date.now();
       this._jobRecord.progress = progress;
 
       if (this.notifier.listenerCount('job_progress') > 0) {
@@ -73,17 +78,18 @@ export class ExecutorProxy<BaseJob extends Job<JobArgs>> {
       }
 
       await this._worker.heartbeat();
+      return this._jobRecord;
     }
-    return isUpdated;
   }
 
-  async amendMetadata(records: Record<string, any>): Promise<boolean> {
+  async amendMetadata(records: Record<string, any>): Promise<Readonly<JobRecord<InferJobArgs<BaseJob>>> | undefined> {
     const metadata = await this.backend.amendJobMetadata(this.id, this.attempt, records);
     const isUpdated = metadata !== undefined;
     if (isUpdated) {
       this._jobRecord.metadata = metadata;
+      this._lastUpdateAt = Date.now();
+      return this._jobRecord;
     }
-    return isUpdated;
   }
 
   async start(): Promise<void> {
@@ -97,20 +103,33 @@ export class ExecutorProxy<BaseJob extends Job<JobArgs>> {
       };
       this.notifier.emit('job_started', event);
     }
+
+    this._lastUpdateAt = Date.now();
   }
 
   /**
    * Transition the job from `running` to `succeeded` or `failed`.
    */
-  async markFinished(state: JobState.Succeeded | JobState.Failed, result: JobResult | JobError): Promise<boolean> {
-    this._worker.finishedJobCount++;
-    if (state === JobState.Succeeded) {
-      return await this.markSucceeded(result);
+  async markFinished(
+    state: JobState.Succeeded | JobState.Failed,
+    result: JobResult | JobError,
+  ): Promise<Readonly<JobRecord<InferJobArgs<BaseJob>>> | undefined> {
+    if (state !== JobState.Succeeded && state !== JobState.Failed) {
+      throw new InvalidStateError(`Invalid state ${state}`);
     }
-    if (state === JobState.Failed) {
-      return await this.markFailed(result);
+
+    if (state === JobState.Succeeded && !(await this.markSucceeded(result))) return;
+    if (state === JobState.Failed && !(await this.markFailed(result))) return;
+
+    if (this.notifier.listenerCount('job_finished') > 0) {
+      const event = {
+        jobRecord: this.jobRecord,
+        state: this.state,
+        duration: this.duration,
+      };
+      this.notifier.emit('job_finished', event);
     }
-    throw new InvalidStateError(`Invalid state ${state}`);
+    return this._jobRecord;
   }
 
   /**
@@ -131,14 +150,7 @@ export class ExecutorProxy<BaseJob extends Job<JobArgs>> {
         };
         this.notifier.emit('job_succeeded', event);
       }
-      if (this.notifier.listenerCount('job_finished') > 0) {
-        const event = {
-          jobRecord: this.jobRecord,
-          state: this.state,
-          duration: this.duration,
-        };
-        this.notifier.emit('job_finished', event);
-      }
+      this._lastUpdateAt = Date.now();
     }
     return isUpdated;
   }
@@ -161,6 +173,7 @@ export class ExecutorProxy<BaseJob extends Job<JobArgs>> {
         };
         this.notifier.emit('job_failed', event);
       }
+      this._lastUpdateAt = Date.now();
     }
     return isUpdated;
   }

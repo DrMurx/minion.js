@@ -29,6 +29,11 @@ export interface RunningWorker<BaseJob extends Job<JobArgs>> {
    * Update the worker's lastSeen date.
    */
   heartbeat(force?: boolean): Promise<this>;
+
+  /**
+   * Update the worker's number of finished jobs
+   */
+  tickOff(): Promise<this>;
 }
 
 /**

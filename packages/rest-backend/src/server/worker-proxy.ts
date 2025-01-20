@@ -47,7 +47,7 @@ export class WorkerProxy<BaseJob extends Job<JobArgs>> {
   protected lastInboxCheck = 0;
 
   protected jobExecutors: Map<JobId, ExecutorProxy<BaseJob>> = new Map();
-  protected finishedJobCount = 0;
+  protected deltaFinishedJobs = 0;
 
   constructor(
     protected profile: WorkerProfileHolder<BaseJob>,
@@ -153,7 +153,7 @@ export class WorkerProxy<BaseJob extends Job<JobArgs>> {
   }
 
   dropExecutorProxy(jobId: JobId): void {
-    this.finishedJobCount++;
+    this.deltaFinishedJobs++;
     this.jobExecutors.delete(jobId);
   }
 
@@ -189,7 +189,7 @@ export class WorkerProxy<BaseJob extends Job<JobArgs>> {
       this._metadata = workerInfo.metadata;
       this.notifier.emit('worker_registered', { workerInfo });
 
-      this.finishedJobCount = 0;
+      this.deltaFinishedJobs = 0;
       this.lastHeartbeatAt = Date.now();
     } else {
       await this.heartbeat(true);
@@ -207,9 +207,10 @@ export class WorkerProxy<BaseJob extends Job<JobArgs>> {
       const options: WorkerUpdateOptions = {
         config: this._config,
         state: this._state,
-        finishedJobCount: this.finishedJobCount,
+        deltaFinishedJobs: this.deltaFinishedJobs,
         metadata: this._metadata,
       };
+      this.deltaFinishedJobs = 0;
       const workerInfo = await this.workerBackend.updateWorker(this._id!, options);
       if (workerInfo) {
         this._config = workerInfo.config;
@@ -223,8 +224,9 @@ export class WorkerProxy<BaseJob extends Job<JobArgs>> {
     if (updateState !== undefined) this._state = updateState;
     const options: WorkerUpdateOptions = {
       state: this._state,
-      finishedJobCount: this.finishedJobCount,
+      deltaFinishedJobs: this.deltaFinishedJobs,
     };
+    this.deltaFinishedJobs = 0;
     const commands = await this.workerBackend.checkWorkerInbox(this._id!, options);
     this.lastHeartbeatAt = Date.now();
     return commands;
@@ -232,7 +234,8 @@ export class WorkerProxy<BaseJob extends Job<JobArgs>> {
 
   async unregister(): Promise<this> {
     if (this._id !== undefined) {
-      await this.workerBackend.unregisterWorker(this._id);
+      await this.workerBackend.unregisterWorker(this._id, this.deltaFinishedJobs);
+      this.deltaFinishedJobs = 0;
       this._state = WorkerState.Offline;
       this.notifier.emit('worker_unregistered', { workerId: this._id });
       this._id = undefined!;

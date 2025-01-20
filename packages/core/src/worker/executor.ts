@@ -184,6 +184,7 @@ export class Executor<BaseJob extends Job<JobArgs>> {
         };
         this.notifier.emit('job_finished', event);
       }
+      this._worker.tickOff();
     }
   }
 

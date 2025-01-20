@@ -66,7 +66,7 @@ export class DefaultWorker<BaseJob extends Job<JobArgs>> implements WorkerInstan
   private lastInboxCheck = 0;
   private commandManager: WorkerCommandManager;
 
-  private finishedJobCount = 0;
+  private deltaFinishedJobs = 0;
 
   constructor(
     private workerBackend: WorkerBackend,
@@ -155,7 +155,6 @@ export class DefaultWorker<BaseJob extends Job<JobArgs>> implements WorkerInstan
     if (!this.workerLoop) {
       this.abortController = new AbortController();
       const workerLoop = (this.workerLoop = new WorkerLoop<BaseJob>(this));
-      workerLoop.on('finished', (finished) => (this.finishedJobCount += finished));
 
       await this.register();
       (async () => {
@@ -228,7 +227,7 @@ export class DefaultWorker<BaseJob extends Job<JobArgs>> implements WorkerInstan
       this._state = WorkerState.Online;
       this._metadata = workerInfo.metadata;
       this.notifier.emit('worker_registered', { workerInfo });
-      this.finishedJobCount = 0;
+      this.deltaFinishedJobs = 0;
       this.lastHeartbeatAt = Date.now();
     } else {
       await this.heartbeat(true);
@@ -242,9 +241,10 @@ export class DefaultWorker<BaseJob extends Job<JobArgs>> implements WorkerInstan
       const options: WorkerUpdateOptions = {
         config: this._config,
         state: this.state,
-        finishedJobCount: this.finishedJobCount,
+        deltaFinishedJobs: this.deltaFinishedJobs,
         metadata: this._metadata,
       };
+      this.deltaFinishedJobs = 0;
       const workerInfo = await this.workerBackend.updateWorker(this._id!, options);
       if (workerInfo) {
         this._config = workerInfo.config;
@@ -255,12 +255,18 @@ export class DefaultWorker<BaseJob extends Job<JobArgs>> implements WorkerInstan
     return this;
   }
 
+  async tickOff(): Promise<this> {
+    this.deltaFinishedJobs++;
+    return this;
+  }
+
   async processInbox(force: boolean = false): Promise<this> {
     if ((force || this.needsInboxCheck || this.needsHeartbeat) && this.isRegistered) {
       const options: WorkerUpdateOptions = {
         state: this.state,
-        finishedJobCount: this.finishedJobCount,
+        deltaFinishedJobs: this.deltaFinishedJobs,
       };
+      this.deltaFinishedJobs = 0;
       const commands = await this.workerBackend.checkWorkerInbox(this._id!, options);
       this.lastInboxCheck = this.lastHeartbeatAt = Date.now();
       await this.commandManager.runCommands(commands);
@@ -270,7 +276,7 @@ export class DefaultWorker<BaseJob extends Job<JobArgs>> implements WorkerInstan
 
   async unregister(): Promise<this> {
     if (this._id !== undefined) {
-      await this.workerBackend.unregisterWorker(this._id);
+      await this.workerBackend.unregisterWorker(this._id, this.deltaFinishedJobs);
       this._state = WorkerState.Offline;
       this.notifier.emit('worker_unregistered', { workerId: this._id });
       this._id = undefined;

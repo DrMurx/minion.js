@@ -511,7 +511,7 @@ export class PgBackend implements Backend {
       SET
         config = COALESCE($1, config),
         state = COALESCE($2, state),
-        finished_job_count = COALESCE($3, finished_job_count),
+        finished_job_count = finished_job_count + $3,
         metadata = JSONB_STRIP_NULLS(metadata || $4),
         last_seen_at = NOW()
       WHERE id = $5
@@ -526,7 +526,7 @@ export class PgBackend implements Backend {
         started_at AS "startedAt",
         last_seen_at AS "lastSeenAt",
         '[]'::JSONB AS "jobIds"`,
-      [options.config, options.state, options.finishedJobCount, options.metadata ?? {}, workerId],
+      [options.config, options.state, options.deltaFinishedJobs ?? 0, options.metadata ?? {}, workerId],
     );
     const workerInfo = results.rows[0];
     return workerInfo;
@@ -538,7 +538,7 @@ export class PgBackend implements Backend {
       SET
         config = COALESCE($1, config),
         state = COALESCE($2, state),
-        finished_job_count = COALESCE($3, finished_job_count),
+        finished_job_count = finished_job_count + $3,
         metadata = JSONB_STRIP_NULLS(metadata || $4),
         inbox = '[]',
         last_seen_at = NOW()
@@ -550,14 +550,21 @@ export class PgBackend implements Backend {
       ) AS old
       WHERE new.id = old.id
       RETURNING old.inbox AS "inbox"`,
-      [options.config, options.state, options.finishedJobCount, options.metadata ?? {}, workerId],
+      [options.config, options.state, options.deltaFinishedJobs ?? 0, options.metadata ?? {}, workerId],
     );
     if ((results.rowCount ?? 0) <= 0) return [];
     return results.rows[0].inbox ?? [];
   }
 
-  async unregisterWorker(id: WorkerId): Promise<boolean> {
-    const results = await this.query(`UPDATE ${WORKER_TABLE} SET state = '${WorkerState.Offline}' WHERE id = $1`, [id]);
+  async unregisterWorker(id: WorkerId, deltaFinishedJobs: number): Promise<boolean> {
+    const results = await this.query(
+      `UPDATE ${WORKER_TABLE}
+      SET
+        state = '${WorkerState.Offline}',
+        finished_job_count = finished_job_count + $1
+      WHERE id = $2`,
+      [deltaFinishedJobs, id],
+    );
     return (results.rowCount ?? 0) > 0;
   }
 

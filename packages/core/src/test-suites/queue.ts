@@ -307,7 +307,8 @@ export async function runQueueTests(t: Test, backend: Backend & TestableBackend)
       await worker.register();
       const executor1 = (await worker.getNextExecutor())!;
       const job1 = executor1.job;
-      t.same((await queue.getWorkerInfo(worker))!.jobIds, [jobHandle1.id]);
+      const workerInfo1 = (await queue.getWorkerInfo(worker))!;
+      t.same(workerInfo1.jobIds, [jobHandle1.id]);
       t.equal(job1.taskName, 'add');
       t.equal(job1.attempt, 1);
       t.same(executor1.job.args, { first: 2, second: 2 });
@@ -320,7 +321,8 @@ export async function runQueueTests(t: Test, backend: Backend & TestableBackend)
       t.same(jobHandle1.time instanceof Date, true);
 
       await executor1.perform();
-      t.same((await queue.getWorkerInfo(worker))!.jobIds, []);
+      const workerInfo2 = (await queue.getWorkerInfo(worker))!;
+      t.same(workerInfo2.jobIds, []);
       t.ok(await jobHandle1.sync());
       t.equal(jobHandle1.state, JobState.Succeeded);
       t.same(jobHandle1.result, { added: 4 });

@@ -353,7 +353,7 @@ export class MemoryBackend implements Backend {
     if (worker === undefined) return undefined;
     worker.config = options.config ?? worker.config;
     worker.state = options.state ?? worker.state;
-    worker.finishedJobCount = options.finishedJobCount ?? worker.finishedJobCount;
+    worker.finishedJobCount += options.deltaFinishedJobs ?? 0;
     worker.metadata = filterNull({ ...worker.metadata, ...(options.metadata ?? {}) });
     worker.lastSeenAt = new Date();
     return {
@@ -369,7 +369,7 @@ export class MemoryBackend implements Backend {
 
     worker.config = options.config ?? worker.config;
     worker.state = options.state ?? worker.state;
-    worker.finishedJobCount = options.finishedJobCount ?? worker.finishedJobCount;
+    worker.finishedJobCount += options.deltaFinishedJobs ?? 0;
     worker.metadata = filterNull({ ...worker.metadata, ...(options.metadata ?? {}) });
     worker.inbox = [];
     worker.lastSeenAt = new Date();
@@ -377,10 +377,11 @@ export class MemoryBackend implements Backend {
     return inbox;
   }
 
-  async unregisterWorker(id: WorkerId): Promise<boolean> {
+  async unregisterWorker(id: WorkerId, deltaFinishedJobs: number): Promise<boolean> {
     const worker = this.selectWorker((w) => w.id === id);
     if (worker === undefined) return false;
     worker.state = WorkerState.Offline;
+    worker.finishedJobCount += deltaFinishedJobs;
     return true;
   }
 

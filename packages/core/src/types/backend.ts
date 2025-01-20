@@ -198,15 +198,15 @@ export interface WorkerBackend {
   updateWorker(id: WorkerId, options: WorkerUpdateOptions): Promise<WorkerInfo | undefined>;
 
   /**
-   * Update some of the worker's data (`status`, `finishedJobCount` and `lastSeenAt`), and receive
+   * Update some of the worker's data (`status`, `deltaFinishedJobs` and `lastSeenAt`), and receive
    * remote control commands.
    */
   checkWorkerInbox(id: WorkerId, options: WorkerUpdateOptions): Promise<WorkerCommandDescriptor[]>;
 
   /**
-   * Unregister worker.
+   * Unregister worker and update the `deltaFinishedJobs`.
    */
-  unregisterWorker(id: WorkerId): Promise<boolean>;
+  unregisterWorker(id: WorkerId, deltaFinishedJobs: number): Promise<boolean>;
 }
 
 export type JobInfoList<Args extends JobArgs> = {
@@ -276,7 +276,7 @@ export interface WorkerUpdateOptions extends Partial<WorkerRegistrationOptions> 
   /**
    * Number of jobs this worker has processed
    */
-  finishedJobCount?: number;
+  deltaFinishedJobs?: number;
 }
 
 export type JobPruneResult<Args extends JobArgs = JobArgs> = {

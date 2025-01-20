@@ -56,6 +56,29 @@ export async function runWorkerTests(t: Test, backend: Backend) {
       t.equal(worker.isRunning, true);
       await worker.stop();
       t.equal(worker.isRunning, false);
+      await worker.unregister();
+    });
+
+    await t.test('Test finished job count', async (t) => {
+      const worker = await queue.getNewWorker().register();
+      t.equal((await queue.getWorkerInfo(worker))!.finishedJobCount, 0);
+
+      await queue.addJob('test');
+      const executor1 = (await worker.getNextExecutor())!;
+      await executor1.perform();
+
+      t.equal((await queue.getWorkerInfo(worker))!.finishedJobCount, 0);
+      await worker.heartbeat(true); // Update finishedJobCount during heartbeat
+      t.equal((await queue.getWorkerInfo(worker))!.finishedJobCount, 1);
+
+      await queue.addJob('test');
+      const executor2 = (await worker.getNextExecutor())!;
+      await executor2.perform();
+
+      const workerId = worker.id!;
+      t.equal((await queue.getWorkerInfo(worker))!.finishedJobCount, 1);
+      await worker.unregister(); // Update finishedJobCount during unregister
+      t.equal((await queue.getWorkerInfo(workerId))!.finishedJobCount, 2);
     });
 
     await t.test('Dealing with Worker metadata, and BackendIterator adapting to conditions', async (t) => {

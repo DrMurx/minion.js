@@ -1,4 +1,3 @@
-import EventEmitter from 'events';
 import { type JobDequeueOptions } from '../types/backend.js';
 import { type Job, type JobArgs } from '../types/job.js';
 import { type WorkerInstance } from '../types/worker.js';
@@ -7,16 +6,14 @@ import { type Executor } from './executor.js';
 /**
  * Encapsulates the management of all currently running jobs of a worker.
  */
-export class WorkerLoop<BaseJob extends Job<JobArgs>> extends EventEmitter {
+export class WorkerLoop<BaseJob extends Job<JobArgs>> {
   /**
    * A list of currently running (or just finished) jobs
    */
   private jobs: JobStatus<BaseJob>[] = [];
   private stopPromises: Array<() => void> = [];
 
-  constructor(protected worker: WorkerInstance<BaseJob>) {
-    super();
-  }
+  constructor(protected worker: WorkerInstance<BaseJob>) {}
 
   /**
    * `true` if the loop has running jobs
@@ -75,9 +72,7 @@ export class WorkerLoop<BaseJob extends Job<JobArgs>> extends EventEmitter {
    * Filter `this.jobs` to only running jobs, and emit the number of finished jobs.
    */
   protected pruneFinished(): void {
-    const before = this.jobs.length;
     this.jobs = this.jobs.filter((jobStatus) => jobStatus.isRunning);
-    this.emit('finished', before - this.jobs.length);
   }
 
   /**

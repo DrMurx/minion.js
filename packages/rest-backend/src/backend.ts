@@ -22,19 +22,19 @@ import {
   type WorkerPruneResult,
   type WorkerUpdateOptions,
 } from '@queuebone/core';
-import { Axios, AxiosError, AxiosResponse } from 'axios';
+import { Axios, AxiosError, type AxiosInstance, type AxiosResponse } from 'axios';
 import { createAxios, parseConfig } from './factory.js';
 
 export class RestBackend implements Backend {
   public readonly name = 'Http';
 
-  private _axios: Axios;
+  private _axios: AxiosInstance;
   private _apikey: string;
 
   private workerTokens: Map<WorkerId, string> = new Map();
   private jobTokens: Map<JobId, string> = new Map();
 
-  constructor(config: string | URL | Axios, apikey?: string) {
+  constructor(config: string | URL | AxiosInstance, apikey?: string) {
     if (config instanceof Axios) {
       this._axios = config;
       if (apikey === undefined) {
@@ -53,7 +53,7 @@ export class RestBackend implements Backend {
     }
   }
 
-  get axios(): Axios {
+  get axios(): AxiosInstance {
     return this._axios;
   }
 

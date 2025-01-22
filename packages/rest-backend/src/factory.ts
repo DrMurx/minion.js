@@ -1,6 +1,6 @@
-import axios, { type Axios } from 'axios';
+import axios, { type AxiosInstance } from 'axios';
 
-export function createAxios(config: string | URL): Axios {
+export function createAxios(config: string | URL): AxiosInstance {
   const url = parseConfig(config);
   return axios.create({
     baseURL: `${url.origin}${url.pathname}`,

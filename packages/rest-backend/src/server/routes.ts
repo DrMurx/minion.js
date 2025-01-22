@@ -4,6 +4,8 @@
 import jwtPlugin from '@fastify/jwt';
 import { type Backend, type Job, type JobArgs, type Queue } from '@queuebone/core';
 import { type FastifyPluginAsync } from 'fastify';
+import { type RestWorkerProfileConfig } from './config.js';
+import { DefaultProfileManager } from './profile-manager.js';
 import { Pruner } from './pruner.js';
 import {
   type AssignNextJobAPI,
@@ -19,13 +21,11 @@ import {
   type UpdateWorkerAPI,
   updateWorkerSchema,
 } from './schemas.js';
-import { type ProfileManager } from './types.js';
-import { WorkerProxy } from './worker-proxy.js';
 
 export interface QueueboneRestServerOptions<BaseJob extends Job<JobArgs>> {
   queue: Queue<BaseJob>;
   backend: Backend;
-  profileManager: ProfileManager<BaseJob>;
+  profileConfigs: RestWorkerProfileConfig[];
   jwtSecret: string;
 }
 
@@ -33,7 +33,9 @@ export const queueboneRestServerPlugin: FastifyPluginAsync<QueueboneRestServerOp
   fastify,
   options,
 ) => {
-  const { queue, backend, profileManager, jwtSecret } = options;
+  const { queue, backend, profileConfigs, jwtSecret } = options;
+
+  const profileManager = new DefaultProfileManager(queue, backend, profileConfigs);
 
   fastify.register(jwtPlugin, {
     secret: jwtSecret,
@@ -86,12 +88,11 @@ export const queueboneRestServerPlugin: FastifyPluginAsync<QueueboneRestServerOp
     }
 
     // Create WorkerProxy (fails if profile's maxWorkers are exhausted)
-    const worker = await new WorkerProxy<Job<JobArgs>>(profile, queue.options.queueNames, backend, queue).register(ip);
-    if (worker.id === undefined) {
+    const worker = await profile.registerNewWorkerProxy(ip);
+    if (worker === undefined) {
       return reply.status(403).send(); // 403 = forbidden
     }
 
-    profile.activeWorkers.set(worker.id, worker);
     return {
       token: fastify.jwt.sign({ prf: profile.id, wrk: worker.id }),
       info: worker.clientWorkerInfo,
@@ -117,7 +118,7 @@ export const queueboneRestServerPlugin: FastifyPluginAsync<QueueboneRestServerOp
       if (profile === undefined) {
         return reply.status(401).send(); // 401 = unauthorized
       }
-      const worker = profile.activeWorkers.get(request.user.wrk);
+      const worker = await profile.getWorkerProxy(request.user.wrk, request.ip);
       if (worker === undefined) {
         return reply.status(401).send(); // 401 = unauthorized
       }
@@ -139,7 +140,7 @@ export const queueboneRestServerPlugin: FastifyPluginAsync<QueueboneRestServerOp
      */
     fastify.delete('/worker', { schema: {} }, async ({ worker, profile }) => {
       if (worker.id !== undefined) {
-        profile.activeWorkers.delete(worker.id);
+        profile.retireWorkerProxy(worker.id);
       }
       await worker.unregister();
     });
@@ -180,7 +181,7 @@ export const queueboneRestServerPlugin: FastifyPluginAsync<QueueboneRestServerOp
       async ({ worker, params, body }, reply) => {
         const { id, attempt } = params;
 
-        const executor = await worker.getExecutorProxy(id, attempt);
+        const executor = await worker.getRunningJob(id, attempt);
         if (executor === undefined) {
           return reply.status(404).send(); // 404 = not found
         }
@@ -196,7 +197,7 @@ export const queueboneRestServerPlugin: FastifyPluginAsync<QueueboneRestServerOp
         }
         if (state !== undefined && result !== undefined) {
           const jobRecord = await executor.markFinished(state, result);
-          worker.dropExecutorProxy(id);
+          worker.finishRunningJob(id);
           return jobRecord !== undefined ? jobRecord : reply.status(404).send();
         }
         return reply.status(404).send();

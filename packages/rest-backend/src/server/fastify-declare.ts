@@ -14,7 +14,8 @@ import {
   type RouteGenericInterface,
 } from 'fastify';
 import { type FastifyRequestType, type ResolveFastifyRequestType } from 'fastify/types/type-provider';
-import { type WorkerProfileHolder, type WorkerProfileId } from './types.js';
+import { type WorkerProfile } from './profile.js';
+import { type WorkerProfileId } from './types.js';
 import { type WorkerProxy } from './worker-proxy.js';
 
 declare module 'fastify' {
@@ -28,7 +29,7 @@ declare module 'fastify' {
     Logger extends FastifyBaseLogger = FastifyBaseLogger,
     RequestType extends FastifyRequestType = ResolveFastifyRequestType<TypeProvider, SchemaCompiler, RouteGeneric>,
   > {
-    profile: WorkerProfileHolder<Job<JobArgs>>;
+    profile: WorkerProfile<Job<JobArgs>>;
     worker: WorkerProxy<Job<JobArgs>>;
   }
 }

@@ -26,13 +26,7 @@ export class Pruner<BaseJob extends Job<JobArgs>> {
   prune(): void {
     const expireAfter = Date.now() - this.options.workerLostTimeout;
     this.profileManager.forEach((profile) => {
-      for (const [workerId, worker] of profile.activeWorkers) {
-        if (worker.isExpired(expireAfter)) {
-          profile.activeWorkers.delete(workerId);
-        } else {
-          worker.pruneExecutorProxies(expireAfter);
-        }
-      }
+      profile.pruneWorkerProxies(expireAfter);
     });
   }
 }

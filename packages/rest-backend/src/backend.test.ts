@@ -4,42 +4,42 @@ import Fastify from 'fastify';
 import os from 'os';
 import t from 'tap';
 import { RestBackend } from './backend.js';
-import { DefaultProfileManager } from './server/profile-manager.js';
 import { queueboneRestServerPlugin } from './server/routes.js';
 
 const PORT = 20595;
 
 // Create server components
 const serverBackend = new MemoryBackend();
+const serverQueueConfig = {
+  backoffStrategy: () => 0, // No backoff for this test
+};
+const fastifyConfig = {
+  logger: false,
+};
+const profileConfigs = [
+  {
+    name: 'profile-1',
+    apikey: 'oochee8oobai7boomif1OoDe7eup2rudohzuaraeb0vooV5jeix6lieMaingiphu',
+    config: {
+      heartbeatInterval: 60 * 60 * 1000,
+    },
+    maxWorkers: 2,
+  },
+  {
+    name: 'profile-2',
+    apikey: 'AiX3ith5EengoupheeC2oogh3aithopoovo8iedeeyeip0daghahghaichaefung',
+    config: {
+      queueNames: ['default'],
+    },
+  },
+];
 
 await t.test('HTTP backend', async (t) => {
-  const serverQueue = new Queuebone(serverBackend, {
-    backoffStrategy: () => 0, // No backoff for this test
-  });
-  const profileManager = new DefaultProfileManager([
-    {
-      name: 'profile-1',
-      apikey: 'oochee8oobai7boomif1OoDe7eup2rudohzuaraeb0vooV5jeix6lieMaingiphu',
-      config: {
-        heartbeatInterval: 60 * 60 * 1000,
-      },
-      maxWorkers: 2,
-    },
-    {
-      name: 'profile-2',
-      apikey: 'AiX3ith5EengoupheeC2oogh3aithopoovo8iedeeyeip0daghahghaichaefung',
-      config: {
-        queueNames: ['default'],
-      },
-    },
-  ]);
-  const fastify = Fastify({
-    logger: false,
-  });
-  fastify.register(queueboneRestServerPlugin, {
+  let serverQueue = new Queuebone(serverBackend, serverQueueConfig);
+  let fastify = Fastify(fastifyConfig).register(queueboneRestServerPlugin, {
     queue: serverQueue,
     backend: serverBackend,
-    profileManager,
+    profileConfigs,
     jwtSecret: 'test-secret',
   });
   await fastify.listen({ port: PORT });
@@ -301,6 +301,38 @@ await t.test('HTTP backend', async (t) => {
     });
 
     await worker.unregister();
+  });
+
+  await t.test('Perform a job while restarting the server', async (t) => {
+    const worker = await clientQueue.getNewWorker().register();
+
+    const jobHandle1 = await serverQueue.addJob('add', { first: 17, second: 25 });
+    const executor1 = (await worker.getNextExecutor())!;
+    await jobHandle1.sync();
+    t.equal(jobHandle1.state, JobState.Running);
+
+    // Close and restart server
+    await fastify.close();
+    serverQueue = new Queuebone(serverBackend, serverQueueConfig);
+    fastify = Fastify(fastifyConfig).register(queueboneRestServerPlugin, {
+      queue: serverQueue,
+      backend: serverBackend,
+      profileConfigs,
+      jwtSecret: 'test-secret',
+    });
+    await fastify.listen({ port: PORT });
+
+    await executor1.perform();
+
+    await jobHandle1.sync();
+    t.equal(jobHandle1.state, JobState.Succeeded);
+    t.same(jobHandle1.result, { added: 42 });
+
+    const workerId = worker.id!;
+    await worker.unregister();
+
+    const workerInfo = (await serverQueue.getWorkerInfo(workerId))!;
+    t.equal(workerInfo.finishedJobCount, 1);
   });
 
   await fastify.close();

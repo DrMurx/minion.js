@@ -1,18 +1,9 @@
-import { type Job, type JobArgs, type WorkerConfig, type WorkerId } from '@queuebone/core';
-import { type WorkerProxy } from './worker-proxy.js';
+import { type Job, type JobArgs } from '@queuebone/core';
+import { type WorkerProfile } from './profile.js';
 
 export type WorkerProfileId = string;
 
-export interface WorkerProfileHolder<BaseJob extends Job<JobArgs>> {
-  id: WorkerProfileId;
-  name: string;
-  apikey: string;
-  maxWorkers: number;
-  config: Partial<WorkerConfig>;
-  activeWorkers: Map<WorkerId, WorkerProxy<BaseJob>>;
-}
-
 export interface ProfileManager<BaseJob extends Job<JobArgs>>
-  extends ReadonlyMap<WorkerProfileId, WorkerProfileHolder<BaseJob>> {
-  timingSafeGet(apikey: string): WorkerProfileHolder<BaseJob> | undefined;
+  extends ReadonlyMap<WorkerProfileId, WorkerProfile<BaseJob>> {
+  timingSafeGet(apikey: string): WorkerProfile<BaseJob> | undefined;
 }

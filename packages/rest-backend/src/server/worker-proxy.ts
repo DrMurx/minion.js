@@ -1,24 +1,26 @@
 import {
   DefaultWorker,
+  JobState,
   WorkerState,
   type ExecutorBackend,
   type InferJobArgs,
   type Job,
   type JobArgs,
   type JobDequeueOptions,
+  type JobHandleBackend,
   type JobId,
-  type ListWorkersOptions,
   type QueueEventEmitter,
   type WorkerBackend,
   type WorkerCommandDescriptor,
   type WorkerConfig,
+  type WorkerId,
   type WorkerInfo,
   type WorkerRegistrationOptions,
   type WorkerUpdateOptions,
 } from '@queuebone/core';
 import { hostname } from 'os';
 import { ExecutorProxy } from './executor-proxy.js';
-import { type WorkerProfileHolder } from './types.js';
+import { type WorkerProfile } from './profile.js';
 
 /**
  * The server side representation of a REST worker.
@@ -50,9 +52,9 @@ export class WorkerProxy<BaseJob extends Job<JobArgs>> {
   protected deltaFinishedJobs = 0;
 
   constructor(
-    protected profile: WorkerProfileHolder<BaseJob>,
+    protected profile: WorkerProfile<BaseJob>,
     protected queueNames: string[],
-    protected workerBackend: WorkerBackend & ExecutorBackend,
+    protected workerBackend: WorkerBackend & ExecutorBackend & JobHandleBackend,
     protected notifier: QueueEventEmitter<BaseJob>,
   ) {
     this._config = { ...DefaultWorker.DEFAULT_CONFIG };
@@ -144,25 +146,44 @@ export class WorkerProxy<BaseJob extends Job<JobArgs>> {
     return executor;
   }
 
-  async getExecutorProxy(jobId: JobId, attempt: number): Promise<ExecutorProxy<BaseJob> | undefined> {
-    const executor = this.jobExecutors.get(jobId);
+  async getRunningJob(jobId: JobId, attempt: number): Promise<ExecutorProxy<BaseJob> | undefined> {
+    if (this._id === undefined) return undefined;
+
+    const executor = this.jobExecutors.get(jobId) ?? (await this.recoverCurrentJob(jobId));
     if (executor === undefined || executor.attempt !== attempt) {
       return undefined;
     }
     return executor;
   }
 
-  dropExecutorProxy(jobId: JobId): void {
+  finishRunningJob(jobId: JobId): void {
     this.deltaFinishedJobs++;
     this.jobExecutors.delete(jobId);
   }
 
-  pruneExecutorProxies(expireAfter: number): void {
+  pruneJobExecutorProxies(expireAfter: number): void {
     for (const [jobId, jobExecutor] of this.jobExecutors) {
       if (jobExecutor.isExpired(expireAfter)) {
         this.jobExecutors.delete(jobId);
       }
     }
+  }
+
+  protected async recoverCurrentJob(jobId: JobId): Promise<ExecutorProxy<BaseJob> | undefined> {
+    // TODO: This might be overly expensive because getJobInfo returns JobInfo but assignNextJob only JobRecord
+    const jobInfo = await this.workerBackend.getJobInfo<InferJobArgs<BaseJob>>(jobId);
+    if (jobInfo === undefined) return undefined;
+
+    // Doesn't belong to this worker?
+    if (jobInfo.workerId === undefined || jobInfo.workerId !== this._id) return undefined;
+
+    // No need to recover if the job has already finished
+    if ([JobState.Succeeded, JobState.Failed].includes(jobInfo.state)) return undefined;
+
+    const executor = new ExecutorProxy(jobInfo, this, this.workerBackend, this.notifier);
+    this.jobExecutors.set(jobInfo.id, executor);
+
+    return executor;
   }
 
   async register(ip: string): Promise<this> {
@@ -180,7 +201,8 @@ export class WorkerProxy<BaseJob extends Job<JobArgs>> {
       // Check capacity before registering worker.
       // Note that this isn't an atomic operation, so there is a chance that another worker registers
       // at the same time.
-      if (await this.profileCapacityExhausted()) return this;
+      if (await this.profile.atMaxCapacity(this.workerBackend)) return this;
+
       const workerInfo = await this.workerBackend.registerWorker(options);
 
       this._id = workerInfo.id;
@@ -193,6 +215,26 @@ export class WorkerProxy<BaseJob extends Job<JobArgs>> {
       this.lastHeartbeatAt = Date.now();
     } else {
       await this.heartbeat(true);
+    }
+    return this;
+  }
+
+  async recover(id: WorkerId, ip: string): Promise<this> {
+    if (!this.isRegistered) {
+      const workerInfo = await this.workerBackend.updateWorker(id, {
+        state: WorkerState.Online,
+        metadata: { [':remote']: ip },
+      });
+      if (workerInfo === undefined) throw new Error(`Can't retrieve worker ${id}`);
+
+      this._id = workerInfo.id;
+      this._config = workerInfo.config;
+      this._state = workerInfo.state;
+      this._metadata = workerInfo.metadata;
+      this.notifier.emit('worker_registered', { workerInfo });
+
+      this.deltaFinishedJobs = 0;
+      this.lastHeartbeatAt = Date.now();
     }
     return this;
   }
@@ -241,19 +283,5 @@ export class WorkerProxy<BaseJob extends Job<JobArgs>> {
       this._id = undefined!;
     }
     return this;
-  }
-
-  protected async profileCapacityExhausted(): Promise<boolean> {
-    const options: ListWorkersOptions = {
-      state: [WorkerState.Online, WorkerState.Idle, WorkerState.Busy],
-      metadata: [
-        {
-          ':profileId': this.profile.id,
-        },
-      ],
-    };
-    const infos = await this.workerBackend.getWorkerInfos(0, 0, options);
-    const activeWorkers = infos.total;
-    return activeWorkers >= this.profile.maxWorkers;
   }
 }

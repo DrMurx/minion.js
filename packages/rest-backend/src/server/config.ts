@@ -1,6 +1,6 @@
 import { type WorkerConfig } from '@queuebone/core';
 
-export interface WorkerProfile {
+export interface RestWorkerProfileConfig {
   /**
    * Name of this worker profile.
    */

@@ -120,7 +120,7 @@ export class WorkerProxy<BaseJob extends Job<JobArgs>> {
     return this.lastHeartbeatAt + this._config.heartbeatInterval < Date.now();
   }
 
-  async getNextJob(taskNames: string[], minPriority: number): Promise<ExecutorProxy<BaseJob> | null> {
+  async getNextExecutor(taskNames: string[], minPriority: number): Promise<ExecutorProxy<BaseJob> | null> {
     if (this._id === undefined) return null;
     const { queueNames, dequeueTimeout } = this._config;
 
@@ -146,7 +146,7 @@ export class WorkerProxy<BaseJob extends Job<JobArgs>> {
     return executor;
   }
 
-  async getRunningJob(jobId: JobId, attempt: number): Promise<ExecutorProxy<BaseJob> | undefined> {
+  async getRunningExecutor(jobId: JobId, attempt: number): Promise<ExecutorProxy<BaseJob> | undefined> {
     if (this._id === undefined) return undefined;
 
     const executor = this.jobExecutors.get(jobId) ?? (await this.recoverCurrentJob(jobId));
@@ -156,12 +156,12 @@ export class WorkerProxy<BaseJob extends Job<JobArgs>> {
     return executor;
   }
 
-  finishRunningJob(jobId: JobId): void {
+  finishExecutor(executor: ExecutorProxy<BaseJob>): void {
     this.deltaFinishedJobs++;
-    this.jobExecutors.delete(jobId);
+    this.jobExecutors.delete(executor.jobRecord.id);
   }
 
-  pruneJobExecutorProxies(expireAfter: number): void {
+  pruneExecutorProxies(expireAfter: number): void {
     for (const [jobId, jobExecutor] of this.jobExecutors) {
       if (jobExecutor.isExpired(expireAfter)) {
         this.jobExecutors.delete(jobId);

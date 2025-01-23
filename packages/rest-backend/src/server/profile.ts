@@ -85,7 +85,7 @@ export class WorkerProfile<BaseJob extends Job<JobArgs>> {
       if (worker.isExpired(expireAfter)) {
         this.activeWorkers.delete(workerId);
       } else {
-        worker.pruneJobExecutorProxies(expireAfter);
+        worker.pruneExecutorProxies(expireAfter);
       }
     }
   }

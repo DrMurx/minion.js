@@ -165,7 +165,7 @@ export const queueboneRestServerPlugin: FastifyPluginAsync<QueueboneRestServerOp
       { schema: assignNextJobSchema },
       async ({ worker, body }, reply) => {
         const { taskNames, options } = body;
-        const executor = await worker.getNextJob(taskNames, options.minPriority ?? 0);
+        const executor = await worker.getNextExecutor(taskNames, options.minPriority ?? 0);
 
         if (executor === null) {
           return reply.status(204).send(); // 204 = No content
@@ -181,7 +181,7 @@ export const queueboneRestServerPlugin: FastifyPluginAsync<QueueboneRestServerOp
       async ({ worker, params, body }, reply) => {
         const { id, attempt } = params;
 
-        const executor = await worker.getRunningJob(id, attempt);
+        const executor = await worker.getRunningExecutor(id, attempt);
         if (executor === undefined) {
           return reply.status(404).send(); // 404 = not found
         }
@@ -197,7 +197,7 @@ export const queueboneRestServerPlugin: FastifyPluginAsync<QueueboneRestServerOp
         }
         if (state !== undefined && result !== undefined) {
           const jobRecord = await executor.markFinished(state, result);
-          worker.finishRunningJob(id);
+          worker.finishExecutor(executor);
           return jobRecord !== undefined ? jobRecord : reply.status(404).send();
         }
         return reply.status(404).send();

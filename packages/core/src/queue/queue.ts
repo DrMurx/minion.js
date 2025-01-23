@@ -195,9 +195,13 @@ export class Queuebone<BaseJob extends Job<JobArgs> = DefaultJob<JobArgs>>
   }
 
   getNewWorker(options: Partial<WorkerOptions> = {}): WorkerInstance<BaseJob> {
-    const _options = <WorkerOptions>{
+    const _options: WorkerOptions = {
       ...DefaultWorker.DEFAULT_CONFIG,
       queueNames: this._options.queueNames,
+      metadata: {},
+      attachments: {},
+      commands: {},
+      governor: async () => true, // Noop governor
       ...options,
     };
     return new DefaultWorker(this._backend, _options, this.taskManager, this._options.jobFactory, this._backend, this);

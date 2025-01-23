@@ -49,6 +49,7 @@ export {
   type WorkerCommandArg,
   type WorkerCommandDescriptor,
   type WorkerConfig,
+  type WorkerGovenor,
   type WorkerId,
   type WorkerInfo,
   type WorkerInstance,

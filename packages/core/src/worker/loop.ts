@@ -53,7 +53,7 @@ export class WorkerLoop<BaseJob extends Job<JobArgs>> {
       await this.worker.processInbox();
       this.pruneFinished();
       await this.waitForCapacity();
-      if (!this.isStopping) {
+      if (!this.isStopping && (await this.waitForGovernor())) {
         await this.replenish();
       }
     }
@@ -82,6 +82,10 @@ export class WorkerLoop<BaseJob extends Job<JobArgs>> {
     if (this.hasNoCapacity) {
       await Promise.race(this.jobs.map((jobStatus) => jobStatus.performPromise));
     }
+  }
+
+  protected async waitForGovernor(): Promise<boolean> {
+    return await this.worker.governor(this.worker, this.jobs.length);
   }
 
   /**

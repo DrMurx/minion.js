@@ -1,11 +1,11 @@
 import { hostname } from 'os';
 import { InvalidStateError } from '../errors.js';
 import {
-  WorkerUpdateOptions,
   type ExecutorBackend,
   type JobDequeueOptions,
   type WorkerBackend,
   type WorkerRegistrationOptions,
+  type WorkerUpdateOptions,
 } from '../types/backend.js';
 import { type InferJobArgs, type Job, type JobArgs, type JobFactory } from '../types/job.js';
 import { type QueueEventEmitter } from '../types/queue.js';
@@ -14,6 +14,7 @@ import {
   WorkerState,
   type WorkerCommandHandler,
   type WorkerConfig,
+  type WorkerGovenor,
   type WorkerId,
   type WorkerInstance,
   type WorkerOptions,
@@ -65,6 +66,7 @@ export class DefaultWorker<BaseJob extends Job<JobArgs>> implements WorkerInstan
   private lastHeartbeatAt = 0;
   private lastInboxCheck = 0;
   private commandManager: WorkerCommandManager;
+  private _governor: WorkerGovenor;
 
   private deltaFinishedJobs = 0;
 
@@ -76,16 +78,18 @@ export class DefaultWorker<BaseJob extends Job<JobArgs>> implements WorkerInstan
     private jobBackend: ExecutorBackend,
     private notifier: QueueEventEmitter<BaseJob>,
   ) {
-    // Assemble configuration options
-    const _config: WorkerOptions = { ...DefaultWorker.DEFAULT_CONFIG, ...options };
-    delete _config.metadata;
-    delete _config.attachments;
-    delete _config.commands;
-    this._config = _config;
+    // Create a clean `WorkerConfig` object from the `WorkerOptions`
+    const _options: Partial<WorkerOptions> = { ...options };
+    delete _options.metadata;
+    delete _options.attachments;
+    delete _options.commands;
+    delete _options.governor;
+    this._config = _options as WorkerConfig;
 
     this._metadata = { ...options.metadata };
-    this.attachments = options.attachments ?? {};
-    this.commandManager = new WorkerCommandManager(this, options.commands ?? {});
+    this.attachments = options.attachments;
+    this.commandManager = new WorkerCommandManager(this, options.commands);
+    this._governor = options.governor;
   }
 
   get id(): WorkerId | undefined {
@@ -127,6 +131,10 @@ export class DefaultWorker<BaseJob extends Job<JobArgs>> implements WorkerInstan
       throw new InvalidStateError(`Attachment ${key} not found`);
     }
     return this.attachments[key];
+  }
+
+  get governor(): WorkerGovenor {
+    return this._governor;
   }
 
   get needsInboxCheck(): boolean {

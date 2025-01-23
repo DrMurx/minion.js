@@ -44,6 +44,7 @@ export interface WorkerInstance<BaseJob extends Job<JobArgs>> extends RunningWor
   setConfig(config: Partial<WorkerConfig>): Promise<void>;
   setMetadata(key: string, value: any): Promise<void>;
   setAttachment(key: string, value: any): void;
+  get governor(): WorkerGovenor;
 
   get state(): WorkerState;
 
@@ -101,10 +102,13 @@ export type WorkerCommandHandler = (worker: WorkerInstance<any>, arg: WorkerComm
 export type WorkerCommandDescriptor = { command: string; arg: WorkerCommandArg };
 
 export interface WorkerOptions extends WorkerConfig {
-  metadata?: Record<string, any>;
-  attachments?: Record<string, any>;
-  commands?: Record<string, WorkerCommandHandler>;
+  metadata: Record<string, any>;
+  attachments: Record<string, any>;
+  commands: Record<string, WorkerCommandHandler>;
+  governor: WorkerGovenor;
 }
+
+export type WorkerGovenor = (worker: WorkerInstance<any>, runningJobCount: number) => Promise<boolean>;
 
 export interface WorkerConfig {
   /**

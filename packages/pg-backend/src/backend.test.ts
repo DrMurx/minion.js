@@ -128,13 +128,19 @@ await runTestsWithPgContainer(t, PgBackend, async (t, backend) => {
       t.equal(batch5[1].queueName, 'default');
       t.notOk(batch5[2]);
 
-      const jobHandle4 = await queue.addJob('test', {}, { metadata: { isTest: true } });
-      const batch6 = (await backend.getJobInfos(0, 10, { metadata: [{ isTest: true }] })).jobs;
-      t.equal(batch6[0].id, jobHandle4.id);
-      t.equal(batch6[0].taskName, 'test');
-      t.same(batch6[0].metadata, { isTest: true });
-      t.notOk(batch6[1]);
-      await (await queue.getJob(jobHandle4.id))!.remove();
+      const jobHandle4 = await queue.addJob('test', {}, { metadata: { isTest: true, foo: 'bar' } });
+      const batch6a = (await backend.getJobInfos(0, 10, { metadata: [{ isTest: true }] })).jobs;
+      t.equal(batch6a[0].id, jobHandle4.id);
+      t.equal(batch6a[0].taskName, 'test');
+      t.same(batch6a[0].metadata, { isTest: true, foo: 'bar' });
+      t.notOk(batch6a[1]);
+      const batch6b = (await backend.getJobInfos(0, 10, { metadata: [{ isTest: true, foo: 'bar' }] })).jobs;
+      t.equal(batch6b[0].id, jobHandle4.id);
+      t.notOk(batch6b[1]);
+      const batch6c = (await backend.getJobInfos(0, 10, { metadata: [{ isTest: true }, { foo: 'bar' }] })).jobs;
+      t.equal(batch6c[0].id, jobHandle4.id);
+      t.notOk(batch6c[1]);
+      await jobHandle4.remove();
 
       const batch7 = (await backend.getJobInfos(0, 10, { queueNames: ['does_not_exist'] })).jobs;
       t.notOk(batch7[0]);

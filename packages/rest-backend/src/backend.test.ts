@@ -1,5 +1,5 @@
 import { ConnectionError, JobState, MemoryBackend, Queuebone, WorkerState } from '@queuebone/core';
-import { AxiosError } from 'axios';
+import { AxiosError, HttpStatusCode } from 'axios';
 import Fastify from 'fastify';
 import os from 'os';
 import t from 'tap';
@@ -45,10 +45,10 @@ await t.test('HTTP backend', async (t) => {
   await fastify.listen({ port: PORT });
 
   // Create client components
-  const clientBackend = new RestBackend(
-    `http://localhost:${PORT}`,
-    'oochee8oobai7boomif1OoDe7eup2rudohzuaraeb0vooV5jeix6lieMaingiphu',
-  );
+  const clientBackend = new RestBackend(`http://localhost:${PORT}`, {
+    apikey: 'oochee8oobai7boomif1OoDe7eup2rudohzuaraeb0vooV5jeix6lieMaingiphu',
+    registerWorkerRetries: 1,
+  });
   const clientQueue = new Queuebone(clientBackend, {
     pruneEnabled: false,
   });
@@ -75,12 +75,14 @@ await t.test('HTTP backend', async (t) => {
     await worker2.register();
 
     try {
-      // Can't register a 3rd worker, should return "403 forbidden"
+      // Can't register a 3rd worker.
+      // This call should internally retry once as configured for the backend.
+      // It should eventually return "503 service unavailable"
       await clientQueue.getNewWorker().register();
       t.fail();
     } catch (e) {
       if (e instanceof ConnectionError && e.cause instanceof AxiosError) {
-        t.equal(e.cause.status, 403);
+        t.equal(e.cause.status, HttpStatusCode.ServiceUnavailable);
       } else {
         t.fail();
       }
@@ -149,7 +151,7 @@ await t.test('HTTP backend', async (t) => {
   });
 
   await t.test('Register invalid client', async (t) => {
-    const invalidClientBackend = new RestBackend(`http://localhost:${PORT}`, 'password');
+    const invalidClientBackend = new RestBackend(`http://localhost:${PORT}`, { apikey: 'password' });
     const invalidClientQueue = new Queuebone(invalidClientBackend, {
       pruneEnabled: false,
     });
@@ -303,7 +305,7 @@ await t.test('HTTP backend', async (t) => {
     await worker.unregister();
   });
 
-  await t.test('Perform a job while restarting the server', async (t) => {
+  await t.test('Perform a job when restarting the server after getNextExecutor', async (t) => {
     const worker = await clientQueue.getNewWorker().register();
 
     const jobHandle1 = await serverQueue.addJob('add', { first: 17, second: 25 });
@@ -333,6 +335,81 @@ await t.test('HTTP backend', async (t) => {
 
     const workerInfo = (await serverQueue.getWorkerInfo(workerId))!;
     t.equal(workerInfo.finishedJobCount, 1);
+    t.equal(workerInfo.state, WorkerState.Offline);
+  });
+
+  await t.test('Perform a job when restarting the server during perform', async (t) => {
+    const worker = await clientQueue.getNewWorker().register();
+
+    const jobHandle1 = await serverQueue.addJob('add', { first: 17, second: 25 });
+    const executor1 = (await worker.getNextExecutor())!;
+    await jobHandle1.sync();
+    t.equal(jobHandle1.state, JobState.Running);
+
+    // Close server
+    await fastify.close();
+
+    const executor1PerformPromise = executor1.perform();
+
+    // Restart server now
+    serverQueue = new Queuebone(serverBackend, serverQueueConfig);
+    fastify = Fastify(fastifyConfig).register(queueboneRestServerPlugin, {
+      queue: serverQueue,
+      backend: serverBackend,
+      profileConfigs,
+      jwtSecret: 'test-secret',
+    });
+    await fastify.listen({ port: PORT });
+
+    // Wait for perform to finish
+    await executor1PerformPromise;
+
+    await jobHandle1.sync();
+    t.equal(jobHandle1.state, JobState.Succeeded);
+    t.same(jobHandle1.result, { added: 42 });
+
+    const workerId = worker.id!;
+    await worker.unregister();
+
+    const workerInfo = (await serverQueue.getWorkerInfo(workerId))!;
+    t.equal(workerInfo.finishedJobCount, 1);
+    t.equal(workerInfo.state, WorkerState.Offline);
+  });
+
+  await t.test('Perform a job and let the server die', async (t) => {
+    const worker = await clientQueue.getNewWorker().register();
+
+    const jobHandle1 = await serverQueue.addJob('add', { first: 17, second: 25 });
+    const executor1 = (await worker.getNextExecutor())!;
+    await jobHandle1.sync();
+    t.equal(jobHandle1.state, JobState.Running);
+    await executor1.updateProgress(0.1);
+
+    // Close server
+    await fastify.close();
+
+    // updateProgress ignores connection errors
+    await executor1.updateProgress(0.5);
+
+    // Attempting to finish the job will fail and throw an exception
+    try {
+      await executor1.perform();
+      t.fail();
+    } catch (e) {
+      t.equal(e.code, 'ECONNREFUSED');
+    }
+
+    // Job is still marked as running
+    await jobHandle1.sync();
+    t.equal(jobHandle1.state, JobState.Running);
+
+    // This will fail silently
+    const workerId = worker.id!;
+    await worker.unregister();
+
+    const workerInfo = (await serverQueue.getWorkerInfo(workerId))!;
+    t.equal(workerInfo.finishedJobCount, 0);
+    t.equal(workerInfo.state, WorkerState.Online);
   });
 
   await fastify.close();

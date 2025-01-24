@@ -21,6 +21,7 @@ import {
   type UpdateWorkerAPI,
   updateWorkerSchema,
 } from './schemas.js';
+import { HttpStatusCode } from 'axios';
 
 export interface QueueboneRestServerOptions<BaseJob extends Job<JobArgs>> {
   queue: Queue<BaseJob>;
@@ -84,13 +85,13 @@ export const queueboneRestServerPlugin: FastifyPluginAsync<QueueboneRestServerOp
     const { apikey } = body;
     const profile = profileManager.timingSafeGet(apikey);
     if (profile === undefined) {
-      return reply.status(401).send(); // 401 = unauthorized
+      return reply.status(HttpStatusCode.Unauthorized).send();
     }
 
     // Create WorkerProxy (fails if profile's maxWorkers are exhausted)
     const worker = await profile.registerNewWorkerProxy(ip);
     if (worker === undefined) {
-      return reply.status(403).send(); // 403 = forbidden
+      return reply.status(HttpStatusCode.ServiceUnavailable).send();
     }
 
     return {
@@ -110,17 +111,17 @@ export const queueboneRestServerPlugin: FastifyPluginAsync<QueueboneRestServerOp
       try {
         await request.jwtVerify();
       } catch (err) {
-        return reply.status(401).send(err);
+        return reply.status(HttpStatusCode.Unauthorized).send(err);
       }
 
       // Obtain proper WorkerProxy from profile holder
       const profile = profileManager.get(request.user.prf);
       if (profile === undefined) {
-        return reply.status(401).send(); // 401 = unauthorized
+        return reply.status(HttpStatusCode.Gone).send();
       }
       const worker = await profile.getWorkerProxy(request.user.wrk, request.ip);
       if (worker === undefined) {
-        return reply.status(401).send(); // 401 = unauthorized
+        return reply.status(HttpStatusCode.Forbidden).send();
       }
 
       request.profile = profile;
@@ -153,7 +154,7 @@ export const queueboneRestServerPlugin: FastifyPluginAsync<QueueboneRestServerOp
       { schema: checkWorkerInboxSchema },
       async ({ worker, body }, reply) => {
         const commands = await worker.getInbox(body.state);
-        return commands.length !== 0 ? commands : reply.status(204).send(); // 204 = No content
+        return commands.length !== 0 ? commands : reply.status(HttpStatusCode.NoContent).send();
       },
     );
 
@@ -168,7 +169,7 @@ export const queueboneRestServerPlugin: FastifyPluginAsync<QueueboneRestServerOp
         const executor = await worker.getNextExecutor(taskNames, options.minPriority ?? 0);
 
         if (executor === null) {
-          return reply.status(204).send(); // 204 = No content
+          return reply.status(HttpStatusCode.NoContent).send();
         }
 
         return executor.jobRecord;
@@ -183,7 +184,7 @@ export const queueboneRestServerPlugin: FastifyPluginAsync<QueueboneRestServerOp
 
         const executor = await worker.getRunningExecutor(id, attempt);
         if (executor === undefined) {
-          return reply.status(404).send(); // 404 = not found
+          return reply.status(HttpStatusCode.NotFound).send();
         }
 
         const { metadata, progress, state, result } = body;
@@ -200,7 +201,7 @@ export const queueboneRestServerPlugin: FastifyPluginAsync<QueueboneRestServerOp
           worker.finishExecutor(executor);
           return jobRecord !== undefined ? jobRecord : reply.status(404).send();
         }
-        return reply.status(404).send();
+        return reply.status(HttpStatusCode.NotFound).send();
       },
     );
   });

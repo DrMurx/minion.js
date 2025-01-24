@@ -48,6 +48,7 @@
     "@fastify/jwt": "^9.0.2",
     "@queuebone/core": "workspace:~",
     "axios": "^1.7.9",
+    "axios-retry": "^4.5.0",
     "fastify": "^5.2.0"
   },
   "devDependencies": {

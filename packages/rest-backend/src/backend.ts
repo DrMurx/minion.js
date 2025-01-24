@@ -22,19 +22,44 @@ import {
   type WorkerPruneResult,
   type WorkerUpdateOptions,
 } from '@queuebone/core';
-import { Axios, AxiosError, type AxiosInstance, type AxiosResponse } from 'axios';
+import axios, {
+  Axios,
+  AxiosError,
+  HttpStatusCode,
+  type AxiosInstance,
+  type AxiosRequestConfig,
+  type AxiosResponse,
+} from 'axios';
+import axiosRetry, { isRetryableError } from 'axios-retry';
 import { createAxios, parseConfig } from './factory.js';
+import { type RestBackendOptions, type RestBackendTimeouts } from './types.js';
 
 export class RestBackend implements Backend {
+  public static TIMEOUTS: RestBackendTimeouts = {
+    registerWorkerTimeout: 3000,
+    registerWorkerRetries: 5,
+    registerWorkerRetryDelay: (retryCount: number) => 500 * 2 ** retryCount,
+    updateWorkerTimeout: 500,
+    updateWorkerRetries: 3,
+    updateWorkerRetryDelay: () => 500,
+    amendJobTimeout: 500,
+    amendJobRetries: 1,
+    amendJobRetryDelay: () => 500,
+    markJobFinishedTimeout: 500,
+    markJobFinishedRetries: 3,
+    markJobFinishedRetryDelay: (retryCount: number) => 250 * 2 ** retryCount,
+  };
   public readonly name = 'Http';
 
   private _axios: AxiosInstance;
   private _apikey: string;
+  private _timeouts: RestBackendTimeouts;
 
   private workerTokens: Map<WorkerId, string> = new Map();
   private jobTokens: Map<JobId, string> = new Map();
 
-  constructor(config: string | URL | AxiosInstance, apikey?: string) {
+  constructor(config: string | URL | AxiosRequestConfig | AxiosInstance, options: RestBackendOptions = {}) {
+    const { apikey } = options;
     if (config instanceof Axios) {
       this._axios = config;
       if (apikey === undefined) {
@@ -48,13 +73,17 @@ export class RestBackend implements Backend {
         throw new ConfigurationError('Missing authentication');
       }
       this._apikey = apikey ?? url.password;
+    } else if (config.baseURL) {
+      this._axios = axios.create(config);
+      if (apikey === undefined) {
+        throw new ConfigurationError('Missing authentication');
+      }
+      this._apikey = apikey;
     } else {
       throw new ConfigurationError('Invalid config for RestBackend');
     }
-  }
-
-  get axios(): AxiosInstance {
-    return this._axios;
+    axiosRetry(this._axios);
+    this._timeouts = { ...RestBackend.TIMEOUTS, ...options };
   }
 
   setRequeueHandler() {
@@ -85,10 +114,15 @@ export class RestBackend implements Backend {
         metadata: records,
       };
       const response = await this._axios.patch<{ metadata?: Record<string, any> }>(`/jobs/${jobId}/${attempt}`, body, {
-        signal: AbortSignal.timeout(500),
         headers: {
           Authorization: `Bearer ${token}`,
         },
+        'axios-retry': {
+          retries: this._timeouts.amendJobRetries,
+          retryDelay: this._timeouts.amendJobRetryDelay,
+          shouldResetTimeout: true,
+        },
+        timeout: this._timeouts.amendJobTimeout,
       });
       return response.status === 200 ? (response.data.metadata ?? {}) : undefined;
     } catch (_) {
@@ -103,12 +137,15 @@ export class RestBackend implements Backend {
         progress,
       };
       const response = await this._axios.patch(`/jobs/${jobId}/${attempt}`, body, {
-        signal: AbortSignal.timeout(500),
         headers: {
           Authorization: `Bearer ${token}`,
         },
+        'axios-retry': {
+          retries: 0, // This might be a frequent call, so we don't retry
+        },
+        signal: AbortSignal.timeout(this._timeouts.amendJobTimeout),
       });
-      return response.status === 200;
+      return response.status === HttpStatusCode.Ok;
     } catch (_) {
       return false;
     }
@@ -130,10 +167,18 @@ export class RestBackend implements Backend {
         headers: {
           Authorization: `Bearer ${token}`,
         },
+        'axios-retry': {
+          retries: this._timeouts.markJobFinishedRetries,
+          retryDelay: this._timeouts.markJobFinishedRetryDelay,
+          retryCondition: (error) => isRetryableError(error),
+          shouldResetTimeout: true,
+        },
+        timeout: this._timeouts.markJobFinishedTimeout,
       });
       this.jobTokens.delete(jobId);
-      return response.status === 200;
-    } catch (_) {
+      return response.status === HttpStatusCode.Ok;
+    } catch (e: any) {
+      if ('code' in e && e.code === 'ECONNREFUSED') throw e;
       return false;
     }
   }
@@ -141,7 +186,7 @@ export class RestBackend implements Backend {
   async assignNextJob<Args extends JobArgs>(
     id: WorkerId,
     taskNames: string[],
-    _: number,
+    timeout: number,
     options: JobDequeueOptions,
   ): Promise<JobRecord<Args> | null> {
     const token = this.workerTokens.get(id);
@@ -156,6 +201,10 @@ export class RestBackend implements Backend {
         headers: {
           Authorization: `Bearer ${token}`,
         },
+        'axios-retry': {
+          retries: 0,
+        },
+        timeout: 1000 + timeout,
       });
       if (response.status === 200) {
         this.jobTokens.set(response.data.id, token!);
@@ -191,11 +240,20 @@ export class RestBackend implements Backend {
   async registerWorker(): Promise<WorkerInfo> {
     let response: AxiosResponse<{ token: string; info: WorkerInfo }>;
     try {
-      response = await this._axios.post('/workers', {
+      const body = {
         apikey: this._apikey,
+      };
+      response = await this._axios.post('/workers', body, {
+        'axios-retry': {
+          retries: this._timeouts.registerWorkerRetries,
+          retryDelay: this._timeouts.registerWorkerRetryDelay,
+          retryCondition: (error) => isRetryableError(error),
+          shouldResetTimeout: true,
+        },
+        timeout: this._timeouts.registerWorkerTimeout,
       });
-    } catch (e) {
-      if (e instanceof AxiosError && e.code === 'ECONNREFUSED') {
+    } catch (e: any) {
+      if ('code' in e && e.code === 'ECONNREFUSED') {
         throw new ConnectionError('Server refused connection', { cause: e });
       }
       throw new ConnectionError("Can't register worker", { cause: e });
@@ -227,6 +285,12 @@ export class RestBackend implements Backend {
         headers: {
           Authorization: `Bearer ${token}`,
         },
+        'axios-retry': {
+          retries: this._timeouts.updateWorkerRetries,
+          retryDelay: this._timeouts.updateWorkerRetryDelay,
+          shouldResetTimeout: true,
+        },
+        timeout: this._timeouts.updateWorkerTimeout,
       });
       return response.status === 200 ? response.data : undefined;
     } catch (_) {
@@ -245,6 +309,12 @@ export class RestBackend implements Backend {
         headers: {
           Authorization: `Bearer ${token}`,
         },
+        'axios-retry': {
+          retries: this._timeouts.updateWorkerRetries,
+          retryDelay: this._timeouts.updateWorkerRetryDelay,
+          shouldResetTimeout: true,
+        },
+        timeout: this._timeouts.updateWorkerTimeout,
       });
       return response.status === 200 ? response.data : [];
     } catch (_) {

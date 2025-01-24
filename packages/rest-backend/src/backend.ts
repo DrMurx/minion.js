@@ -124,7 +124,7 @@ export class RestBackend implements Backend {
         },
         timeout: this._timeouts.amendJobTimeout,
       });
-      return response.status === 200 ? (response.data.metadata ?? {}) : undefined;
+      return response.status === HttpStatusCode.Ok ? (response.data.metadata ?? {}) : undefined;
     } catch (_) {
       return undefined;
     }
@@ -206,7 +206,7 @@ export class RestBackend implements Backend {
         },
         timeout: 1000 + timeout,
       });
-      if (response.status === 200) {
+      if (response.status === HttpStatusCode.Ok) {
         this.jobTokens.set(response.data.id, token!);
         return response.data;
       }
@@ -259,14 +259,14 @@ export class RestBackend implements Backend {
       throw new ConnectionError("Can't register worker", { cause: e });
     }
 
-    if (response.status === 401) {
+    if (response.status === HttpStatusCode.Unauthorized) {
       throw new ConnectionError(`Unable to authenticate at server`, {
         code: 'AUTHENTICATION_FAILED',
         cause: response,
       });
     }
 
-    if (response.status !== 200) {
+    if (response.status !== HttpStatusCode.Ok) {
       throw new ConnectionError("Can't register worker", { cause: response });
     }
 
@@ -292,9 +292,8 @@ export class RestBackend implements Backend {
         },
         timeout: this._timeouts.updateWorkerTimeout,
       });
-      return response.status === 200 ? response.data : undefined;
+      return response.status === HttpStatusCode.Ok ? response.data : undefined;
     } catch (_) {
-      console.log(_);
       return undefined;
     }
   }
@@ -316,7 +315,7 @@ export class RestBackend implements Backend {
         },
         timeout: this._timeouts.updateWorkerTimeout,
       });
-      return response.status === 200 ? response.data : [];
+      return response.status === HttpStatusCode.Ok ? response.data : [];
     } catch (_) {
       return [];
     }
@@ -331,7 +330,7 @@ export class RestBackend implements Backend {
         },
       });
       this.workerTokens.delete(id);
-      return response.status === 200;
+      return response.status === HttpStatusCode.Ok;
     } catch (_) {
       return false;
     }
@@ -377,7 +376,7 @@ export class RestBackend implements Backend {
       throw new ConnectionError("Can't ping server", { cause: e });
     }
 
-    if (response.status !== 200 || !response.data.status || typeof response.data.status !== 'string') {
+    if (response.status !== HttpStatusCode.Ok || !response.data.status || typeof response.data.status !== 'string') {
       throw new ConnectionError('Malformed response while pinging server', { cause: response });
     }
 

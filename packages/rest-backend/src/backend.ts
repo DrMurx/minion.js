@@ -204,7 +204,6 @@ export class RestBackend implements Backend {
         'axios-retry': {
           retries: 0,
         },
-        timeout: 1000 + timeout,
       });
       if (response.status === HttpStatusCode.Ok) {
         this.jobTokens.set(response.data.id, token!);

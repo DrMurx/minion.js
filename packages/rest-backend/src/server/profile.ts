@@ -12,7 +12,7 @@ import {
 import { timingSafeCompare } from './compare.js';
 import { type RestWorkerProfileConfig } from './config.js';
 import { DefaultProfileManager } from './profile-manager.js';
-import { type WorkerProfileId } from './types.js';
+import { type RemoteWorkerMetadata, type WorkerProfileId } from './types.js';
 import { WorkerProxy } from './worker-proxy.js';
 
 export class WorkerProfile<BaseJob extends Job<JobArgs>> {
@@ -49,19 +49,19 @@ export class WorkerProfile<BaseJob extends Job<JobArgs>> {
     return this.workerConfig;
   }
 
-  async registerNewWorkerProxy(ip: string): Promise<WorkerProxy<BaseJob> | undefined> {
+  async registerNewWorkerProxy(meta: RemoteWorkerMetadata): Promise<WorkerProxy<BaseJob> | undefined> {
     const worker = await new WorkerProxy<BaseJob>(
       this,
       this.queue.options.queueNames,
       this.backend,
       this.queue,
-    ).register(ip);
+    ).register(meta);
     if (worker.id === undefined) return undefined;
     this.activeWorkers.set(worker.id, worker);
     return worker;
   }
 
-  async getWorkerProxy(workerId: WorkerId, ip: string): Promise<WorkerProxy<BaseJob> | undefined> {
+  async getWorkerProxy(workerId: WorkerId, meta: RemoteWorkerMetadata): Promise<WorkerProxy<BaseJob> | undefined> {
     const knownWorker = this.activeWorkers.get(workerId);
     if (knownWorker !== undefined) return knownWorker;
 
@@ -70,7 +70,7 @@ export class WorkerProfile<BaseJob extends Job<JobArgs>> {
       this.queue.options.queueNames,
       this.backend,
       this.queue,
-    ).recover(workerId, ip);
+    ).recover(workerId, meta);
     if (recoveredWorker.id === undefined) return undefined;
     this.activeWorkers.set(recoveredWorker.id, recoveredWorker);
     return recoveredWorker;
@@ -99,7 +99,7 @@ export class WorkerProfile<BaseJob extends Job<JobArgs>> {
       state: [WorkerState.Online, WorkerState.Idle, WorkerState.Busy],
       metadata: [
         {
-          ':profileId': this._id,
+          ':profile_id': this._id,
         },
       ],
     };

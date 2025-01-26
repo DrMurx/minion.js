@@ -10,6 +10,21 @@ import {
 } from '@queuebone/core';
 import { type ClientWorkerUpdateOptions } from '../backend.js';
 
+export type RegisteredWorkerAPI = {
+  Headers: {
+    'x-hostname': string;
+    'x-pid': number;
+  };
+};
+
+const headers = {
+  type: 'object',
+  properties: {
+    'x-hostname': { type: 'string' },
+    'x-pid': { type: 'number' },
+  },
+};
+
 export type UpdateJobAPI = {
   Params: { id: JobId; attempt: number };
   Body: {
@@ -24,6 +39,7 @@ export type UpdateJobAPI = {
 };
 
 export const updateJobSchema = {
+  headers,
   params: {
     type: 'object',
     required: ['id', 'attempt'],
@@ -67,6 +83,10 @@ export const updateJobSchema = {
 };
 
 export type RegisterWorkerAPI = {
+  Headers: {
+    'x-hostname': string;
+    'x-pid': number;
+  };
   Body: {
     apikey: string;
   };
@@ -77,6 +97,7 @@ export type RegisterWorkerAPI = {
 };
 
 export const registerWorkerSchema = {
+  headers,
   body: {
     type: 'object',
     required: ['apikey'],
@@ -92,6 +113,7 @@ export type UpdateWorkerAPI = {
 };
 
 export const updateWorkerSchema = {
+  headers,
   body: {
     type: 'object',
     required: ['state'],
@@ -116,6 +138,7 @@ export type AssignNextJobAPI = {
 };
 
 export const assignNextJobSchema = {
+  headers,
   body: {
     type: 'object',
     properties: {
@@ -137,6 +160,7 @@ export type CheckWorkerInboxAPI = {
 };
 
 export const checkWorkerInboxSchema = {
+  headers,
   body: {
     type: 'object',
     required: ['state'],
@@ -159,6 +183,7 @@ export type PingAPI = {
 };
 
 export const pingSchema = {
+  headers,
   body: {
     type: 'object',
     properties: {

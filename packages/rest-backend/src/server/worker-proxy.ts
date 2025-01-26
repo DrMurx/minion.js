@@ -21,6 +21,7 @@ import {
 import { hostname } from 'os';
 import { ExecutorProxy } from './executor-proxy.js';
 import { type WorkerProfile } from './profile.js';
+import { type RemoteWorkerMetadata } from './types.js';
 
 /**
  * The server side representation of a REST worker.
@@ -63,7 +64,7 @@ export class WorkerProxy<BaseJob extends Job<JobArgs>> {
       ':hostname': hostname(),
       ':pid': process.pid,
       ':profile': profile.name,
-      ':profileId': profile.id,
+      ':profile_id': profile.id,
     };
   }
 
@@ -186,9 +187,11 @@ export class WorkerProxy<BaseJob extends Job<JobArgs>> {
     return executor;
   }
 
-  async register(ip: string): Promise<this> {
+  async register(meta: RemoteWorkerMetadata): Promise<this> {
     if (!this.isRegistered) {
-      this._metadata[':remote'] = ip;
+      this._metadata[':remote_ip'] = meta.ip;
+      this._metadata[':remote_hostname'] = meta.hostname;
+      this._metadata[':remote_pid'] = meta.pid;
       const options: WorkerRegistrationOptions = {
         config: {
           ...DefaultWorker.DEFAULT_CONFIG,
@@ -219,12 +222,18 @@ export class WorkerProxy<BaseJob extends Job<JobArgs>> {
     return this;
   }
 
-  async recover(id: WorkerId, ip: string): Promise<this> {
+  async recover(id: WorkerId, meta: RemoteWorkerMetadata): Promise<this> {
     if (!this.isRegistered) {
-      const workerInfo = await this.workerBackend.updateWorker(id, {
+      const options = {
         state: WorkerState.Online,
-        metadata: { [':remote']: ip },
-      });
+        metadata: {
+          ':remote_ip': meta.ip,
+          ':remote_hostname': meta.hostname,
+          ':remote_pid': meta.pid,
+        },
+      };
+
+      const workerInfo = await this.workerBackend.updateWorker(id, options);
       if (workerInfo === undefined) throw new Error(`Can't retrieve worker ${id}`);
 
       this._id = workerInfo.id;

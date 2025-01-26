@@ -31,6 +31,7 @@ import axios, {
   type AxiosResponse,
 } from 'axios';
 import axiosRetry, { isRetryableError } from 'axios-retry';
+import { hostname } from 'os';
 import { createAxios, parseConfig } from './factory.js';
 import { type RestBackendOptions, type RestBackendTimeouts } from './types.js';
 
@@ -82,6 +83,10 @@ export class RestBackend implements Backend {
     } else {
       throw new ConfigurationError('Invalid config for RestBackend');
     }
+
+    this._axios.defaults.headers['x-hostname'] = hostname();
+    this._axios.defaults.headers['x-pid'] = process.pid;
+
     axiosRetry(this._axios);
     this._timeouts = { ...RestBackend.TIMEOUTS, ...options };
   }
@@ -203,6 +208,7 @@ export class RestBackend implements Backend {
         },
         'axios-retry': {
           retries: 0,
+          retryCondition: () => false,
         },
       });
       if (response.status === HttpStatusCode.Ok) {
@@ -211,7 +217,7 @@ export class RestBackend implements Backend {
       }
       return null;
     } catch (e: any) {
-      console.log(`backend error ${e.code} ${e.message}`);
+      console.log(`worker-${id} RestBackend.assignNextJob error ${e.code} ${e.message}`);
       return null;
     }
   }

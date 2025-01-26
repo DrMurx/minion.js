@@ -3,6 +3,7 @@
 
 import jwtPlugin from '@fastify/jwt';
 import { type Backend, type Job, type JobArgs, type Queue } from '@queuebone/core';
+import { HttpStatusCode } from 'axios';
 import { type FastifyPluginAsync } from 'fastify';
 import { type RestWorkerProfileConfig } from './config.js';
 import { DefaultProfileManager } from './profile-manager.js';
@@ -14,6 +15,7 @@ import {
   checkWorkerInboxSchema,
   type PingAPI,
   pingSchema,
+  type RegisteredWorkerAPI,
   type RegisterWorkerAPI,
   registerWorkerSchema,
   type UpdateJobAPI,
@@ -21,7 +23,6 @@ import {
   type UpdateWorkerAPI,
   updateWorkerSchema,
 } from './schemas.js';
-import { HttpStatusCode } from 'axios';
 
 export interface QueueboneRestServerOptions<BaseJob extends Job<JobArgs>> {
   queue: Queue<BaseJob>;
@@ -80,7 +81,9 @@ export const queueboneRestServerPlugin: FastifyPluginAsync<QueueboneRestServerOp
   /**
    * Register a new worker.
    */
-  fastify.post<RegisterWorkerAPI>('/workers', { schema: registerWorkerSchema }, async ({ body, ip }, reply) => {
+  fastify.post<RegisterWorkerAPI>('/workers', { schema: registerWorkerSchema }, async (request, reply) => {
+    const { headers, body, ip } = request;
+
     // Authenticate and authorize
     const { apikey } = body;
     const profile = profileManager.timingSafeGet(apikey);
@@ -89,7 +92,11 @@ export const queueboneRestServerPlugin: FastifyPluginAsync<QueueboneRestServerOp
     }
 
     // Create WorkerProxy (fails if profile's maxWorkers are exhausted)
-    const worker = await profile.registerNewWorkerProxy(ip);
+    const worker = await profile.registerNewWorkerProxy({
+      ip,
+      hostname: headers['x-hostname'],
+      pid: headers['x-pid'],
+    });
     if (worker === undefined) {
       return reply.status(HttpStatusCode.ServiceUnavailable).send();
     }
@@ -106,7 +113,9 @@ export const queueboneRestServerPlugin: FastifyPluginAsync<QueueboneRestServerOp
   fastify.register(async (fastify) => {
     fastify.decorateRequest('profile');
     fastify.decorateRequest('worker');
-    fastify.addHook('preHandler', async (request, reply) => {
+    fastify.addHook<RegisteredWorkerAPI>('preHandler', async (request, reply) => {
+      const { headers, ip } = request;
+
       // Verify JWT
       try {
         await request.jwtVerify();
@@ -119,7 +128,11 @@ export const queueboneRestServerPlugin: FastifyPluginAsync<QueueboneRestServerOp
       if (profile === undefined) {
         return reply.status(HttpStatusCode.Gone).send();
       }
-      const worker = await profile.getWorkerProxy(request.user.wrk, request.ip);
+      const worker = await profile.getWorkerProxy(request.user.wrk, {
+        ip,
+        hostname: headers['x-hostname'],
+        pid: headers['x-pid'],
+      });
       if (worker === undefined) {
         return reply.status(HttpStatusCode.Forbidden).send();
       }

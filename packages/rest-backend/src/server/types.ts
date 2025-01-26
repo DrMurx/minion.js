@@ -7,3 +7,9 @@ export interface ProfileManager<BaseJob extends Job<JobArgs>>
   extends ReadonlyMap<WorkerProfileId, WorkerProfile<BaseJob>> {
   timingSafeGet(apikey: string): WorkerProfile<BaseJob> | undefined;
 }
+
+export interface RemoteWorkerMetadata {
+  ip: string;
+  hostname: string | undefined;
+  pid: number | undefined;
+}

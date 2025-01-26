@@ -1,7 +1,7 @@
 import { ConnectionError, JobState, MemoryBackend, Queuebone, WorkerState } from '@queuebone/core';
 import { AxiosError, HttpStatusCode } from 'axios';
 import Fastify from 'fastify';
-import os from 'os';
+import os, { hostname } from 'os';
 import t from 'tap';
 import { RestBackend } from './backend.js';
 import { queueboneRestServerPlugin } from './server/routes.js';
@@ -92,20 +92,39 @@ await t.test('HTTP backend', async (t) => {
     t.notOk(worker1.getMetadata(':hostname'));
     t.notOk(worker1.getMetadata(':pid'));
     t.notOk(worker1.getMetadata(':profile'));
+    t.notOk(worker1.getMetadata(':profile_id'));
     t.notOk(worker1.getMetadata(':remote'));
 
     const batch1 = (await serverBackend.getWorkerInfos(0, 10, {})).workers;
     t.equal(batch1[0].id, worker1.id);
     t.equal(batch1[0].config.heartbeatInterval, 3600000);
     t.equal(batch1[0].state, WorkerState.Online);
-    t.match(Object.keys(batch1[0].metadata).sort(), [':hostname', ':pid', ':profile', ':profileId', ':remote']);
+    t.match(Object.keys(batch1[0].metadata).sort(), [
+      ':hostname',
+      ':pid',
+      ':profile',
+      ':profile_id',
+      ':remote_hostname',
+      ':remote_ip',
+      ':remote_pid',
+    ]);
     t.equal(batch1[0].metadata[':pid'], process.pid);
     t.equal(batch1[0].metadata[':hostname'], os.hostname());
     t.equal(batch1[0].metadata[':profile'], 'profile-1');
-    t.ok(['127.0.0.1', '::1'].includes(batch1[0].metadata[':remote']));
+    t.ok(['127.0.0.1', '::1'].includes(batch1[0].metadata[':remote_ip']));
+    t.equal(batch1[0].metadata[':remote_hostname'], hostname());
+    t.equal(typeof batch1[0].metadata[':remote_pid'], 'number');
     t.equal(batch1[0].startedAt instanceof Date, true);
     t.equal(batch1[1].id, worker2.id);
-    t.match(Object.keys(batch1[1].metadata).sort(), [':hostname', ':pid', ':profile', ':profileId', ':remote']);
+    t.match(Object.keys(batch1[1].metadata).sort(), [
+      ':hostname',
+      ':pid',
+      ':profile',
+      ':profile_id',
+      ':remote_hostname',
+      ':remote_ip',
+      ':remote_pid',
+    ]);
     t.equal(batch1[1].metadata[':profile'], 'profile-1');
     t.notOk(batch1[2]);
 
@@ -114,7 +133,15 @@ await t.test('HTTP backend', async (t) => {
 
     const batch2 = (await serverBackend.getWorkerInfos(0, 10, {})).workers;
     t.equal(batch2[0].id, worker1.id);
-    t.match(Object.keys(batch2[0].metadata).sort(), [':hostname', ':pid', ':profile', ':profileId', ':remote']);
+    t.match(Object.keys(batch2[0].metadata).sort(), [
+      ':hostname',
+      ':pid',
+      ':profile',
+      ':profile_id',
+      ':remote_hostname',
+      ':remote_ip',
+      ':remote_pid',
+    ]);
     t.equal(batch2[1].id, worker2.id);
     t.notOk(batch2[1].metadata.whatever);
     t.notOk(batch2[2]);

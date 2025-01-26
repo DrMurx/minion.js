@@ -179,14 +179,23 @@ export const queueboneRestServerPlugin: FastifyPluginAsync<QueueboneRestServerOp
       '/worker/nextjob',
       { schema: assignNextJobSchema },
       async ({ worker, body }, reply) => {
-        const { taskNames, options, serial } = body;
-        const executor = await worker.getNextExecutor(taskNames, options.minPriority ?? 0, serial);
+        let errString = 'ERROR';
+        try {
+          const { taskNames, options, serial } = body;
+          const executor = await worker.getNextExecutor(taskNames, options.minPriority ?? 0, serial);
 
-        if (executor === null) {
-          return reply.status(HttpStatusCode.NoContent).send();
+          if (executor === null) {
+            errString = `${errString} job=NULL`;
+            return reply.status(HttpStatusCode.NoContent).send();
+          }
+
+          errString = `${errString} job=${executor.jobRecord.id}`;
+
+          return executor.jobRecord;
+        } catch (e: any) {
+          console.error(`${errString} code=${e.code} msg=${e.message}`);
+          return reply.status(HttpStatusCode.InternalServerError).send();
         }
-
-        return executor.jobRecord;
       },
     );
 

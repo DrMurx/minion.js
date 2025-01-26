@@ -214,7 +214,13 @@ export class RestBackend implements Backend {
           retries: 3,
           retryDelay: () => 0,
           retryCondition: (error) => isRetryableError(error),
+          onRetry: (retryCount: number, error: AxiosError) => {
+            console.log(
+              `worker-${id} serial RestBackend.assignNextJob #${serial} error ${error.code} ${error.message}, retry ${retryCount}`,
+            );
+          },
         },
+        timeout: 0,
       });
       if (response.status === HttpStatusCode.Ok) {
         this.jobTokens.set(response.data.id, token!);
@@ -222,7 +228,7 @@ export class RestBackend implements Backend {
       }
       return null;
     } catch (e: any) {
-      console.log(`worker-${id} RestBackend.assignNextJob error ${e.code} ${e.message}`);
+      console.log(`worker-${id} RestBackend.assignNextJob #${serial} error ${e.code} ${e.message}`);
       return null;
     }
   }

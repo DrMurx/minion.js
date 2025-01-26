@@ -210,7 +210,8 @@ export class RestBackend implements Backend {
         return response.data;
       }
       return null;
-    } catch (_) {
+    } catch (e: any) {
+      console.log(`backend error ${e.code} ${e.message}`);
       return null;
     }
   }

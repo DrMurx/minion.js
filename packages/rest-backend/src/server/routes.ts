@@ -172,14 +172,15 @@ export const queueboneRestServerPlugin: FastifyPluginAsync<QueueboneRestServerOp
     );
 
     /**
-     * Assigns the next available job to the requesting worker with the `:id`
+     * Assigns the next available job to the requesting worker. The `serial` number of the client's request
+     * can be used to catch retries due to network issues.
      */
     fastify.post<AssignNextJobAPI>(
       '/worker/nextjob',
       { schema: assignNextJobSchema },
       async ({ worker, body }, reply) => {
-        const { taskNames, options } = body;
-        const executor = await worker.getNextExecutor(taskNames, options.minPriority ?? 0);
+        const { taskNames, options, serial } = body;
+        const executor = await worker.getNextExecutor(taskNames, options.minPriority ?? 0, serial);
 
         if (executor === null) {
           return reply.status(HttpStatusCode.NoContent).send();

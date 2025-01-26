@@ -121,10 +121,21 @@ export class WorkerProxy<BaseJob extends Job<JobArgs>> {
     return this.lastHeartbeatAt + this._config.heartbeatInterval < Date.now();
   }
 
-  async getNextExecutor(taskNames: string[], minPriority: number): Promise<ExecutorProxy<BaseJob> | null> {
+  async getNextExecutor(
+    taskNames: string[],
+    minPriority: number,
+    serial: number,
+  ): Promise<ExecutorProxy<BaseJob> | null> {
     if (this._id === undefined) return null;
-    const { queueNames, dequeueTimeout } = this._config;
 
+    // Check whether we already have a executor stored with the given serial and return that instead.
+    for (const [, executor] of this.jobExecutors) {
+      if (serial === executor.serial) {
+        return executor;
+      }
+    }
+
+    const { queueNames, dequeueTimeout } = this._config;
     const _options = <JobDequeueOptions>{
       queueNames,
       minPriority,
@@ -136,11 +147,15 @@ export class WorkerProxy<BaseJob extends Job<JobArgs>> {
       _options,
     );
 
-    await this.heartbeat();
+    try {
+      await this.heartbeat();
+    } catch (_) {
+      // do nothing
+    }
 
     if (jobRecord === null) return null;
 
-    const executor = new ExecutorProxy(jobRecord, this, this.workerBackend, this.notifier);
+    const executor = new ExecutorProxy(jobRecord, this, serial, this.workerBackend, this.notifier);
     await executor.start();
     this.jobExecutors.set(jobRecord.id, executor);
 
@@ -181,7 +196,7 @@ export class WorkerProxy<BaseJob extends Job<JobArgs>> {
     // No need to recover if the job has already finished
     if ([JobState.Succeeded, JobState.Failed].includes(jobInfo.state)) return undefined;
 
-    const executor = new ExecutorProxy(jobInfo, this, this.workerBackend, this.notifier);
+    const executor = new ExecutorProxy(jobInfo, this, -1, this.workerBackend, this.notifier);
     this.jobExecutors.set(jobInfo.id, executor);
 
     return executor;

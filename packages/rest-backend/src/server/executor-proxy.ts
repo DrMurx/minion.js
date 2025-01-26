@@ -19,16 +19,19 @@ import { WorkerProxy } from './worker-proxy.js';
 export class ExecutorProxy<BaseJob extends Job<JobArgs>> {
   protected _jobRecord: JobRecord<InferJobArgs<BaseJob>>;
   protected _worker: WorkerProxy<BaseJob>;
+  protected _serial: number;
   protected _lastUpdateAt = Date.now();
 
   constructor(
     jobRecord: JobRecord<InferJobArgs<BaseJob>>,
     worker: WorkerProxy<BaseJob>,
+    serial: number,
     protected backend: ExecutorBackend,
     protected notifier: QueueEventEmitter<BaseJob>,
   ) {
     this._jobRecord = jobRecord;
     this._worker = worker;
+    this._serial = serial;
   }
 
   isExpired(expireAfter: number) {
@@ -37,6 +40,10 @@ export class ExecutorProxy<BaseJob extends Job<JobArgs>> {
 
   get jobRecord(): Readonly<JobRecord<InferJobArgs<BaseJob>>> {
     return { ...this._jobRecord };
+  }
+
+  get serial(): number {
+    return this._serial;
   }
 
   protected get id(): JobId {

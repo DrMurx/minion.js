@@ -133,6 +133,7 @@ export type AssignNextJobAPI = {
     options: {
       minPriority?: number;
     };
+    serial: number;
   };
   Reply: JobRecord<JobArgs> | void;
 };
@@ -150,6 +151,7 @@ export const assignNextJobSchema = {
           minPriority: { type: 'number' },
         },
       },
+      serial: { type: 'number' },
     },
   },
 };

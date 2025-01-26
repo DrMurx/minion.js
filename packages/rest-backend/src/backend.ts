@@ -57,6 +57,7 @@ export class RestBackend implements Backend {
   private _timeouts: RestBackendTimeouts;
 
   private workerTokens: Map<WorkerId, string> = new Map();
+  private workerJobSerials: Map<WorkerId, number> = new Map();
   private jobTokens: Map<JobId, string> = new Map();
 
   constructor(config: string | URL | AxiosRequestConfig | AxiosInstance, options: RestBackendOptions = {}) {
@@ -195,20 +196,24 @@ export class RestBackend implements Backend {
     options: JobDequeueOptions,
   ): Promise<JobRecord<Args> | null> {
     const token = this.workerTokens.get(id);
+    const serial = (this.workerJobSerials.get(id) ?? 0) + 1;
+    this.workerJobSerials.set(id, serial);
     try {
       const body = {
         taskNames,
         options: {
           minPriority: options.minPriority,
         },
+        serial,
       };
       const response = await this._axios.post<JobRecord<Args>>('/worker/nextjob', body, {
         headers: {
           Authorization: `Bearer ${token}`,
         },
         'axios-retry': {
-          retries: 0,
-          retryCondition: () => false,
+          retries: 3,
+          retryDelay: () => 0,
+          retryCondition: (error) => isRetryableError(error),
         },
       });
       if (response.status === HttpStatusCode.Ok) {
@@ -278,6 +283,7 @@ export class RestBackend implements Backend {
 
     const { token, info } = response.data;
     this.workerTokens.set(info.id, token);
+    this.workerJobSerials.set(info.id, 0);
     return info;
   }
 

@@ -1,6 +1,6 @@
 {
   "name": "@queuebone/rest-backend",
-  "version": "0.0.38",
+  "version": "0.0.40",
   "description": "REST Backend for Queuebone",
   "keywords": [
     "queuebone",

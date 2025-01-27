@@ -43,6 +43,9 @@ export class RestBackend implements Backend {
     updateWorkerTimeout: 500,
     updateWorkerRetries: 3,
     updateWorkerRetryDelay: () => 500,
+    getNextJobTimeout: 0,
+    getNextJobRetries: 3,
+    getNextJobRetryDelay: (_: number, error: AxiosError) => (error.code === 'ECONNRESET' ? 10000 : 500),
     amendJobTimeout: 500,
     amendJobRetries: 1,
     amendJobRetryDelay: () => 500,
@@ -198,6 +201,7 @@ export class RestBackend implements Backend {
     const token = this.workerTokens.get(id);
     const serial = (this.workerJobSerials.get(id) ?? 0) + 1;
     this.workerJobSerials.set(id, serial);
+
     try {
       const body = {
         taskNames,
@@ -206,29 +210,31 @@ export class RestBackend implements Backend {
         },
         serial,
       };
+      console.log(`worker-${id} RestBackend.assignNextJob #${serial} post`);
       const response = await this._axios.post<JobRecord<Args>>('/worker/nextjob', body, {
         headers: {
           Authorization: `Bearer ${token}`,
         },
         'axios-retry': {
-          retries: 3,
-          retryDelay: () => 0,
+          retries: this._timeouts.getNextJobRetries,
+          retryDelay: this._timeouts.getNextJobRetryDelay,
           retryCondition: (error) => isRetryableError(error),
           onRetry: (retryCount: number, error: AxiosError) => {
             console.log(
-              `worker-${id} serial RestBackend.assignNextJob #${serial} error ${error.code} ${error.message}, retry ${retryCount}`,
+              `worker-${id} RestBackend.assignNextJob #${serial} error: ${error.code} ${error.message}, retry ${retryCount}`,
             );
           },
         },
-        timeout: 0,
+        timeout: this._timeouts.getNextJobTimeout,
       });
       if (response.status === HttpStatusCode.Ok) {
         this.jobTokens.set(response.data.id, token!);
+        console.log(`worker-${id} RestBackend.assignNextJob #${serial} success: Job #${response.data.id} fetched`);
         return response.data;
       }
       return null;
     } catch (e: any) {
-      console.log(`worker-${id} RestBackend.assignNextJob #${serial} error ${e.code} ${e.message}`);
+      console.log(`worker-${id} RestBackend.assignNextJob #${serial} error: ${e.code} ${e.message}`);
       return null;
     }
   }

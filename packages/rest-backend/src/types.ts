@@ -10,6 +10,9 @@ export interface RestBackendTimeouts {
   updateWorkerTimeout: number;
   updateWorkerRetries: number;
   updateWorkerRetryDelay: (retryCount: number, error: AxiosError) => number;
+  getNextJobTimeout: number;
+  getNextJobRetries: number;
+  getNextJobRetryDelay: (retryCount: number, error: AxiosError) => number;
   amendJobTimeout: number;
   amendJobRetries: number;
   amendJobRetryDelay: (retryCount: number, error: AxiosError) => number;

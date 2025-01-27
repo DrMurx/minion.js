@@ -147,17 +147,19 @@ export class WorkerProxy<BaseJob extends Job<JobArgs>> {
       _options,
     );
 
+    // Create and register executor as fast as possible before any other async call.
+    let executor: ExecutorProxy<BaseJob> | null = null;
+    if (jobRecord !== null) {
+      executor = new ExecutorProxy(jobRecord, this, serial, this.workerBackend, this.notifier);
+      executor.start();
+      this.jobExecutors.set(jobRecord.id, executor);
+    }
+
     try {
       await this.heartbeat();
     } catch (_) {
       // do nothing
     }
-
-    if (jobRecord === null) return null;
-
-    const executor = new ExecutorProxy(jobRecord, this, serial, this.workerBackend, this.notifier);
-    await executor.start();
-    this.jobExecutors.set(jobRecord.id, executor);
 
     return executor;
   }

@@ -99,7 +99,7 @@ export class ExecutorProxy<BaseJob extends Job<JobArgs>> {
     }
   }
 
-  async start(): Promise<void> {
+  start(): void {
     this._jobRecord.state = JobState.Running;
     this._jobRecord.startedAt = new Date();
     this._jobRecord.finishedAt = undefined;

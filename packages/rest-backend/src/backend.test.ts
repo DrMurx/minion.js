@@ -248,9 +248,10 @@ await t.test('HTTP backend', async (t) => {
   await t.test('Job in concurrent worker classes', async (t) => {
     const worker = await clientQueue.getNewWorker().register();
 
-    const clientBackend2 = new RestBackend(
-      `http://:AiX3ith5EengoupheeC2oogh3aithopoovo8iedeeyeip0daghahghaichaefung@localhost:${PORT}`,
-    );
+    const clientBackend2 = new RestBackend(`http://localhost:${PORT}`, {
+      apikey: 'AiX3ith5EengoupheeC2oogh3aithopoovo8iedeeyeip0daghahghaichaefung',
+      registerWorkerRetries: 1,
+    });
     const clientQueue2 = new Queuebone(clientBackend2, {
       pruneEnabled: false,
     });

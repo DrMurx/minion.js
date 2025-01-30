@@ -117,31 +117,29 @@ export class RestBackend implements Backend {
     attempt: number,
     records: Record<string, any>,
   ): Promise<Record<string, any> | undefined> {
-    try {
-      const token = this.jobTokens.get(jobId);
-      const body = {
-        metadata: records,
-      };
-      const response = await this._axios.patch<{ metadata?: Record<string, any> }>(`/jobs/${jobId}/${attempt}`, body, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-        'axios-retry': {
-          retries: this._timeouts.amendJobRetries,
-          retryDelay: this._timeouts.amendJobRetryDelay,
-          shouldResetTimeout: true,
-        },
-        timeout: this._timeouts.amendJobTimeout,
-      });
-      return response.status === HttpStatusCode.Ok ? (response.data.metadata ?? {}) : undefined;
-    } catch (_) {
-      return undefined;
-    }
+    const token = this.jobTokens.get(jobId);
+    if (token === undefined) return undefined;
+    const body = {
+      metadata: records,
+    };
+    const response = await this._axios.patch<{ metadata?: Record<string, any> }>(`/jobs/${jobId}/${attempt}`, body, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+      'axios-retry': {
+        retries: this._timeouts.amendJobRetries,
+        retryDelay: this._timeouts.amendJobRetryDelay,
+        shouldResetTimeout: true,
+      },
+      timeout: this._timeouts.amendJobTimeout,
+    });
+    return response.status === HttpStatusCode.Ok ? (response.data.metadata ?? {}) : undefined;
   }
 
   async updateJobProgress(jobId: JobId, attempt: number, progress: number): Promise<boolean> {
     try {
       const token = this.jobTokens.get(jobId);
+      if (token === undefined) return false;
       const body = {
         progress,
       };
@@ -156,6 +154,7 @@ export class RestBackend implements Backend {
       });
       return response.status === HttpStatusCode.Ok;
     } catch (_) {
+      // Don't throw
       return false;
     }
   }
@@ -166,30 +165,26 @@ export class RestBackend implements Backend {
     state: JobState.Succeeded | JobState.Failed,
     result: JobResult,
   ): Promise<boolean> {
-    try {
-      const token = this.jobTokens.get(jobId);
-      const body = {
-        state,
-        result,
-      };
-      const response = await this._axios.patch(`/jobs/${jobId}/${attempt}`, body, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-        'axios-retry': {
-          retries: this._timeouts.markJobFinishedRetries,
-          retryDelay: this._timeouts.markJobFinishedRetryDelay,
-          retryCondition: (error) => isRetryableError(error),
-          shouldResetTimeout: true,
-        },
-        timeout: this._timeouts.markJobFinishedTimeout,
-      });
-      this.jobTokens.delete(jobId);
-      return response.status === HttpStatusCode.Ok;
-    } catch (e: any) {
-      if ('code' in e && e.code === 'ECONNREFUSED') throw e;
-      return false;
-    }
+    const token = this.jobTokens.get(jobId);
+    if (token === undefined) return false;
+    const body = {
+      state,
+      result,
+    };
+    const response = await this._axios.patch(`/jobs/${jobId}/${attempt}`, body, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+      'axios-retry': {
+        retries: this._timeouts.markJobFinishedRetries,
+        retryDelay: this._timeouts.markJobFinishedRetryDelay,
+        retryCondition: (error) => isRetryableError(error),
+        shouldResetTimeout: true,
+      },
+      timeout: this._timeouts.markJobFinishedTimeout,
+    });
+    this.jobTokens.delete(jobId);
+    return response.status === HttpStatusCode.Ok;
   }
 
   async assignNextJob<Args extends JobArgs>(
@@ -210,7 +205,7 @@ export class RestBackend implements Backend {
         },
         serial,
       };
-      console.log(`worker-${id} RestBackend.assignNextJob #${serial} post`);
+      console.log(`worker-${id} RestBackend.assignNextJob #${serial}: Request next job`);
       const response = await this._axios.post<JobRecord<Args>>('/worker/nextjob', body, {
         headers: {
           Authorization: `Bearer ${token}`,
@@ -300,26 +295,22 @@ export class RestBackend implements Backend {
   }
 
   async updateWorker(id: WorkerId, options: WorkerUpdateOptions): Promise<WorkerInfo | undefined> {
-    try {
-      const token = this.workerTokens.get(id);
-      const body: ClientWorkerUpdateOptions = {
-        state: options.state,
-      };
-      const response = await this._axios.patch('/worker', body, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-        'axios-retry': {
-          retries: this._timeouts.updateWorkerRetries,
-          retryDelay: this._timeouts.updateWorkerRetryDelay,
-          shouldResetTimeout: true,
-        },
-        timeout: this._timeouts.updateWorkerTimeout,
-      });
-      return response.status === HttpStatusCode.Ok ? response.data : undefined;
-    } catch (_) {
-      return undefined;
-    }
+    const token = this.workerTokens.get(id);
+    const body: ClientWorkerUpdateOptions = {
+      state: options.state,
+    };
+    const response = await this._axios.patch('/worker', body, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+      'axios-retry': {
+        retries: this._timeouts.updateWorkerRetries,
+        retryDelay: this._timeouts.updateWorkerRetryDelay,
+        shouldResetTimeout: true,
+      },
+      timeout: this._timeouts.updateWorkerTimeout,
+    });
+    return response.status === HttpStatusCode.Ok ? response.data : undefined;
   }
 
   async checkWorkerInbox(id: WorkerId, options: WorkerUpdateOptions): Promise<WorkerCommandDescriptor[]> {
@@ -341,6 +332,7 @@ export class RestBackend implements Backend {
       });
       return response.status === HttpStatusCode.Ok ? response.data : [];
     } catch (_) {
+      // Don't throw
       return [];
     }
   }
@@ -356,6 +348,7 @@ export class RestBackend implements Backend {
       this.workerTokens.delete(id);
       return response.status === HttpStatusCode.Ok;
     } catch (_) {
+      // Don't throw
       return false;
     }
   }

@@ -206,7 +206,8 @@ export class PgBackend implements Backend {
   }
 
   async amendJobMetadata(
-    id: JobId,
+    workerId: WorkerId,
+    jobId: JobId,
     attempt: number,
     records: Record<string, any>,
   ): Promise<Record<string, any> | undefined> {
@@ -215,27 +216,30 @@ export class PgBackend implements Backend {
       SET metadata = JSONB_STRIP_NULLS(metadata || $1)
       WHERE id = $2
         AND attempt = $3
+        AND worker_id = $4
       RETURNING metadata`,
-      [records, id, attempt],
+      [records, jobId, attempt, workerId],
     );
     const row = results.rows[0];
     return row !== undefined ? row.metadata : undefined;
   }
 
-  async updateJobProgress(id: JobId, attempt: number, progress: number): Promise<boolean> {
+  async updateJobProgress(workerId: WorkerId, jobId: JobId, attempt: number, progress: number): Promise<boolean> {
     const results = await this.query<{ workerId: WorkerId }>(
       `UPDATE ${JOB_TABLE}
       SET progress = $1
       WHERE id = $2
         AND attempt = $3
+        AND worker_id = $4
       RETURNING worker_id AS workerId`,
-      [progress, id, attempt],
+      [progress, jobId, attempt, workerId],
     );
     if (results.rowCount === 0) return false;
     return true;
   }
 
   async markJobFinished(
+    workerId: WorkerId,
     jobId: JobId,
     attempt: number,
     state: JobState.Succeeded | JobState.Failed | JobState.Aborted,
@@ -249,8 +253,9 @@ export class PgBackend implements Backend {
             finished_at = NOW()
       WHERE id = $4
         AND state = '${JobState.Running}'
-        AND attempt = $5`,
-      [JSON.stringify(result), state, state === JobState.Succeeded ? 1.0 : null, jobId, attempt],
+        AND attempt = $5
+        AND worker_id = $6`,
+      [JSON.stringify(result), state, state === JobState.Succeeded ? 1.0 : null, jobId, attempt, workerId],
     );
 
     // Unable to update row? (reasons: job has already been marked as finished, retried by a different worker, or record is gone)

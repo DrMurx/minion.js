@@ -106,30 +106,34 @@ export class MemoryBackend implements Backend {
   }
 
   async amendJobMetadata(
-    id: JobId,
+    workerId: WorkerId,
+    jobId: JobId,
     attempt: number,
     records: Record<string, any>,
   ): Promise<Record<string, any> | undefined> {
-    const job = this.selectJob((j) => j.id === id && j.attempt === attempt);
+    const job = this.selectJob((j) => j.workerId === workerId && j.id === jobId && j.attempt === attempt);
     if (job === undefined) return undefined;
     job.metadata = filterNull({ ...job.metadata, ...records });
     return { ...job.metadata };
   }
 
-  async updateJobProgress(id: JobId, attempt: number, progress: number): Promise<boolean> {
-    const job = this.selectJob((j) => j.id === id && j.attempt === attempt);
+  async updateJobProgress(workerId: WorkerId, jobId: JobId, attempt: number, progress: number): Promise<boolean> {
+    const job = this.selectJob((j) => j.workerId === workerId && j.id === jobId && j.attempt === attempt);
     if (job === undefined) return false;
     job.progress = progress;
     return true;
   }
 
   async markJobFinished(
+    workerId: WorkerId,
     jobId: JobId,
     attempt: number,
     state: JobState.Succeeded | JobState.Failed | JobState.Aborted,
     result: JobResult,
   ): Promise<boolean> {
-    const job = this.selectJob((j) => j.id === jobId && j.state === JobState.Running && j.attempt === attempt);
+    const job = this.selectJob(
+      (j) => j.workerId === workerId && j.id === jobId && j.state === JobState.Running && j.attempt === attempt,
+    );
     if (job === undefined) return false;
     job.result = result;
     job.state = state;

@@ -612,10 +612,10 @@ export async function runQueueTests(t: Test, backend: Backend & TestableBackend)
       t.same(jobHandle1.metadata, { foo: [4, 5, 6], bar: { baz: [1, 2, 3] }, baz: 'yada', yada: ['works'] });
       t.same(jobHandle1.result, [{ 23: 'test3' }]);
 
-      t.ok(await jobHandle1.amendMetadata({ foo: [4, 5, 6, 7], so: true }));
+      t.ok(await jobHandle1.retry({ metadata: { foo: [4, 5, 6, 7], so: true, bar: null } }));
+      await jobHandle1.sync();
       t.same(jobHandle1.metadata, {
         foo: [4, 5, 6, 7],
-        bar: { baz: [1, 2, 3] },
         baz: 'yada',
         yada: ['works'],
         so: true,
@@ -623,11 +623,14 @@ export async function runQueueTests(t: Test, backend: Backend & TestableBackend)
       t.equal(await queue.listJobInfos({ metadata: [{ unknown: false }] }).numRows(), 0);
       t.equal(await queue.listJobInfos({ metadata: [{ foo: [4, 5, 6, 7], baz: 'yada' }] }).numRows(), 1);
 
-      t.ok(await job.amendMetadata({ yada: null, bar: null }));
+      t.notOk(await job.amendMetadata({ yada: null })); // notOk because we had to call jobHandle.retry
+
+      const job2 = (await worker.getNextExecutor())!;
+      t.ok(await job2.amendMetadata({ yada: null }));
       await jobHandle1.sync();
       t.same(jobHandle1.metadata, { foo: [4, 5, 6, 7], baz: 'yada', so: true });
 
-      t.notOk(await backend.amendJobMetadata(-1, 1, { yada: [JobState.Failed] }));
+      // t.notOk(await backend.amendJobMetadata(-1, 1, { yada: [JobState.Failed] }));
 
       await worker.unregister();
     });

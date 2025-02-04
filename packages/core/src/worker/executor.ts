@@ -107,7 +107,7 @@ export class Executor<BaseJob extends Job<JobArgs>> {
   }
 
   async updateProgress(progress: number): Promise<boolean> {
-    const isUpdated = await this.backend.updateJobProgress(this.id, this.attempt, progress);
+    const isUpdated = await this.backend.updateJobProgress(this._worker.id!, this.id, this.attempt, progress);
     if (isUpdated) {
       this._jobRecord.progress = progress;
 
@@ -127,7 +127,7 @@ export class Executor<BaseJob extends Job<JobArgs>> {
   }
 
   async amendMetadata(records: Record<string, any>): Promise<boolean> {
-    const metadata = await this.backend.amendJobMetadata(this.id, this.attempt, records);
+    const metadata = await this.backend.amendJobMetadata(this._worker.id!, this.id, this.attempt, records);
     const isUpdated = metadata !== undefined;
     if (isUpdated) {
       this._jobRecord.metadata = metadata;
@@ -192,7 +192,13 @@ export class Executor<BaseJob extends Job<JobArgs>> {
    * Transition from `running` to `succeeded` state with or without a result.
    */
   async markSucceeded(result?: JobResult): Promise<boolean> {
-    const isUpdated = await this.backend.markJobFinished(this.id, this.attempt, JobState.Succeeded, result ?? {});
+    const isUpdated = await this.backend.markJobFinished(
+      this._worker.id!,
+      this.id,
+      this.attempt,
+      JobState.Succeeded,
+      result ?? {},
+    );
     if (isUpdated) {
       this._jobRecord.result = result;
       this._jobRecord.state = JobState.Succeeded;
@@ -219,7 +225,13 @@ export class Executor<BaseJob extends Job<JobArgs>> {
     if (result instanceof Error) {
       result = { name: result.name, message: result.message, stack: result.stack };
     }
-    const isUpdated = await this.backend.markJobFinished(this.id, this.attempt, JobState.Failed, result);
+    const isUpdated = await this.backend.markJobFinished(
+      this._worker.id!,
+      this.id,
+      this.attempt,
+      JobState.Failed,
+      result,
+    );
     if (isUpdated) {
       this._jobRecord.result = result;
       this._jobRecord.state = JobState.Failed;

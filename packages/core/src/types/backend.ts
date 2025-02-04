@@ -18,7 +18,7 @@ import {
   WorkerState,
 } from './worker.js';
 
-export interface Backend extends QueueBackend, JobHandleBackend, WorkerBackend {
+export interface Backend extends QueueBackend, ExecutorBackend, JobHandleBackend, WorkerBackend {
   /**
    * Backend name.
    */
@@ -89,13 +89,14 @@ export interface QueueBackend {
 }
 
 /**
- * The backend methods the `Executor` object needs
+ * The backend methods the `Executor` object needs.
  */
 export interface ExecutorBackend {
   /**
    * Change one or more metadata fields for a job. Setting a value to `null` will remove the field.
    */
   amendJobMetadata(
+    worker: WorkerId,
     jobId: JobId,
     attempt: number,
     records: Record<string, any>,
@@ -104,13 +105,14 @@ export interface ExecutorBackend {
   /**
    * Updates the job's progress.
    */
-  updateJobProgress(jobId: JobId, attempt: number, progress: number): Promise<boolean>;
+  updateJobProgress(worker: WorkerId, jobId: JobId, attempt: number, progress: number): Promise<boolean>;
 
   /**
    * Transition from `running` to `succeeded` or `failed` state with or without a result. If the job has failed and
    * if there are attempts remaining, transition back to `pending` with a delay.
    */
   markJobFinished(
+    worker: WorkerId,
     jobId: JobId,
     attempt: number,
     state: JobState.Succeeded | JobState.Failed | JobState.Aborted,
@@ -121,7 +123,7 @@ export interface ExecutorBackend {
 /**
  * The backend methods a `JobHandle` object needs
  */
-export interface JobHandleBackend extends ExecutorBackend {
+export interface JobHandleBackend {
   /**
    * Returns the information about a specific job.
    */

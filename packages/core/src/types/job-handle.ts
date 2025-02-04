@@ -45,15 +45,10 @@ export interface JobHandle<Args extends JobArgs> {
 
   /**
    * Transition job back to `pending` or `scheduled` state. Already `pending` jobs may also be retried to change options.
+   * Metadata fields can be updated too. Setting a value to `null` will remove the field from the metadata.
    * If successful, it will return a new `JobHandle` object reflecting the changes.
    */
   retry(options?: JobOptions): Promise<JobHandle<Args> | null>;
-
-  /**
-   * Change one or more metadata fields for this job. Setting a value to `null` will remove the field. Only values
-   * that can be serialized as JSON are supported.
-   */
-  amendMetadata(records: Record<string, any>): Promise<boolean>;
 
   /**
    * Cancel job as long as it hasn't been started.

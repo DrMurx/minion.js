@@ -118,15 +118,6 @@ export class DefaultJobHandle<Args extends JobArgs = JobArgs> implements JobHand
     return null;
   }
 
-  async amendMetadata(records: Record<string, any>): Promise<boolean> {
-    const metadata = await this.backend.amendJobMetadata(this.id, this.attempt, records);
-    const isUpdated = metadata !== undefined;
-    if (isUpdated) {
-      this.jobRecord.metadata = metadata;
-    }
-    return isUpdated;
-  }
-
   async cancel(): Promise<boolean> {
     const isUpdated = await this.backend.cancelJob(this.id);
     if (isUpdated) {

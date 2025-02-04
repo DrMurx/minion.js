@@ -70,6 +70,9 @@ export class ExecutorProxy<BaseJob extends Job<JobArgs>> {
   }
 
   async updateProgress(progress: number): Promise<Readonly<JobRecord<InferJobArgs<BaseJob>>> | undefined> {
+    if (progress <= this._jobRecord.progress) {
+      return this._jobRecord;
+    }
     const isUpdated = await this.backend.updateJobProgress(this._worker.id!, this.id, this.attempt, progress);
     if (isUpdated) {
       this._lastUpdateAt = Date.now();

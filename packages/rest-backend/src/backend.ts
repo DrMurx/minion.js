@@ -33,7 +33,7 @@ import axios, {
 import axiosRetry, { isRetryableError } from 'axios-retry';
 import { hostname } from 'os';
 import { createAxios, parseConfig } from './factory.js';
-import { type RestBackendOptions, type RestBackendTimeouts } from './types.js';
+import { WorkerTracker, type RestBackendOptions, type RestBackendTimeouts } from './types.js';
 
 export class RestBackend implements Backend {
   public static TIMEOUTS: RestBackendTimeouts = {
@@ -59,9 +59,7 @@ export class RestBackend implements Backend {
   private _apikey: string;
   private _timeouts: RestBackendTimeouts;
 
-  private workerTokens: Map<WorkerId, string> = new Map();
-  private workerJobSerials: Map<WorkerId, number> = new Map();
-  private jobTokens: Map<JobId, string> = new Map();
+  private workerTrackers: Map<WorkerId, WorkerTracker> = new Map();
 
   constructor(config: string | URL | AxiosRequestConfig | AxiosInstance, options: RestBackendOptions = {}) {
     const { apikey } = options;
@@ -113,18 +111,23 @@ export class RestBackend implements Backend {
   }
 
   async amendJobMetadata(
+    workerId: WorkerId,
     jobId: JobId,
     attempt: number,
     records: Record<string, any>,
   ): Promise<Record<string, any> | undefined> {
-    const token = this.jobTokens.get(jobId);
-    if (token === undefined) return undefined;
-    const body = {
+    const tracker = this.workerTrackers.get(workerId);
+    if (tracker === undefined) return undefined;
+
+    const data = {
       metadata: records,
     };
-    const response = await this._axios.patch<{ metadata?: Record<string, any> }>(`/jobs/${jobId}/${attempt}`, body, {
+    const response = await this._axios<{ metadata?: Record<string, any> }>({
+      method: 'patch',
+      url: `/jobs/${jobId}/${attempt}`,
+      data,
       headers: {
-        Authorization: `Bearer ${token}`,
+        Authorization: `Bearer ${tracker.token}`,
       },
       'axios-retry': {
         retries: this._timeouts.amendJobRetries,
@@ -136,23 +139,27 @@ export class RestBackend implements Backend {
     return response.status === HttpStatusCode.Ok ? (response.data.metadata ?? {}) : undefined;
   }
 
-  async updateJobProgress(jobId: JobId, attempt: number, progress: number): Promise<boolean> {
+  async updateJobProgress(workerId: WorkerId, jobId: JobId, attempt: number, progress: number): Promise<boolean> {
     try {
-      const token = this.jobTokens.get(jobId);
-      if (token === undefined) return false;
-      const body = {
+      const tracker = this.workerTrackers.get(workerId);
+      if (tracker === undefined) return false;
+
+      const data = {
         progress,
       };
-      const response = await this._axios.patch(`/jobs/${jobId}/${attempt}`, body, {
+      const response = await this._axios({
+        method: 'patch',
+        url: `/jobs/${jobId}/${attempt}`,
+        data,
         headers: {
-          Authorization: `Bearer ${token}`,
+          Authorization: `Bearer ${tracker.token}`,
         },
         'axios-retry': {
           retries: 0, // This might be a frequent call, so we don't retry
         },
         signal: AbortSignal.timeout(this._timeouts.amendJobTimeout),
       });
-      return response.status === HttpStatusCode.Ok;
+      return response.status === HttpStatusCode.Ok || response.status === HttpStatusCode.NoContent;
     } catch (_) {
       // Don't throw
       return false;
@@ -160,20 +167,25 @@ export class RestBackend implements Backend {
   }
 
   async markJobFinished(
+    workerId: WorkerId,
     jobId: JobId,
     attempt: number,
     state: JobState.Succeeded | JobState.Failed,
     result: JobResult,
   ): Promise<boolean> {
-    const token = this.jobTokens.get(jobId);
-    if (token === undefined) return false;
-    const body = {
+    const tracker = this.workerTrackers.get(workerId);
+    if (tracker === undefined) return false;
+
+    const data = {
       state,
       result,
     };
-    const response = await this._axios.patch(`/jobs/${jobId}/${attempt}`, body, {
+    const response = await this._axios({
+      method: 'patch',
+      url: `/jobs/${jobId}/${attempt}`,
+      data,
       headers: {
-        Authorization: `Bearer ${token}`,
+        Authorization: `Bearer ${tracker.token}`,
       },
       'axios-retry': {
         retries: this._timeouts.markJobFinishedRetries,
@@ -182,8 +194,8 @@ export class RestBackend implements Backend {
         shouldResetTimeout: true,
       },
       timeout: this._timeouts.markJobFinishedTimeout,
+      validateStatus: (status) => (status >= HttpStatusCode.Ok && status <= 299) || status == HttpStatusCode.NotFound,
     });
-    this.jobTokens.delete(jobId);
     return response.status === HttpStatusCode.Ok;
   }
 
@@ -193,12 +205,13 @@ export class RestBackend implements Backend {
     timeout: number,
     options: JobDequeueOptions,
   ): Promise<JobRecord<Args> | null> {
-    const token = this.workerTokens.get(id);
-    const serial = (this.workerJobSerials.get(id) ?? 0) + 1;
-    this.workerJobSerials.set(id, serial);
+    const tracker = this.workerTrackers.get(id);
+    if (tracker === undefined) return null;
+
+    const serial = ++tracker.currentRequestSerial;
 
     try {
-      const body = {
+      const data = {
         taskNames,
         options: {
           minPriority: options.minPriority,
@@ -206,9 +219,12 @@ export class RestBackend implements Backend {
         serial,
       };
       console.log(`worker-${id} RestBackend.assignNextJob #${serial}: Request next job`);
-      const response = await this._axios.post<JobRecord<Args>>('/worker/nextjob', body, {
+      const response = await this._axios<JobRecord<Args>>({
+        method: 'post',
+        url: '/worker/nextjob',
+        data,
         headers: {
-          Authorization: `Bearer ${token}`,
+          Authorization: `Bearer ${tracker.token}`,
         },
         'axios-retry': {
           retries: this._timeouts.getNextJobRetries,
@@ -223,7 +239,6 @@ export class RestBackend implements Backend {
         timeout: this._timeouts.getNextJobTimeout,
       });
       if (response.status === HttpStatusCode.Ok) {
-        this.jobTokens.set(response.data.id, token!);
         console.log(`worker-${id} RestBackend.assignNextJob #${serial} success: Job #${response.data.id} fetched`);
         return response.data;
       }
@@ -258,10 +273,13 @@ export class RestBackend implements Backend {
   async registerWorker(): Promise<WorkerInfo> {
     let response: AxiosResponse<{ token: string; info: WorkerInfo }>;
     try {
-      const body = {
+      const data = {
         apikey: this._apikey,
       };
-      response = await this._axios.post('/workers', body, {
+      response = await this._axios({
+        method: 'post',
+        url: '/workers',
+        data,
         'axios-retry': {
           retries: this._timeouts.registerWorkerRetries,
           retryDelay: this._timeouts.registerWorkerRetryDelay,
@@ -289,19 +307,23 @@ export class RestBackend implements Backend {
     }
 
     const { token, info } = response.data;
-    this.workerTokens.set(info.id, token);
-    this.workerJobSerials.set(info.id, 0);
+    this.workerTrackers.set(info.id, { token, currentRequestSerial: 0 });
     return info;
   }
 
   async updateWorker(id: WorkerId, options: WorkerUpdateOptions): Promise<WorkerInfo | undefined> {
-    const token = this.workerTokens.get(id);
-    const body: ClientWorkerUpdateOptions = {
+    const tracker = this.workerTrackers.get(id);
+    if (tracker === undefined) return undefined;
+
+    const data: ClientWorkerUpdateOptions = {
       state: options.state,
     };
-    const response = await this._axios.patch('/worker', body, {
+    const response = await this._axios({
+      method: 'patch',
+      url: '/worker',
+      data,
       headers: {
-        Authorization: `Bearer ${token}`,
+        Authorization: `Bearer ${tracker.token}`,
       },
       'axios-retry': {
         retries: this._timeouts.updateWorkerRetries,
@@ -314,14 +336,19 @@ export class RestBackend implements Backend {
   }
 
   async checkWorkerInbox(id: WorkerId, options: WorkerUpdateOptions): Promise<WorkerCommandDescriptor[]> {
+    const tracker = this.workerTrackers.get(id);
+    if (tracker === undefined) return [];
+
     try {
-      const token = this.workerTokens.get(id);
-      const body: ClientWorkerUpdateOptions = {
+      const data: ClientWorkerUpdateOptions = {
         state: options.state,
       };
-      const response = await this._axios.post<WorkerCommandDescriptor[]>('/worker/inbox', body, {
+      const response = await this._axios<WorkerCommandDescriptor[]>({
+        method: 'post',
+        url: '/worker/inbox',
+        data,
         headers: {
-          Authorization: `Bearer ${token}`,
+          Authorization: `Bearer ${tracker.token}`,
         },
         'axios-retry': {
           retries: this._timeouts.updateWorkerRetries,
@@ -338,14 +365,18 @@ export class RestBackend implements Backend {
   }
 
   async unregisterWorker(id: WorkerId): Promise<boolean> {
+    const tracker = this.workerTrackers.get(id);
+    if (tracker === undefined) return false;
+
     try {
-      const token = this.workerTokens.get(id);
-      const response = await this._axios.delete('/worker', {
+      const response = await this._axios({
+        method: 'delete',
+        url: '/worker',
         headers: {
-          Authorization: `Bearer ${token}`,
+          Authorization: `Bearer ${tracker.token}`,
         },
       });
-      this.workerTokens.delete(id);
+      this.workerTrackers.delete(id);
       return response.status === HttpStatusCode.Ok;
     } catch (_) {
       // Don't throw
@@ -383,8 +414,12 @@ export class RestBackend implements Backend {
     // Do an initial ping to the backend
     let response: AxiosResponse<{ status: 'pong' | 'authenticated' }>;
     try {
-      response = await this._axios.post('/ping', {
-        apikey: this._apikey,
+      response = await this._axios({
+        method: 'post',
+        url: '/ping',
+        data: {
+          apikey: this._apikey,
+        },
       });
     } catch (e) {
       if (e instanceof AxiosError && e.code === 'ECONNREFUSED') {

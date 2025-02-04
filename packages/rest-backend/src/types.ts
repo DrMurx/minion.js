@@ -24,3 +24,8 @@ export interface RestBackendTimeouts {
 export interface RestBackendOptions extends Partial<RestBackendTimeouts> {
   apikey?: string;
 }
+
+export interface WorkerTracker {
+  token: string;
+  currentRequestSerial: number;
+}

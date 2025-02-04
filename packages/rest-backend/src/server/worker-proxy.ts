@@ -164,10 +164,14 @@ export class WorkerProxy<BaseJob extends Job<JobArgs>> {
     return executor;
   }
 
-  async getRunningExecutor(jobId: JobId, attempt: number): Promise<ExecutorProxy<BaseJob> | undefined> {
+  async getRunningExecutor(
+    jobId: JobId,
+    attempt: number,
+    allowedStates: JobState[],
+  ): Promise<ExecutorProxy<BaseJob> | undefined> {
     if (this._id === undefined) return undefined;
 
-    const executor = this.jobExecutors.get(jobId) ?? (await this.recoverCurrentJob(jobId));
+    const executor = this.jobExecutors.get(jobId) ?? (await this.recoverCurrentJob(jobId, allowedStates));
     if (executor === undefined || executor.attempt !== attempt) {
       return undefined;
     }
@@ -187,7 +191,10 @@ export class WorkerProxy<BaseJob extends Job<JobArgs>> {
     }
   }
 
-  protected async recoverCurrentJob(jobId: JobId): Promise<ExecutorProxy<BaseJob> | undefined> {
+  protected async recoverCurrentJob(
+    jobId: JobId,
+    allowedStates: JobState[],
+  ): Promise<ExecutorProxy<BaseJob> | undefined> {
     // TODO: This might be overly expensive because getJobInfo returns JobInfo but assignNextJob only JobRecord
     const jobInfo = await this.workerBackend.getJobInfo<InferJobArgs<BaseJob>>(jobId);
     if (jobInfo === undefined) return undefined;
@@ -196,7 +203,7 @@ export class WorkerProxy<BaseJob extends Job<JobArgs>> {
     if (jobInfo.workerId === undefined || jobInfo.workerId !== this._id) return undefined;
 
     // No need to recover if the job has already finished
-    if ([JobState.Succeeded, JobState.Failed].includes(jobInfo.state)) return undefined;
+    if (!allowedStates.includes(jobInfo.state)) return undefined;
 
     const executor = new ExecutorProxy(jobInfo, this, -1, this.workerBackend, this.notifier);
     this.jobExecutors.set(jobInfo.id, executor);

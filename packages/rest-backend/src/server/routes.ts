@@ -2,7 +2,7 @@
 /// <reference path="./fastify-declare.ts" />
 
 import jwtPlugin from '@fastify/jwt';
-import { type Backend, type Job, type JobArgs, type Queue } from '@queuebone/core';
+import { JobState, type Backend, type Job, type JobArgs, type Queue } from '@queuebone/core';
 import { HttpStatusCode } from 'axios';
 import { type FastifyPluginAsync } from 'fastify';
 import { type RestWorkerProfileConfig } from './config.js';
@@ -204,25 +204,37 @@ export const queueboneRestServerPlugin: FastifyPluginAsync<QueueboneRestServerOp
       { schema: updateJobSchema },
       async ({ worker, params, body }, reply) => {
         const { id, attempt } = params;
-
-        const executor = await worker.getRunningExecutor(id, attempt);
-        if (executor === undefined) {
-          return reply.status(HttpStatusCode.NotFound).send();
-        }
-
         const { metadata, progress, state, result } = body;
+
         if (metadata !== undefined) {
+          const executor = await worker.getRunningExecutor(id, attempt, [JobState.Running]);
+          if (executor === undefined) {
+            return reply.status(HttpStatusCode.NotFound).send();
+          }
           const jobRecord = await executor.amendMetadata(metadata);
-          return jobRecord !== undefined ? jobRecord : reply.status(404).send();
+          return jobRecord !== undefined ? jobRecord : reply.status(HttpStatusCode.NotFound).send();
         }
+
         if (progress !== undefined) {
-          const jobRecord = await executor.updateProgress(progress);
-          return jobRecord !== undefined ? jobRecord : reply.status(404).send();
+          const executor = await worker.getRunningExecutor(id, attempt, [JobState.Running]);
+          if (executor === undefined) {
+            return reply.status(HttpStatusCode.NotFound).send();
+          }
+          await executor.updateProgress(progress);
+          return reply.status(HttpStatusCode.NoContent).send();
         }
+
         if (state !== undefined && result !== undefined) {
+          const executor = await worker.getRunningExecutor(id, attempt, [JobState.Running, state]);
+          if (executor === undefined) {
+            return reply.status(HttpStatusCode.NotFound).send();
+          }
+          if (executor.jobRecord.state === state) {
+            return executor.jobRecord;
+          }
           const jobRecord = await executor.markFinished(state, result);
           worker.finishExecutor(executor);
-          return jobRecord !== undefined ? jobRecord : reply.status(404).send();
+          return jobRecord !== undefined ? jobRecord : reply.status(HttpStatusCode.NotFound).send();
         }
         return reply.status(HttpStatusCode.NotFound).send();
       },

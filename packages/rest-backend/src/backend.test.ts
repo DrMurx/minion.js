@@ -267,14 +267,18 @@ await t.test('HTTP backend', async (t) => {
     t.equal(jobHandle1.state, JobState.Running);
 
     t.notOk(
-      await clientBackend2.markJobFinished(jobHandle1.id, jobHandle1.attempt, JobState.Succeeded, { no: 'result' }),
+      await clientBackend2.markJobFinished(worker.id!, jobHandle1.id, jobHandle1.attempt, JobState.Succeeded, {
+        no: 'result',
+      }),
     );
     await jobHandle1.sync();
     t.equal(jobHandle1.state, JobState.Running);
     t.equal(jobHandle1.result, undefined);
 
     t.ok(
-      await clientBackend.markJobFinished(jobHandle1.id, jobHandle1.attempt, JobState.Succeeded, { some: 'result' }),
+      await clientBackend.markJobFinished(worker.id!, jobHandle1.id, jobHandle1.attempt, JobState.Succeeded, {
+        some: 'result',
+      }),
     );
     await jobHandle1.sync();
     t.equal(jobHandle1.state, JobState.Succeeded);
@@ -317,6 +321,10 @@ await t.test('HTTP backend', async (t) => {
     await jobHandle2.sync();
     t.equal(jobHandle2.state, JobState.Failed);
     t.same(jobHandle2.result, { oops: 'Something bad happened' });
+
+    // Retried requests
+    t.ok(await job2.markFailed());
+    t.notOk(await job2.markSucceeded());
 
     const jobHandle3 = await serverQueue.addJob('fail');
     const job3 = (await worker.getNextExecutor())!;

@@ -70,7 +70,7 @@ export class ExecutorProxy<BaseJob extends Job<JobArgs>> {
   }
 
   async updateProgress(progress: number): Promise<Readonly<JobRecord<InferJobArgs<BaseJob>>> | undefined> {
-    const isUpdated = await this.backend.updateJobProgress(this.id, this.attempt, progress);
+    const isUpdated = await this.backend.updateJobProgress(this._worker.id!, this.id, this.attempt, progress);
     if (isUpdated) {
       this._lastUpdateAt = Date.now();
       this._jobRecord.progress = progress;
@@ -90,7 +90,7 @@ export class ExecutorProxy<BaseJob extends Job<JobArgs>> {
   }
 
   async amendMetadata(records: Record<string, any>): Promise<Readonly<JobRecord<InferJobArgs<BaseJob>>> | undefined> {
-    const metadata = await this.backend.amendJobMetadata(this.id, this.attempt, records);
+    const metadata = await this.backend.amendJobMetadata(this._worker.id!, this.id, this.attempt, records);
     const isUpdated = metadata !== undefined;
     if (isUpdated) {
       this._jobRecord.metadata = metadata;
@@ -143,7 +143,13 @@ export class ExecutorProxy<BaseJob extends Job<JobArgs>> {
    * Transition from `running` to `succeeded` state with or without a result.
    */
   private async markSucceeded(result?: JobResult): Promise<boolean> {
-    const isUpdated = await this.backend.markJobFinished(this.id, this.attempt, JobState.Succeeded, result ?? {});
+    const isUpdated = await this.backend.markJobFinished(
+      this._worker.id!,
+      this.id,
+      this.attempt,
+      JobState.Succeeded,
+      result ?? {},
+    );
     if (isUpdated) {
       this._jobRecord.result = result;
       this._jobRecord.state = JobState.Succeeded;
@@ -167,7 +173,13 @@ export class ExecutorProxy<BaseJob extends Job<JobArgs>> {
    * transition back to `pending` with a delay based on the backoff policy.
    */
   private async markFailed(result: JobError): Promise<boolean> {
-    const isUpdated = await this.backend.markJobFinished(this.id, this.attempt, JobState.Failed, result);
+    const isUpdated = await this.backend.markJobFinished(
+      this._worker.id!,
+      this.id,
+      this.attempt,
+      JobState.Failed,
+      result,
+    );
     if (isUpdated) {
       this._jobRecord.result = result;
       this._jobRecord.state = JobState.Failed;

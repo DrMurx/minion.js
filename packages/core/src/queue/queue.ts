@@ -202,7 +202,7 @@ export class Queuebone<BaseJob extends Job<JobArgs> = DefaultJob<JobArgs>>
       attachments: {},
       commands: {},
       governor: async () => true, // Noop governor
-      ...options,
+      ...Object.fromEntries(Object.entries(options).filter(([, value]) => value !== undefined && value != null)),
     };
     return new DefaultWorker(this._backend, _options, this.taskManager, this._options.jobFactory, this._backend, this);
   }

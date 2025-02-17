@@ -105,13 +105,16 @@ export class WorkerLoop<BaseJob extends Job<JobArgs>> {
     const executor = await this.worker.getNextExecutor(dequeueTimeout, options);
     if (executor === null) return false;
 
-    // Construct the jobStatus object - the promise on `Job.perform` will update its status after it has finished
+    // Construct the jobStatus object
     const performPromise = executor.perform(false);
     const jobStatus: JobStatus<BaseJob> = {
       executor,
       performPromise,
       isRunning: true,
     };
+    // Attach a catch handler, otherwise a failed `executor.perform` may kill the process
+    jobStatus.performPromise.catch((e) => console.log(e));
+    // The promise on `executor.perform` will update its status after it has finished
     jobStatus.performPromise.finally(() => {
       jobStatus.isRunning = false;
     });

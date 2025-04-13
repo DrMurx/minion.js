@@ -233,6 +233,15 @@ export class Queuebone<BaseJob extends Job<JobArgs> = DefaultJob<JobArgs>>
     return await this.pruner.perform(true, extraOptions);
   }
 
+  get pruneEnabled(): boolean {
+    return this.pruner.isRunning;
+  }
+
+  set pruneEnabled(enable: boolean) {
+    if (enable) this.pruner.start();
+    else this.pruner.stop();
+  }
+
   async getJobStatistics(): Promise<QueueJobStatistics> {
     return await this._backend.getJobHistory();
   }

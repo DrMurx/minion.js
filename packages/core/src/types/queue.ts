@@ -151,6 +151,16 @@ export interface Controller {
   prune(extraOptions?: Partial<PruneOptions>): Promise<boolean>;
 
   /**
+   * Get whether auto-pruning is enabled and running.
+   */
+  get pruneEnabled(): boolean;
+
+  /**
+   * Set whether auto-pruning is enabled.
+   */
+  set pruneEnabled(enable: boolean);
+
+  /**
    * Reset job queue.
    */
   resetQueue(): Promise<void>;

@@ -137,6 +137,10 @@ export class DefaultWorker<BaseJob extends Job<JobArgs>> implements WorkerInstan
     return this._governor;
   }
 
+  set governor(governor: WorkerGovenor) {
+    this._governor = governor;
+  }
+
   get needsInboxCheck(): boolean {
     if (this._config.inboxCheckInterval === 0) return false;
     return this.lastInboxCheck + this._config.inboxCheckInterval < Date.now();

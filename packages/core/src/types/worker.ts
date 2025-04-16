@@ -45,6 +45,7 @@ export interface WorkerInstance<BaseJob extends Job<JobArgs>> extends RunningWor
   setMetadata(key: string, value: any): Promise<void>;
   setAttachment(key: string, value: any): void;
   get governor(): WorkerGovenor;
+  set governor(governor: WorkerGovenor);
 
   get state(): WorkerState;
 
